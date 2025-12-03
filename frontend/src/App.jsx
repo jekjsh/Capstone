@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
@@ -33,3 +34,35 @@ function App() {
 }
 
 export default App
+=======
+import { useState } from 'react';
+import LoginInterface from './LoginInterface';
+import MainFrame from './admin/Mainframe';
+import UserMainFrame from './user/UserMainFrame';
+
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  const handleLoginSuccess = (userData) => {
+    setCurrentUser(userData);
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setCurrentUser(null);
+  };
+
+  if (!isLoggedIn) {
+    return <LoginInterface onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // Route to appropriate dashboard based on user type
+  if (currentUser.userType === 'admin') {
+    return <MainFrame currentUser={currentUser} onLogout={handleLogout} />;
+  } else {
+    return <UserMainFrame currentUser={currentUser} onLogout={handleLogout} />;
+  }
+}
+>>>>>>> 2247645 (Initial commit)

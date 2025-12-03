@@ -1,0 +1,163 @@
+import { Search, MoreVertical } from 'lucide-react';
+
+export default function AdminUserManagement({ 
+  userList, 
+  userSearchQuery, 
+  setUserSearchQuery,
+  userFilterRole,
+  setUserFilterRole,
+  userFilterDepartment,
+  setUserFilterDepartment,
+  userFilterStatus,
+  setUserFilterStatus,
+  getDepartments,
+  getFilteredUsers,
+  handleMenuClick,
+  setShowAddUserModal,
+  openMenuUserId
+}) {
+  const filteredUsers = getFilteredUsers();
+  
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800">User Management</h2>
+        <button 
+          onClick={() => setShowAddUserModal(true)}
+          className="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-colors"
+        >
+          + Add New User
+        </button>
+      </div>
+
+      <div className="bg-white p-4 rounded-lg shadow-md space-y-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            value={userSearchQuery}
+            onChange={(e) => setUserSearchQuery(e.target.value)}
+            placeholder="Search by User ID, Name, Department, or Job Title..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Role</label>
+            <select
+              value={userFilterRole}
+              onChange={(e) => setUserFilterRole(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="All">All Roles</option>
+              <option value="Admin">Admin</option>
+              <option value="User">User</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Department</label>
+            <select
+              value={userFilterDepartment}
+              onChange={(e) => setUserFilterDepartment(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="All">All Departments</option>
+              {getDepartments().map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Status</label>
+            <select
+              value={userFilterStatus}
+              onChange={(e) => setUserFilterStatus(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="All">All Status</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        {(userSearchQuery || userFilterRole !== 'All' || userFilterDepartment !== 'All' || userFilterStatus !== 'All') && (
+          <button
+            onClick={() => {
+              setUserSearchQuery('');
+              setUserFilterRole('All');
+              setUserFilterDepartment('All');
+              setUserFilterStatus('All');
+            }}
+            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            Clear All Filters
+          </button>
+        )}
+
+        <div className="text-sm text-gray-600">
+          Showing <span className="font-semibold">{filteredUsers.length}</span> of <span className="font-semibold">{userList.length}</span> users
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job Title</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                    {userList.length === 0 
+                      ? "No users found. Click 'Add New User' to create one."
+                      : "No users match your search criteria. Try adjusting your filters."}
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm text-gray-900">{user.id}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{user.name}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{user.department}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{user.jobTitle}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{user.role}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        user.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {user.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <div className="flex justify-center">
+                        <button 
+                          onClick={(e) => handleMenuClick(user.id, e)}
+                          className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        >
+                          <MoreVertical className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
