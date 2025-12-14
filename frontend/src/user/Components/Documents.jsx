@@ -1,5 +1,4 @@
-// components/Documents.jsx
-import { Plus, Upload, ScanText, FileText, Trash2, Folder, Share2 } from 'lucide-react';
+import { Plus, Upload, ScanText, FileText, Trash2, Folder, Share2, Building2 } from 'lucide-react';
 
 export default function Documents({
   currentFolder,
@@ -21,7 +20,8 @@ export default function Documents({
   onDownloadDocument,
   onPrintDocument,
   onMoveToFolder,
-  onShareDocument
+  onShareDocument,
+  onSendToOrganization  
 }) {
   return (
     <div className="space-y-6">
@@ -179,6 +179,14 @@ export default function Documents({
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  {/* NEW: Send to Organization Button */}
+                  <button 
+                    onClick={() => onSendToOrganization(doc)} 
+                    className="text-blue-600 hover:text-blue-900 p-2"
+                    title="Send to organization"
+                  >
+                    <Building2 className="w-5 h-5" />
+                  </button>
                   <button 
                     onClick={() => onShareDocument(doc)} 
                     className="text-purple-600 hover:text-purple-900 p-2"

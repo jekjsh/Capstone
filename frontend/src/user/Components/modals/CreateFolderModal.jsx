@@ -1,4 +1,3 @@
-// components/modals/CreateFolderModal.jsx
 import { X } from 'lucide-react';
 
 export default function CreateFolderModal({ show, onClose, newFolderName, setNewFolderName, newFolderColor, setNewFolderColor, errors, onCreateFolder }) {

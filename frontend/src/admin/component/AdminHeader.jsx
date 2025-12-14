@@ -1,4 +1,4 @@
-import { Bell, Settings, LogOut, Palette } from 'lucide-react';
+import { Bell, Settings, LogOut, Palette, Hash } from 'lucide-react';
 
 export default function AdminHeader({ 
   menuItems, 
@@ -6,7 +6,8 @@ export default function AdminHeader({
   currentUser, 
   showSettingsMenu, 
   setShowSettingsMenu, 
-  handleCustomize, 
+  onCustomize,
+  onConfigureUserId,
   onLogout 
 }) {
   return (
@@ -29,14 +30,31 @@ export default function AdminHeader({
           {showSettingsMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowSettingsMenu(false)} />
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                {/* Customize System Button */}
                 <button
-                  onClick={handleCustomize}
+                  onClick={() => {
+                    setShowSettingsMenu(false);
+                    onCustomize();
+                  }}
                   className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <Palette className="w-4 h-4 text-purple-600" />
-                  <span>Customize</span>
+                  <span>Customize System</span>
                 </button>
+                
+                {/* User ID Format Button */}
+                <button
+                  onClick={() => {
+                    setShowSettingsMenu(false);
+                    onConfigureUserId();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Hash className="w-4 h-4 text-blue-600" />
+                  <span>User ID Format</span>
+                </button>
+                
                 <div className="border-t border-gray-200 my-1"></div>
                 <button
                   onClick={onLogout}

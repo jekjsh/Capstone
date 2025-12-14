@@ -1,4 +1,5 @@
 import { Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 export default function AdminLogAudits({
   auditLogs,
@@ -11,6 +12,14 @@ export default function AdminLogAudits({
   getActions,
   getFilteredLogs
 }) {
+  
+  const [, setRenderKey] = useState(0);
+  
+  useEffect(() => {
+   
+    setRenderKey(prev => prev + 1);
+  }, [auditLogs, auditLogs.length]);
+  
   const filteredLogs = getFilteredLogs();
   
   return (
@@ -99,7 +108,7 @@ export default function AdminLogAudits({
                 </tr>
               ) : (
                 filteredLogs.map((log, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50">
+                  <tr key={`${log.time}-${idx}`} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm text-gray-900">{log.time}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">{log.user}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">{log.action}</td>

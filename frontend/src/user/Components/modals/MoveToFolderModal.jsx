@@ -1,4 +1,3 @@
-// components/modals/MoveToFolderModal.jsx
 import { X, Folder, FolderOpen } from 'lucide-react';
 
 export default function MoveToFolderModal({ show, onClose, folders, onMoveToFolder, getFolderDocumentCount }) {

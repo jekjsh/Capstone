@@ -1,4 +1,3 @@
-// components/modals/DocumentViewerModal.jsx
 import { X, FileText, ScanText } from 'lucide-react';
 
 export default function DocumentViewerModal({ show, document, onClose, onPrint, onDownload }) {

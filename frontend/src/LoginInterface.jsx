@@ -1,12 +1,30 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 
-export default function LoginInterface({ onLoginSuccess }) {
+export default function LoginInterface({ onLoginSuccess, dataStore }) {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  
+  const [customization, setCustomization] = useState({
+    systemName: 'Record Keeping Management System',
+    systemLogo: null,
+    loginBackground: null,
+    primaryColor: '#4F46E5'
+  });
+
+  useEffect(() => {
+    if (dataStore) {
+      const custom = dataStore.getCustomization();
+      if (custom) {
+        setCustomization(custom);
+        
+        document.documentElement.style.setProperty('--primary-color', custom.primaryColor);
+      }
+    }
+  }, [dataStore]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -26,8 +44,6 @@ export default function LoginInterface({ onLoginSuccess }) {
   };
 
   const determineUserType = (id) => {
-    // Admin format: TUPM_XX_XXXX (uses underscores)
-    // User format: TUPM-XX-XXXX (uses hyphens)
     if (id.includes('_')) {
       return 'admin';
     } else if (id.includes('-')) {
@@ -49,7 +65,19 @@ export default function LoginInterface({ onLoginSuccess }) {
           return;
         }
 
-        // Admin Login (TUPM_XX_XXXX with underscores)
+        if (dataStore) {
+          const verifiedUser = dataStore.verifyUser(userId, password);
+          
+          if (verifiedUser) {
+            onLoginSuccess({
+              ...verifiedUser,
+              userType: userType,
+              name: `${verifiedUser.firstName} ${verifiedUser.lastName}`
+            });
+            return;
+          }
+        }
+
         if (userType === 'admin' && userId === 'TUPM_01_0001' && password === 'admin123') {
           onLoginSuccess({
             id: userId,
@@ -57,22 +85,24 @@ export default function LoginInterface({ onLoginSuccess }) {
             role: 'Admin',
             userType: 'admin'
           });
+          return;
         }
-        // User Login (TUPM-XX-XXXX with hyphens)
-        else if (userType === 'user' && password === 'user123') {
-          // For demo purposes, any user ID with hyphens and password 'user123' will work
-          // Extract a name from the user ID (you can customize this)
-          const userName = `User ${userId.split('-')[2]}`;
+
+        if (userType === 'user' && userId === 'TUPM-01-0001' && password === 'User@123') {
           onLoginSuccess({
             id: userId,
-            name: userName,
+            name: 'John Demo User',
             role: 'User',
+            jobTitle: 'Professor',
+            organizationUnitId: null,
+            organizationPosition: 'Faculty Member',
+            status: 'Active',
             userType: 'user'
           });
+          return;
         }
-        else {
-          setErrors({ password: 'Invalid User ID or Password' });
-        }
+        
+        setErrors({ password: 'Invalid User ID or Password' });
       }, 1500);
     }
   };
@@ -84,14 +114,51 @@ export default function LoginInterface({ onLoginSuccess }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+    <div 
+      className="min-h-screen flex items-center justify-center p-4 relative"
+      style={{
+        backgroundColor: customization.loginBackground ? 'transparent' : '#f3f4f6'
+      }}
+    >
+      {/*Background Image Overlay */}
+      {customization.loginBackground && (
+        <>
+          <div 
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${customization.loginBackground})`,
+              filter: 'blur(0px)'
+            }}
+          />
+          <div className="absolute inset-0 bg-black bg-opacity-40" />
+        </>
+      )}
+
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative z-10">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full mb-4">
-            <Lock className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Record Keeping Management System</h1>
+          {/* Custom Logo or Default Icon */}
+          {customization.systemLogo ? (
+            <img 
+              src={customization.systemLogo} 
+              alt="System Logo" 
+              className="h-16 mx-auto mb-4 object-contain"
+            />
+          ) : (
+            <div 
+              className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
+              style={{
+                background: `linear-gradient(to right, ${customization.primaryColor}, ${customization.primaryColor}dd)`
+              }}
+            >
+              <Lock className="w-8 h-8 text-white" />
+            </div>
+          )}
+          
+          {/*Custom System Name */}
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">
+            {customization.systemName}
+          </h1>
           <p className="text-gray-600">Please sign in to your account</p>
         </div>
 
@@ -113,15 +180,17 @@ export default function LoginInterface({ onLoginSuccess }) {
                 className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 transition-all ${
                   errors.userId
                     ? 'border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:ring-indigo-500'
+                    : 'border-gray-300'
                 }`}
+                style={{
+                  focusRingColor: customization.primaryColor
+                }}
                 placeholder="Enter your user ID"
               />
             </div>
             {errors.userId && (
               <p className="mt-1 text-sm text-red-500">{errors.userId}</p>
             )}
-
           </div>
 
           {/* Password Field */}
@@ -140,7 +209,7 @@ export default function LoginInterface({ onLoginSuccess }) {
                 className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:outline-none focus:ring-2 transition-all ${
                   errors.password
                     ? 'border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:ring-indigo-500'
+                    : 'border-gray-300'
                 }`}
                 placeholder="••••••••"
               />
@@ -162,7 +231,10 @@ export default function LoginInterface({ onLoginSuccess }) {
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                className="w-4 h-4 rounded border-gray-300 focus:ring-2"
+                style={{
+                  accentColor: customization.primaryColor
+                }}
               />
               <span className="ml-2 text-sm text-gray-600">Remember me</span>
             </label>
@@ -172,7 +244,11 @@ export default function LoginInterface({ onLoginSuccess }) {
           <button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white py-3 rounded-lg font-medium hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full text-white py-3 rounded-lg font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: customization.primaryColor,
+              focusRingColor: customization.primaryColor
+            }}
           >
             {isLoading ? (
               <span className="flex items-center justify-center">

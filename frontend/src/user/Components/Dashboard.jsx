@@ -1,4 +1,3 @@
-// components/Dashboard.jsx
 import { FileText, Folder, LayoutDashboard } from 'lucide-react';
 
 export default function Dashboard({ currentUser, userDocuments, folders, setActiveSection }) {

@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, Folder, Share2 } from 'lucide-react';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
-import Dashboard from './components/Dashboard';
-import Documents from './components/Documents';
-import Folders from './components/Folders';
-import CustomFields from './components/CustomFields';
+
+import { useState ,useEffect} from 'react';
+import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, Folder, Share2, Trash2 } from 'lucide-react';
+import Header from './Components/Header';
+import Dashboard from './Components/Dashboard';
+import Documents from './Components/Documents';
+import Folders from './Components/Folders';
+import CustomFields from './Components/CustomFields';
+import Sidebar from './Components/Sidebar';
 import CreateFolderModal from './components/modals/CreateFolderModal';
 import MoveToFolderModal from './components/modals/MoveToFolderModal';
 import DocumentViewerModal from './components/modals/DocumentViewerModal';
@@ -16,13 +17,29 @@ import PersonalInfoFormModal from './components/modals/PersonalInfoFormModal';
 import SaveOptionsModal from './components/modals/SaveOptionsModal';
 import AddFieldModal from './components/modals/AddFieldModal';
 import ShareDocumentModal from './components/modals/ShareDocumentModal';
-import SharedDocuments from './components/SharedDocuments';
-
-export default function UserMainFrame({ currentUser = { name: 'User', role: 'User', id: 'user1' }, onLogout = () => {} }) {
+import SendToOrganizationModal from "../admin/component/SendToOrganizationModal";
+import SharedDocuments from './Components/SharedDocuments';
+import RecycleBin from './Components/RecycleBin';
+export default function UserMainFrame({ 
+  currentUser = { name: 'User', role: 'User', id: 'user1' }, 
+  onLogout = () => {}, 
+  organizationTree,
+  dataStore 
+}) {
+  
   const [activeSection, setActiveSection] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
-  const [userDocuments, setUserDocuments] = useState([]);
+  const [, forceUpdate] = useState(0);
+   useEffect(() => {
+    if (dataStore) {
+      const unsubscribe = dataStore.subscribe(() => {
+        forceUpdate(prev => prev + 1);
+      });
+      return unsubscribe;
+    }
+  }, [dataStore]);
+  // const [userDocuments, setUserDocuments] = useState([]);
   const [folders, setFolders] = useState([]);
   const [currentFolder, setCurrentFolder] = useState(null);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
@@ -49,6 +66,7 @@ export default function UserMainFrame({ currentUser = { name: 'User', role: 'Use
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('date-desc');
   const [filterFormat, setFilterFormat] = useState('all');
+   const orgTree = dataStore ? dataStore.getOrganizationTree() : (organizationTree || []);
   const [personalInfo, setPersonalInfo] = useState({
     fullName: '',
     dateOfBirth: '',
@@ -63,55 +81,82 @@ export default function UserMainFrame({ currentUser = { name: 'User', role: 'Use
     emergencyContact: '',
     emergencyPhone: ''
   });
+  
   const [newDocument, setNewDocument] = useState({
     title: '',
     description: '',
     customFieldValues: {}
   });
-  const [newField, setNewField] = useState({
-    fieldName: '',
-    fieldType: 'text'
-  });
+const [newField, setNewField] = useState({
+  fieldName: '',
+  fieldType: 'text',
+  showInDocuments: true
+});
   const [errors, setErrors] = useState({});
-  const [allUsers, setAllUsers] = useState([
-    { id: 'user1', name: 'John Doe', email: 'john@example.com', role: 'Admin' },
-    { id: 'user2', name: 'Jane Smith', email: 'jane@example.com', role: 'User' },
-    { id: 'user3', name: 'Bob Wilson', email: 'bob@example.com', role: 'User' },
-    { id: 'user4', name: 'Alice Brown', email: 'alice@example.com', role: 'User' },
-    { id: 'user5', name: 'Charlie Davis', email: 'charlie@example.com', role: 'User' }
-  ]);
-  const [sharedDocuments, setSharedDocuments] = useState([]);
+  const allUsers = dataStore ? dataStore.getAllUsers() : [];
+  const sharedDocuments = dataStore ? dataStore.getAllDirectShares() : [];
+  const organizationShares = dataStore ? dataStore.getAllOrgShares() : [];
   const [showShareModal, setShowShareModal] = useState(false);
   const [documentToShare, setDocumentToShare] = useState(null);
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'documents', label: 'My Documents', icon: FileText },
-    { id: 'shared', label: 'Shared Documents', icon: Share2 },
-    { id: 'folders', label: 'Folders', icon: Folder },
-    { id: 'fields', label: 'Custom Fields', icon: Settings }
-  ];
-
-  const handleAddField = () => {
-    if (!newField.fieldName.trim()) {
-      setErrors({ fieldName: 'Field name is required' });
-      return;
-    }
-    if (customFields.some(field => field.name === newField.fieldName)) {
-      setErrors({ fieldName: 'Field name already exists' });
-      return;
-    }
-    const field = {
-      id: Date.now().toString(),
-      name: newField.fieldName,
-      type: newField.fieldType
+  const [showSendToOrgModal, setShowSendToOrgModal] = useState(false);
+  const [selectedDocForOrgShare, setSelectedDocForOrgShare] = useState(null);
+  const userDocuments = dataStore ? dataStore.getDocumentsByUser(currentUser.id) : [];
+ const menuItems = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'documents', label: 'My Documents', icon: FileText },
+  { id: 'shared', label: 'Shared Documents', icon: Share2 },
+  { id: 'folders', label: 'Folders', icon: Folder },
+  { id: 'fields', label: 'Custom Fields', icon: Settings },
+  { id: 'recycle-bin', label: 'Recycle Bin', icon: Trash2 }
+];
+  const addAuditLog = (action, resource, status = 'Success') => {
+    const timestamp = new Date().toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const logEntry = {
+      time: timestamp,
+      user: `${currentUser.name} (${currentUser.id})`,
+      action: action,
+      resource: resource,
+      status: status
     };
-    setCustomFields([...customFields, field]);
-    setShowAddFieldModal(false);
-    setNewField({ fieldName: '', fieldType: 'text' });
-    setErrors({});
+     if (dataStore) {
+      dataStore.addAuditLog(logEntry);
+    }
   };
-
+ const handleAddField = () => {
+  if (!newField.fieldName.trim()) {
+    setErrors({ fieldName: 'Field name is required' });
+    return;
+  }
+  if (customFields.some(field => field.name === newField.fieldName)) {
+    setErrors({ fieldName: 'Field name already exists' });
+    return;
+  }
+  const field = {
+    id: Date.now().toString(),
+    name: newField.fieldName,
+    type: newField.fieldType,
+    showInDocuments: newField.showInDocuments !== false
+  };
+  setCustomFields([...customFields, field]);
+  setShowAddFieldModal(false);
+  setNewField({ fieldName: '', fieldType: 'text', showInDocuments: true });
+  setErrors({});
+};
+const handleToggleFieldActive = (fieldId) => {
+  setCustomFields(customFields.map(field => 
+    field.id === fieldId 
+      ? { ...field, showInDocuments: !field.showInDocuments } 
+      : field
+  ));
+};
   const handleDeleteField = (fieldId) => {
     if (window.confirm('Are you sure you want to delete this field? This will remove the field from all documents.')) {
       setCustomFields(customFields.filter(field => field.id !== fieldId));
@@ -141,14 +186,16 @@ export default function UserMainFrame({ currentUser = { name: 'User', role: 'Use
     setErrors({});
   };
 
-  const handleDeleteFolder = (folderId) => {
+ const handleDeleteFolder = (folderId) => {
     const documentsInFolder = userDocuments.filter(doc => doc.folderId === folderId);
     
     if (documentsInFolder.length > 0) {
       if (window.confirm(`This folder contains ${documentsInFolder.length} document(s). Delete folder and move documents to root?`)) {
-        setUserDocuments(userDocuments.map(doc => 
-          doc.folderId === folderId ? { ...doc, folderId: null } : doc
-        ));
+        documentsInFolder.forEach(doc => {
+          if (dataStore) {
+            dataStore.updateDocument(doc.id, { folderId: null });
+          }
+        });
         setFolders(folders.filter(f => f.id !== folderId));
         if (currentFolder === folderId) {
           setCurrentFolder(null);
@@ -164,11 +211,9 @@ export default function UserMainFrame({ currentUser = { name: 'User', role: 'Use
     }
   };
 
-  const handleMoveToFolder = (folderId) => {
-    if (documentToMove) {
-      setUserDocuments(userDocuments.map(doc => 
-        doc.id === documentToMove ? { ...doc, folderId: folderId } : doc
-      ));
+ const handleMoveToFolder = (folderId) => {
+    if (documentToMove && dataStore) {
+      dataStore.updateDocument(documentToMove, { folderId: folderId });
       setShowMoveToFolderModal(false);
       setDocumentToMove(null);
     }
@@ -212,7 +257,7 @@ ${title}
 This document contains the official records and information as submitted and verified by the Record Keeping Management System.
 
 PERSONAL INFORMATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────────────────────────────────────────────────
 
 Full Name: ${personalInfo.fullName || 'N/A'}
 Date of Birth: ${personalInfo.dateOfBirth || 'N/A'}
@@ -220,7 +265,7 @@ Gender: ${personalInfo.gender || 'N/A'}
 Occupation: ${personalInfo.occupation || 'N/A'}
 
 CONTACT INFORMATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────────────────────────────────────────────────
 
 Email: ${personalInfo.email || 'N/A'}
 Phone: ${personalInfo.phoneNumber || 'N/A'}
@@ -230,19 +275,19 @@ State: ${personalInfo.state || 'N/A'}
 ZIP Code: ${personalInfo.zipCode || 'N/A'}
 
 ${personalInfo.emergencyContact ? `EMERGENCY CONTACT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────────────────────────────────────────────────
 
 Contact Name: ${personalInfo.emergencyContact}
 Contact Phone: ${personalInfo.emergencyPhone || 'N/A'}
 
 ` : ''}${Object.keys(customFields).length > 0 ? `ADDITIONAL INFORMATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────────────────────────────────────────────────
 
 ${Object.entries(customFields).map(([key, value]) => `${key}: ${value || 'N/A'}`).join('\n')}
 
 ` : ''}
 DOCUMENT CERTIFICATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────────────────────────────────────────────────
 
 This document has been generated and stored in the Record Keeping Management System.
 
@@ -253,14 +298,13 @@ Signature: _________________________
 Date: _____________________________
 
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────────────────────────────────────────────────
 Record Keeping Management System
 Generated: ${new Date().toLocaleString()}
 Document ID: ${Date.now()}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+────────────────────────────────────────────────────────────
     `;
   };
-
   const handleFinalSave = (format) => {
     const doc = {
       id: Date.now().toString(),
@@ -272,9 +316,20 @@ Document ID: ${Date.now()}
       folderId: currentFolder,
       content: generateDocumentContent(currentDocumentData.title, personalInfo, currentDocumentData.customFieldValues),
       createdAt: new Date().toLocaleString(),
-      createdBy: currentUser.name
+      createdBy: currentUser.id 
     };
-    setUserDocuments([...userDocuments, doc]);
+    
+ 
+    if (dataStore) {
+      dataStore.addDocument(doc);
+      addAuditLog(
+        'Document Created',
+        `${doc.title} (${format.toUpperCase()}) - ID: ${doc.id}`,
+        'Success'
+      );
+    }
+    
+    
     setShowSaveOptionsModal(false);
     setNewDocument({ title: '', description: '', customFieldValues: {} });
     setPersonalInfo({
@@ -296,11 +351,45 @@ Document ID: ${Date.now()}
     alert(`Document saved as ${format.toUpperCase()}!`);
   };
 
+  
   const handleDeleteDocument = (docId) => {
-    if (window.confirm('Are you sure you want to delete this document?')) {
-      setUserDocuments(userDocuments.filter(doc => doc.id !== docId));
+  const docToDelete = userDocuments.find(doc => doc.id === docId);
+  if (window.confirm('Move this document to Recycle Bin?')) {
+    if (dataStore) {
+      dataStore.moveToRecycleBin(docToDelete);
+      addAuditLog(
+        'Document Moved to Recycle Bin',
+        `${docToDelete.title} - ID: ${docId}`,
+        'Success'
+      );
     }
-  };
+  }
+};
+const handleRestoreDocument = (docId) => {
+  if (dataStore) {
+    const doc = dataStore.getDeletedDocuments().find(d => d.id === docId);
+    dataStore.restoreFromRecycleBin(docId);
+    addAuditLog('Document Restored', `${doc.title} - ID: ${docId}`, 'Success');
+    alert('Document restored successfully!');
+  }
+};
+
+const handlePermanentDelete = (docId) => {
+  if (dataStore) {
+    const doc = dataStore.getDeletedDocuments().find(d => d.id === docId);
+    dataStore.permanentlyDelete(docId);
+    addAuditLog('Document Permanently Deleted', `${doc.title} - ID: ${docId}`, 'Success');
+    alert('Document permanently deleted!');
+  }
+};
+const handleEmptyRecycleBin = () => {
+  if (dataStore) {
+    const count = dataStore.getDeletedDocuments().filter(d => d.createdBy === currentUser.id).length;
+    dataStore.emptyRecycleBin(currentUser.id);
+    addAuditLog('Recycle Bin Emptied', `${count} documents permanently deleted`, 'Success');
+    alert('Recycle bin emptied!');
+  }
+};
 
   const handleOpenDocument = (doc) => {
     setViewingDocument(doc);
@@ -390,6 +479,7 @@ Document ID: ${Date.now()}
     }, 2000);
   };
 
+  
   const handleUseOCRText = () => {
     if (!ocrText) {
       alert('Please process OCR first');
@@ -405,9 +495,20 @@ Document ID: ${Date.now()}
       folderId: currentFolder,
       ocrContent: ocrText,
       createdAt: new Date().toLocaleString(),
-      createdBy: currentUser.name
+      createdBy: currentUser.id 
     };
-    setUserDocuments([...userDocuments, doc]);
+    
+    
+    if (dataStore) {
+      dataStore.addDocument(doc);
+
+       addAuditLog(
+        'OCR Document Created',
+        `${doc.title} - Extracted from ${uploadedFile.name}`,
+        'Success'
+      );
+    }
+    
     setShowOCRModal(false);
     setUploadedFile(null);
     setOcrText('');
@@ -498,6 +599,7 @@ Document ID: ${Date.now()}
     }
   };
 
+  
   const handleUploadDocument = async () => {
     if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
       alert('Please select at least one file to upload');
@@ -528,14 +630,25 @@ Document ID: ${Date.now()}
           fileData: e.target.result,
           mimeType: file.type,
           createdAt: new Date().toLocaleString(),
-          createdBy: currentUser.name
+          createdBy: currentUser.id 
         };
+        
+        
+        if (dataStore) {
+          dataStore.addDocument(doc);
+
+           addAuditLog(
+            'Document Uploaded',
+            `${doc.fileName} (${doc.fileSize}) - ${format.toUpperCase()}`,
+            'Success'
+          );
+        }
         
         newDocuments.push(doc);
         processedCount++;
         
         if (processedCount === uploadedDocFiles.length) {
-          setUserDocuments([...userDocuments, ...newDocuments]);
+
           setShowUploadDocumentModal(false);
           setUploadedDocFiles([]);
           setUploadPreviews([]);
@@ -596,32 +709,181 @@ Document ID: ${Date.now()}
   };
 
   const handleShareDocument = (shareData) => {
-    const newShare = {
-      id: Date.now().toString(),
-      documentId: shareData.documentId,
-      document: userDocuments.find(doc => doc.id === shareData.documentId),
-      sharedWith: shareData.sharedWith,
-      sharedBy: shareData.sharedBy,
-      permission: shareData.permission,
-      message: shareData.message,
-      sharedAt: shareData.sharedAt
-    };
+  console.log('📤 Sharing document:', shareData);
 
-    setSharedDocuments([...sharedDocuments, newShare]);
-    alert(`Document shared with ${shareData.sharedWith.length} user(s)!`);
+  const documentToShare = userDocuments.find(doc => doc.id === shareData.documentId);
+  
+  if (!documentToShare) {
+    alert('❌ Error: Document not found');
+    return;
+  }
+
+  const newShare = {
+    id: 'share-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+    documentId: shareData.documentId,
+    document: documentToShare,
+    sharedWith: shareData.sharedWith, 
+    sharedBy: shareData.sharedBy,
+    permission: shareData.permission,
+    message: shareData.message,
+    sharedAt: shareData.sharedAt
   };
+  console.log('✅ Created share object:', newShare);
+  if (dataStore) {
+    dataStore.addDirectShare(newShare);
+    
+    const recipientNames = shareData.sharedWith
+      .map(userId => {
+        const user = allUsers.find(u => u.id === userId);
+        return user ? user.name : userId;
+      })
+      .join(', ');
+
+    addAuditLog(
+      'Document Shared (Direct)',
+      `"${documentToShare.title}" shared with ${recipientNames} (${shareData.permission} access)`,
+      'Success'
+    );
+
+    console.log('✅ Share saved to DataStore');
+  } else {
+    console.error('❌ DataStore not available');
+  }
+
+  alert(`✅ Document "${documentToShare.title}" successfully shared with ${shareData.sharedWith.length} user(s)!`);
+  setShowShareModal(false);
+  setDocumentToShare(null);
+};
+
 
   const openShareModal = (doc) => {
-    setDocumentToShare(doc);
-    setShowShareModal(true);
-  };
+  console.log('📂 Opening share modal for:', doc.title);
+  setDocumentToShare(doc);
+  setShowShareModal(true);
+};  
+
 
   const handleRemoveShare = (shareId) => {
-    if (window.confirm('Are you sure you want to remove this share?')) {
-      setSharedDocuments(sharedDocuments.filter(share => share.id !== shareId));
+  if (!window.confirm('Are you sure you want to stop sharing this document?')) {
+    return;
+  }
+
+  if (dataStore) {
+    const share = dataStore.getAllDirectShares().find(s => s.id === shareId);
+    
+    dataStore.removeDirectShare(shareId);
+    if (share) {
+      addAuditLog(
+        'Share Removed',
+        `Stopped sharing "${share.document?.title || 'Unknown'}"`,
+        'Success'
+      );
     }
+
+    alert('✅ Share removed successfully!');
+  }
+};
+
+
+
+  
+ const handleSendToOrganization = (doc) => {
+  console.log('🏢 Opening organization share modal for:', doc.title);
+  setSelectedDocForOrgShare(doc);
+  setShowSendToOrgModal(true);
+};
+const handleConfirmSendToOrganization = (shareData) => {
+  console.log('🏢 Sending to organization:', shareData);
+
+  const documentToShare = userDocuments.find(d => d.id === shareData.documentId);
+  
+  if (!documentToShare) {
+    alert('❌ Error: Document not found');
+    return;
+  }
+
+  const newShare = {
+    id: 'org-share-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+    documentId: shareData.documentId,
+    document: documentToShare,
+    recipients: shareData.recipients,
+    distributionMode: shareData.distributionMode,
+    selectedUnits: shareData.selectedUnits,
+    message: shareData.message,
+    sentBy: shareData.sentBy,
+    sentFrom: shareData.sentFrom,
+    sentAt: shareData.sentAt
   };
 
+  console.log('✅ Created org share:', newShare);
+  if (dataStore) {
+    dataStore.addOrgShare(newShare);
+    addAuditLog(
+      'Organization Distribution',
+      `Document: "${documentToShare.title}" sent to ${newShare.recipients.length} recipients via ${shareData.distributionMode}`,
+      'Success'
+    );
+
+    console.log('✅ Org share saved to DataStore');
+  } else {
+    console.error('❌ DataStore not available');
+  }
+  alert(`✅ Document "${documentToShare.title}" successfully sent to ${shareData.recipients.length} user(s) in your organization!`);
+
+  setShowSendToOrgModal(false);
+  setSelectedDocForOrgShare(null);
+};
+const handleSaveToMyDocuments = (document, source) => {
+  if (!document) {
+    alert('❌ Invalid document');
+    return;
+  }
+  const existingDoc = userDocuments.find(doc => 
+    doc.originalDocumentId === document.id && doc.createdBy === currentUser.id
+  );
+
+  if (existingDoc) {
+    const shouldProceed = window.confirm(
+      `You've already saved this document as "${existingDoc.title}". Do you want to save another copy?`
+    );
+    if (!shouldProceed) return;
+  }
+  const savedDoc = {
+    ...document,
+    id: Date.now().toString() + '-saved-' + Math.random().toString(36).substr(2, 9),
+    createdAt: new Date().toLocaleString(),
+    createdBy: currentUser.id,
+    savedFrom: source,
+    originalDocumentId: document.id,
+    originalCreatedBy: document.createdBy,
+    originalCreatedAt: document.createdAt,
+    folderId: null
+  };
+
+  console.log('💾 Saving shared document:', savedDoc);
+  if (dataStore) {
+    dataStore.addDocument(savedDoc);
+    addAuditLog(
+      'Document Saved from Shared',
+      `"${savedDoc.title}" - Saved from ${source === 'org-share' ? 'Organization Share' : 'Direct Share'}`,
+      'Success'
+    );
+    
+    console.log('✅ Document saved to My Documents');
+    
+    const goToMyDocs = window.confirm(
+      `✅ Document "${document.title}" has been saved to your "My Documents"!\n\nWould you like to go to My Documents now?`
+    );
+    
+    if (goToMyDocs) {
+      setActiveSection('documents');
+      setCurrentFolder(null);
+    }
+  } else {
+    console.error('❌ DataStore not available');
+    alert('❌ Error: Could not save document');
+  }
+};
   return (
     <div className="flex h-screen bg-gray-100">
       <CreateFolderModal
@@ -716,7 +978,8 @@ Document ID: ${Date.now()}
         onClose={() => { 
           setShowAddFieldModal(false); 
           setErrors({}); 
-          setNewField({ fieldName: '', fieldType: 'text' }); 
+          setNewField({ fieldName: '', fieldType: 'text', showInDocuments: true }); 
+          
         }}
         newField={newField}
         setNewField={setNewField}
@@ -750,6 +1013,19 @@ Document ID: ${Date.now()}
         onShareDocument={handleShareDocument}
       />
 
+      <SendToOrganizationModal
+        show={showSendToOrgModal}
+        onClose={() => {
+          setShowSendToOrgModal(false);
+          setSelectedDocForOrgShare(null);
+        }}
+        document={selectedDocForOrgShare}
+       organizationTree={orgTree}
+        userList={allUsers}
+        currentUser={currentUser}
+        onSendToOrganization={handleConfirmSendToOrganization}
+      />
+
       <Sidebar
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
@@ -757,6 +1033,7 @@ Document ID: ${Date.now()}
         activeSection={activeSection}
         setActiveSection={setActiveSection}
         currentUser={currentUser}
+        dataStore={dataStore}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -800,15 +1077,19 @@ Document ID: ${Date.now()}
               onPrintDocument={handlePrintDocument}
               onMoveToFolder={openMoveToFolderModal}
               onShareDocument={openShareModal}
+              onSendToOrganization={handleSendToOrganization}
             />
           )}
           {activeSection === 'shared' && (
             <SharedDocuments
               sharedDocuments={sharedDocuments}
+              organizationShares={organizationShares}
               currentUser={currentUser}
               onOpenDocument={handleOpenDocument}
               onRemoveShare={handleRemoveShare}
               allUsers={allUsers}
+               organizationTree={orgTree}
+               onSaveToMyDocuments={handleSaveToMyDocuments}
             />
           )}
           {activeSection === 'folders' && (
@@ -826,7 +1107,17 @@ Document ID: ${Date.now()}
               customFields={customFields}
               setShowAddFieldModal={setShowAddFieldModal}
               onDeleteField={handleDeleteField}
+              onToggleFieldActive={handleToggleFieldActive}
             />
+          )}
+          {activeSection === 'recycle-bin' && (
+           <RecycleBin
+            deletedDocuments={dataStore ? dataStore.getDeletedDocuments() : []}
+            currentUser={currentUser}
+           onRestore={handleRestoreDocument}
+           onPermanentDelete={handlePermanentDelete}
+           onEmptyBin={handleEmptyRecycleBin}
+         />
           )}
         </div>
       </div>

@@ -1,16 +1,17 @@
-// ============================================
-// FILE: Mainframe.jsx (UPDATED - IMPORTS ALL SEPARATED COMPONENTS)
-// ============================================
-import { useState } from 'react';
-import { LayoutDashboard, Users, FileText, ClipboardList } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { LayoutDashboard, Users, FileText, ClipboardList, Building2 } from 'lucide-react';
 
-// Import separated components
 import AdminSidebar from './component/AdminSidebar';
 import AdminHeader from './component/AdminHeader';
 import AdminDashboard from './component/AdminDashboard';
 import AdminUserManagement from './component/AdminUserManagement';
 import AdminDocuments from './component/AdminDocuments';
 import AdminLogAudits from './component/AdminLogAudits';
+import OrganizationalStructure from './component/OrganizationalStructure';
+import OrgUnitModal from './component/OrgUnitModal';
+import OrgUnitUsersView from './component/OrgUnitUsersView';
+import AdminCustomizationModal from './component/AdminCustomizationModal';
+import  UserIdFormatModal from './component/UserIdFormatModal';
 import { 
   UserActionMenu, 
   AdminVerificationModal, 
@@ -18,14 +19,29 @@ import {
   PasswordModal, 
   EditPasswordModal 
 } from './component/AdminModals';
+import AdminAllDocumentsView from './component/AdminAllDocumentsView';
+import AdminOrgSharesView from './component/AdminOrgSharesView';
 
-export default function Mainframe({ currentUser = { name: 'Administrator', role: 'Admin' }, onLogout = () => {} }) {
+export default function Mainframe({ 
+  currentUser = { name: 'Administrator', role: 'Admin' }, 
+  onLogout = () => {}, 
+  dataStore  
+}) {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
-  const [userList, setUserList] = useState([]);
+  const [showCustomizationModal, setShowCustomizationModal] = useState(false);
+   const [showUserIdFormatModal, setShowUserIdFormatModal] = useState(false);  // ✅ ADD THIS
+  const [userIdFormat, setUserIdFormat] = useState(null);  // ✅ ADD THIS
+  
+  const [customization, setCustomization] = useState({
+    systemName: 'Record Keeping Management System',
+    primaryColor: '#4F46E5',
+    sidebarGradientStart: '#4F46E5',
+    sidebarGradientEnd: '#7C3AED'
+  });
+   const [, forceUpdate] = useState(0);
   const [documentList, setDocumentList] = useState([]);
-  const [auditLogs, setAuditLogs] = useState([]);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showEditPasswordModal, setShowEditPasswordModal] = useState(false);
@@ -41,34 +57,157 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
   });
   const [newUser, setNewUser] = useState({
     userId: '',
-    name: '',
+    firstName: '',
+  lastName: '',
     role: 'User',
-    department: '',
-    jobTitle: ''
+    jobTitle: '',
+    organizationUnitId: '',
+    organizationPosition: ''
   });
   const [userIdFormatValid, setUserIdFormatValid] = useState(null);
   const [errors, setErrors] = useState({});
   
-  // Search and Filter States
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userFilterRole, setUserFilterRole] = useState('All');
-  const [userFilterDepartment, setUserFilterDepartment] = useState('All');
   const [userFilterStatus, setUserFilterStatus] = useState('All');
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [logFilterAction, setLogFilterAction] = useState('All');
   const [logFilterStatus, setLogFilterStatus] = useState('All');
   const [documentSearchQuery, setDocumentSearchQuery] = useState('');
   const [documentFilterType, setDocumentFilterType] = useState('All');
+  const [showOrgUnitModal, setShowOrgUnitModal] = useState(false);
+  const [selectedOrgUnit, setSelectedOrgUnit] = useState(null);
+  const [parentOrgUnit, setParentOrgUnit] = useState(null);
+  const [orgUnitData, setOrgUnitData] = useState({
+    name: '',
+    type: '',
+    headPosition: '',
+    code: '',
+    description: ''
+  });
+  const userList = dataStore ? dataStore.getAllUsers() : [];
+  const organizationTree = dataStore ? dataStore.getOrganizationTree() : [];
+  
+  const setOrganizationTree = (newTree) => {
+    if (dataStore) {
+      dataStore.setOrganizationTree(newTree);
+    }
+  };
+  useEffect(() => {
+    if (dataStore) {
+      const custom = dataStore.getCustomization();
+      if (custom) {
+        setCustomization(custom);
+        applyCustomization(custom);
+      }
+    }
+  }, [dataStore]);
+   useEffect(() => {
+    if (dataStore) {
+      const unsubscribe = dataStore.subscribe(() => {
+       
+        forceUpdate(prev => prev + 1);
+        
+       
+        const custom = dataStore.getCustomization();
+        if (custom) {
+          setCustomization(custom);
+          applyCustomization(custom);
+        }
+      });
+      return unsubscribe;
+    }
+  }, [dataStore]);
 
+  const applyCustomization = (custom) => {
+    document.documentElement.style.setProperty('--primary-color', custom.primaryColor);
+    document.documentElement.style.setProperty('--sidebar-gradient-start', custom.sidebarGradientStart);
+    document.documentElement.style.setProperty('--sidebar-gradient-end', custom.sidebarGradientEnd);
+  };
+useEffect(() => {
+    if (dataStore) {
+      const format = dataStore.getUserIdFormat();
+      if (format) {
+        setUserIdFormat(format);
+      }
+    }
+  }, [dataStore]);
+ const handleCustomizationSave = (newSettings) => {
+   
+    if (dataStore) {
+      dataStore.setCustomization(newSettings);
+    }
+    
+   
+    setCustomization(newSettings);
+    applyCustomization(newSettings);
+    
+   
+    addAuditLog(
+      'System Customization Updated',
+      `System Name: ${newSettings.systemName}, Colors updated`,
+      'Success'
+    );
+    
+    alert('Customization saved successfully!');
+  };
+
+  const handleCustomize = () => {
+    setShowCustomizationModal(true);
+    setShowSettingsMenu(false);
+  };
+
+
+   const handleConfigureUserId = () => {
+    setShowUserIdFormatModal(true);
+    setShowSettingsMenu(false);
+  };
+  const handleUserIdFormatSave = (newFormat) => {
+    setUserIdFormat(newFormat);
+    forceUpdate(prev => prev + 1);
+    
+    addAuditLog(
+      'User ID Format Updated',
+      `Admin: ${newFormat.previewIds.admin}, User: ${newFormat.previewIds.user}`,
+      'Success'
+    );
+    
+    alert('User ID format updated successfully! New users will use this format.');
+  };
+  
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'organization', label: 'Organization Structure', icon: Building2 },
+    { id: 'org-users', label: 'Users by Organization', icon: Users },
     { id: 'users', label: 'User Management', icon: Users },
-    { id: 'documents', label: 'Documents', icon: FileText },
+    { id: 'all-documents', label: 'All User Documents', icon: FileText },
+    { id: 'org-shares', label: 'Organization Shares', icon: Building2 },
     { id: 'logs', label: 'Log Audits', icon: ClipboardList }
   ];
 
+  const renderOrgUnitOptions = (nodes, level = 0) => {
+    const options = [];
+    for (const node of nodes) {
+      options.push(
+        <option key={node.id} value={node.id}>
+          {'  '.repeat(level) + '└ ' + node.name + ' (' + node.type + ')'}
+        </option>
+      );
+      if (node.children && node.children.length > 0) {
+        options.push(...renderOrgUnitOptions(node.children, level + 1));
+      }
+    }
+    return options;
+  };
+
   const validateUserIdFormat = (userId, role) => {
     if (!userId) return null;
+    
+    if (dataStore) {
+      return dataStore.validateUserId(userId, role.toLowerCase());
+    }
+    
+
     const userIdPattern = /^TUPM-\d{2}-\d{4}$/;
     const adminIdPattern = /^TUPM_\d{2}_\d{4}$/;
     
@@ -86,47 +225,59 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
     setUserIdFormatValid(isValid);
   };
 
-  const validateUserForm = () => {
-    const newErrors = {};
+ const validateUserForm = () => {
+  const newErrors = {};
 
-    if (!editingUserId) {
-      if (!newUser.userId.trim()) {
-        newErrors.userId = 'User ID is required';
-      } else {
-        const userIdPattern = /^TUPM-\d{2}-\d{4}$/;
-        const adminIdPattern = /^TUPM_\d{2}_\d{4}$/;
-        
-        if (newUser.role === 'User') {
-          if (!userIdPattern.test(newUser.userId)) {
-            newErrors.userId = 'User ID must be in format TUPM-XX-XXXX (e.g., TUPM-01-0001)';
-          }
-        } else if (newUser.role === 'Admin') {
-          if (!adminIdPattern.test(newUser.userId)) {
-            newErrors.userId = 'Admin ID must be in format TUPM_XX_XXXX (e.g., TUPM_01_0001)';
-          }
+  if (!editingUserId) {
+    if (!newUser.userId.trim()) {
+      newErrors.userId = 'User ID is required';
+    } else {
+      const userIdPattern = /^TUPM-\d{2}-\d{4}$/;
+      const adminIdPattern = /^TUPM_\d{2}_\d{4}$/;
+      
+      if (newUser.role === 'User') {
+        if (!userIdPattern.test(newUser.userId)) {
+          newErrors.userId = 'User ID must be in format TUPM-XX-XXXX (e.g., TUPM-01-0001)';
         }
-        
-        if (!newErrors.userId && userList.some(user => user.id === newUser.userId)) {
-          newErrors.userId = 'User ID already exists';
+      } else if (newUser.role === 'Admin') {
+        if (!adminIdPattern.test(newUser.userId)) {
+          newErrors.userId = 'Admin ID must be in format TUPM_XX_XXXX (e.g., TUPM_01_0001)';
         }
       }
+      
+      if (!newErrors.userId && userList.some(user => user.id === newUser.userId)) {
+        newErrors.userId = 'User ID already exists';
+      }
     }
+  }
 
-    if (!newUser.name.trim()) {
-      newErrors.name = 'Name is required';
-    }
 
-    if (!newUser.department) {
-      newErrors.department = 'Department is required';
-    }
+  if (!newUser.firstName.trim()) {
+    newErrors.firstName = 'First name is required';
+  }
 
-    if (!newUser.jobTitle.trim()) {
-      newErrors.jobTitle = 'Job Title is required';
-    }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  if (!newUser.lastName.trim()) {
+    newErrors.lastName = 'Last name is required';
+  }
+
+
+  if (!newUser.email.trim()) {
+    newErrors.email = 'Email is required';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
+    newErrors.email = 'Please enter a valid email address';
+  }
+
+  
+  if (!newUser.organizationUnitId) {
+    newErrors.organizationUnitId = 'Organization unit is required';
+  }
+
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+};
+
+
 
   const validatePasswordForm = () => {
     const newErrors = {};
@@ -168,93 +319,124 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
 
     const newLog = {
       time: timestamp,
-      user: currentUser.name,
+      user: `${currentUser.name} (Admin)`,
       action: action,
       resource: resource,
       status: status
     };
 
-    setAuditLogs([newLog, ...auditLogs]);
+    if (dataStore) {
+      dataStore.addAuditLog(newLog);
+    }
   };
 
-  const handleAddUser = () => {
-    if (validateUserForm()) {
-      if (editingUserId) {
-        // Update existing user info
-        const updatedUsers = userList.map(user => 
-          user.id === editingUserId 
-            ? { ...user, name: newUser.name, department: newUser.department, jobTitle: newUser.jobTitle, role: newUser.role }
-            : user
-        );
-        setUserList(updatedUsers);
-        addAuditLog('User Updated', `${editingUserId} - Personal info updated`, 'Success');
-        setShowAddUserModal(false);
-        setEditingUserId(null);
-        setNewUser({ userId: '', name: '', role: 'User', department: '', jobTitle: '' });
-        setTempUserData(null);
-        setErrors({});
-        alert('User information updated successfully!');
-      } else {
-        // Create new user
-        setTempUserData({
-          userId: newUser.userId,
-          name: newUser.name,
+ const handleAddUser = () => {
+  if (validateUserForm()) {
+    if (editingUserId) {
+      if (dataStore) {
+        dataStore.updateUser(editingUserId, {
+          firstName: newUser.firstName, 
+          lastName: newUser.lastName,  
+          email: newUser.email, 
           role: newUser.role,
-          department: newUser.department,
-          jobTitle: newUser.jobTitle
+          organizationUnitId: newUser.organizationUnitId,
+          organizationPosition: newUser.organizationPosition
         });
-        setShowAddUserModal(false);
-        setShowPasswordModal(true);
       }
+      addAuditLog('User Updated', `${editingUserId} - Personal info updated`, 'Success');
+      setShowAddUserModal(false);
+      setEditingUserId(null);
+      setNewUser({ 
+        userId: '', 
+        firstName: '', 
+        lastName: '', 
+        email: '', 
+        role: 'User', 
+        organizationUnitId: '', 
+        organizationPosition: '' 
+      });
+      setTempUserData(null);
+      setErrors({});
+      alert('User information updated successfully!');
+    } else {
+      setTempUserData({
+        userId: newUser.userId,
+        firstName: newUser.firstName,   
+        lastName: newUser.lastName,  
+        email: newUser.email,  
+        role: newUser.role,
+        organizationUnitId: newUser.organizationUnitId,
+        organizationPosition: newUser.organizationPosition
+      });
+      setShowAddUserModal(false);
+      setShowPasswordModal(true);
     }
-  };
+  }
+};
 
-  const handleSaveUser = () => {
-    if (validatePasswordForm()) {
-      if (editingUserId) {
-        // Update existing user password
-        addAuditLog('Password Changed', `${editingUserId} - Password updated`, 'Success');
-        setShowEditPasswordModal(false);
-        setEditingUserId(null);
-        setPasswordData({ password: '', confirmPassword: '' });
-        setErrors({});
-        alert('Password updated successfully!');
-      } else {
-        // Create new user
-        const user = {
-          id: tempUserData.userId,
-          name: tempUserData.name,
-          role: tempUserData.role,
-          department: tempUserData.department,
-          jobTitle: tempUserData.jobTitle,
-          status: 'Active'
-        };
-        
-        setUserList([...userList, user]);
-        addAuditLog('User Created', `${tempUserData.userId} - ${tempUserData.name}`, 'Success');
-        
-        setShowPasswordModal(false);
-        setNewUser({
-          userId: '',
-          name: '',
-          role: 'User',
-          department: '',
-          jobTitle: ''
+
+ const handleSaveUser = () => {
+  if (validatePasswordForm()) {
+    if (editingUserId) {
+      if (dataStore) {
+        dataStore.updateUser(editingUserId, {
+          password: passwordData.password 
         });
-        setPasswordData({
-          password: '',
-          confirmPassword: ''
-        });
-        setTempUserData(null);
-        setErrors({});
       }
+      addAuditLog('Password Changed', `${editingUserId} - Password updated`, 'Success');
+      setShowEditPasswordModal(false);
+      setEditingUserId(null);
+      setPasswordData({ password: '', confirmPassword: '' });
+      setErrors({});
+      alert('Password updated successfully!');
+    } else {
+      const user = {
+        id: tempUserData.userId,
+        firstName: tempUserData.firstName,  
+        lastName: tempUserData.lastName,   
+        name: `${tempUserData.firstName} ${tempUserData.lastName}`,
+        email: tempUserData.email, 
+         role: tempUserData.role,
+        organizationUnitId: tempUserData.organizationUnitId,
+        organizationPosition: tempUserData.organizationPosition,
+        status: 'Active',
+        password: passwordData.password 
+      };
+      
+      if (dataStore) {
+        dataStore.addUser(user);
+      }
+      addAuditLog('User Created', `${tempUserData.userId} - ${user.name}`, 'Success');
+      
+      setShowPasswordModal(false);
+      setNewUser({
+        userId: '',
+        firstName: '',
+        lastName: '',
+        email: '',
+        role: 'User',
+        organizationUnitId: '',
+        organizationPosition: ''
+      });
+      setPasswordData({
+        password: '',
+        confirmPassword: ''
+      });
+      setTempUserData(null);
+      setErrors({});
     }
-  };
+  }
+};
+
 
   const handleDeleteUser = (userId) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       const deletedUser = userList.find(user => user.id === userId);
-      setUserList(userList.filter(user => user.id !== userId));
+      
+    
+      if (dataStore) {
+        dataStore.deleteUser(userId);
+      }
       
       if (deletedUser) {
         addAuditLog('User Deleted', `${deletedUser.id} - ${deletedUser.name}`, 'Success');
@@ -278,38 +460,33 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
     setOpenMenuUserId(null);
   };
 
-  const handleVerifyAdmin = () => {
-    // Verify admin password (in production, this should check against actual admin password)
-    if (adminVerificationPassword === 'admin123') {
-      setShowAdminVerificationModal(false);
-      if (showEditPasswordModal) {
-        // Proceed to password edit
-        setPasswordData({ password: '', confirmPassword: '' });
-      } else {
-        // Proceed to personal info edit
-        const user = userList.find(u => u.id === editingUserId);
-        if (user) {
-          setNewUser({
-            userId: user.id,
-            name: user.name,
-            role: user.role,
-            department: user.department,
-            jobTitle: user.jobTitle
-          });
-          setShowAddUserModal(true);
-        }
-      }
-      setAdminVerificationPassword('');
-      setErrors({});
+ const handleVerifyAdmin = () => {
+  if (adminVerificationPassword === 'admin123') {
+    setShowAdminVerificationModal(false);
+    if (showEditPasswordModal) {
+      setPasswordData({ password: '', confirmPassword: '' });
     } else {
-      setErrors({ adminPassword: 'Incorrect admin password' });
+      const user = userList.find(u => u.id === editingUserId);
+      if (user) {
+        setNewUser({
+          userId: user.id,
+          firstName: user.firstName,  
+          lastName: user.lastName,  
+          email: user.email,  
+          role: user.role,
+          organizationUnitId: user.organizationUnitId || '',
+          organizationPosition: user.organizationPosition || ''
+        });
+        setShowAddUserModal(true);
+      }
     }
-  };
+    setAdminVerificationPassword('');
+    setErrors({});
+  } else {
+    setErrors({ adminPassword: 'Incorrect admin password' });
+  }
+};
 
-  const handleCustomize = () => {
-    alert('Customize interface - Coming soon!');
-    setShowSettingsMenu(false);
-  };
 
   const handleMenuClick = (userId, event) => {
     event.stopPropagation();
@@ -332,25 +509,23 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
     }
   };
 
-  // Filter Users
-  const getFilteredUsers = () => {
-    return userList.filter(user => {
-      const matchesSearch = 
-        user.id.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-        user.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-        user.department.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-        user.jobTitle.toLowerCase().includes(userSearchQuery.toLowerCase());
-      
-      const matchesRole = userFilterRole === 'All' || user.role === userFilterRole;
-      const matchesDepartment = userFilterDepartment === 'All' || user.department === userFilterDepartment;
-      const matchesStatus = userFilterStatus === 'All' || user.status === userFilterStatus;
-      
-      return matchesSearch && matchesRole && matchesDepartment && matchesStatus;
-    });
-  };
+ const getFilteredUsers = () => {
+  return userList.filter(user => {
+    const matchesSearch = 
+      user.id.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+      user.firstName?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
+      user.lastName?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
+      user.email?.toLowerCase().includes(userSearchQuery.toLowerCase());
+    
+    const matchesRole = userFilterRole === 'All' || user.role === userFilterRole;
+    const matchesStatus = userFilterStatus === 'All' || user.status === userFilterStatus;
+    
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+};
 
-  // Filter Audit Logs
   const getFilteredLogs = () => {
+    const auditLogs = dataStore ? dataStore.getAllAuditLogs() : [];
     return auditLogs.filter(log => {
       const matchesSearch = 
         log.user.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
@@ -364,21 +539,128 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
     });
   };
 
-  // Get unique departments from user list
-  const getDepartments = () => {
-    const departments = [...new Set(userList.map(user => user.department))];
-    return departments.filter(dept => dept);
-  };
 
-  // Get unique actions from audit logs
   const getActions = () => {
+    const auditLogs = dataStore ? dataStore.getAllAuditLogs() : [];
     const actions = [...new Set(auditLogs.map(log => log.action))];
     return actions.filter(action => action);
   };
 
+  const generateOrgUnitId = () => {
+    return 'org-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+  };
+
+  const handleSaveOrgUnit = () => {
+    const newErrors = {};
+    
+    if (!orgUnitData.name.trim()) {
+      newErrors.name = 'Unit name is required';
+    }
+    
+    if (!orgUnitData.type) {
+      newErrors.type = 'Unit type is required';
+    }
+    
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    if (selectedOrgUnit) {
+      const updateNode = (nodes) => {
+        return nodes.map(node => {
+          if (node.id === selectedOrgUnit.id) {
+            return {
+              ...node,
+              ...orgUnitData
+            };
+          }
+          if (node.children) {
+            return {
+              ...node,
+              children: updateNode(node.children)
+            };
+          }
+          return node;
+        });
+      };
+      
+      setOrganizationTree(updateNode(organizationTree));
+      addAuditLog('Organization Updated', `${orgUnitData.name} - ${orgUnitData.type}`, 'Success');
+    } else {
+      const newUnit = {
+        id: generateOrgUnitId(),
+        ...orgUnitData,
+        children: []
+      };
+
+      if (parentOrgUnit) {
+        const addChild = (nodes) => {
+          return nodes.map(node => {
+            if (node.id === parentOrgUnit) {
+              return {
+                ...node,
+                children: [...(node.children || []), newUnit]
+              };
+            }
+            if (node.children) {
+              return {
+                ...node,
+                children: addChild(node.children)
+              };
+            }
+            return node;
+          });
+        };
+        
+        setOrganizationTree(addChild(organizationTree));
+      } else {
+        setOrganizationTree([...organizationTree, newUnit]);
+      }
+      
+      addAuditLog('Organization Created', `${orgUnitData.name} - ${orgUnitData.type}`, 'Success');
+    }
+
+    setShowOrgUnitModal(false);
+    setSelectedOrgUnit(null);
+    setParentOrgUnit(null);
+    setOrgUnitData({ name: '', type: '', headPosition: '', code: '', description: '' });
+    setErrors({});
+  };
+
+  const handleDeleteOrgUnit = (unitId) => {
+    if (window.confirm('Are you sure you want to delete this organizational unit? All child units will also be deleted.')) {
+      const deleteNode = (nodes) => {
+        return nodes.filter(node => {
+          if (node.id === unitId) {
+            addAuditLog('Organization Deleted', `${node.name} - ${node.type}`, 'Success');
+            return false;
+          }
+          if (node.children) {
+            node.children = deleteNode(node.children);
+          }
+          return true;
+        });
+      };
+      
+      setOrganizationTree(deleteNode(organizationTree));
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-100">
-      {/* User Action Menu */}
+       <UserIdFormatModal
+        show={showUserIdFormatModal}
+        onClose={() => setShowUserIdFormatModal(false)}
+        dataStore={dataStore}
+        onSave={handleUserIdFormatSave}
+      />
+       <AdminCustomizationModal
+        show={showCustomizationModal}
+        onClose={() => setShowCustomizationModal(false)}
+        dataStore={dataStore}
+        onSave={handleCustomizationSave}
+      />
       <UserActionMenu
         openMenuUserId={openMenuUserId}
         menuPosition={menuPosition}
@@ -388,7 +670,6 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
         handleDeleteUser={handleDeleteUser}
       />
 
-      {/* Admin Verification Modal */}
       <AdminVerificationModal
         showAdminVerificationModal={showAdminVerificationModal}
         setShowAdminVerificationModal={setShowAdminVerificationModal}
@@ -401,7 +682,6 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
         handleVerifyAdmin={handleVerifyAdmin}
       />
 
-      {/* Add User Modal */}
       <AddUserModal
         showAddUserModal={showAddUserModal}
         setShowAddUserModal={setShowAddUserModal}
@@ -416,9 +696,10 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
         setUserIdFormatValid={setUserIdFormatValid}
         handleAddUser={handleAddUser}
         userList={userList}
+        organizationTree={organizationTree}
+        renderOrgUnitOptions={renderOrgUnitOptions}
       />
 
-      {/* Password Modal */}
       <PasswordModal
         showPasswordModal={showPasswordModal}
         showEditPasswordModal={showEditPasswordModal}
@@ -432,7 +713,6 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
         handleSaveUser={handleSaveUser}
       />
 
-      {/* Edit Password Modal */}
       <EditPasswordModal
         showEditPasswordModal={showEditPasswordModal}
         showAdminVerificationModal={showAdminVerificationModal}
@@ -447,7 +727,24 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
         handleSaveUser={handleSaveUser}
       />
 
-      {/* Sidebar */}
+      <OrgUnitModal
+        show={showOrgUnitModal}
+        onClose={() => {
+          setShowOrgUnitModal(false);
+          setSelectedOrgUnit(null);
+          setParentOrgUnit(null);
+          setOrgUnitData({ name: '', type: '', headPosition: '', code: '', description: '' });
+          setErrors({});
+        }}
+        selectedOrgUnit={selectedOrgUnit}
+        parentOrgUnit={parentOrgUnit}
+        organizationTree={organizationTree}
+        orgUnitData={orgUnitData}
+        setOrgUnitData={setOrgUnitData}
+        errors={errors}
+        onSave={handleSaveOrgUnit}
+      />
+
       <AdminSidebar
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
@@ -455,29 +752,50 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
         activeSection={activeSection}
         setActiveSection={setActiveSection}
         currentUser={currentUser}
+         customization={customization}
+         dataStore={dataStore}
       />
+      
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
         <AdminHeader
           menuItems={menuItems}
           activeSection={activeSection}
           currentUser={currentUser}
           showSettingsMenu={showSettingsMenu}
           setShowSettingsMenu={setShowSettingsMenu}
-          handleCustomize={handleCustomize}
+          onCustomize={handleCustomize}
+          onConfigureUserId={handleConfigureUserId}
           onLogout={onLogout}
         />
 
-        {/* Content Area */}
         <div className="flex-1 overflow-auto p-6">
           {activeSection === 'dashboard' && (
             <AdminDashboard
               userList={userList}
               documentList={documentList}
-              auditLogs={auditLogs}
+              dataStore={dataStore}
               setActiveSection={setActiveSection}
+            />
+          )}
+          {activeSection === 'organization' && (
+            <OrganizationalStructure
+              organizationTree={organizationTree}
+              setOrganizationTree={setOrganizationTree}
+              userList={userList}
+              setShowOrgUnitModal={setShowOrgUnitModal}
+              setSelectedOrgUnit={setSelectedOrgUnit}
+              setParentOrgUnit={setParentOrgUnit}
+              onDeleteOrgUnit={handleDeleteOrgUnit}
+            />
+          )}
+          {activeSection === 'org-users' && (
+            <OrgUnitUsersView
+              organizationTree={organizationTree}
+              userList={userList}
+              onUserClick={(user) => {
+                console.log('User clicked:', user);
+              }}
             />
           )}
           {activeSection === 'users' && (
@@ -487,25 +805,29 @@ export default function Mainframe({ currentUser = { name: 'Administrator', role:
               setUserSearchQuery={setUserSearchQuery}
               userFilterRole={userFilterRole}
               setUserFilterRole={setUserFilterRole}
-              userFilterDepartment={userFilterDepartment}
-              setUserFilterDepartment={setUserFilterDepartment}
               userFilterStatus={userFilterStatus}
               setUserFilterStatus={setUserFilterStatus}
-              getDepartments={getDepartments}
               getFilteredUsers={getFilteredUsers}
               handleMenuClick={handleMenuClick}
               setShowAddUserModal={setShowAddUserModal}
               openMenuUserId={openMenuUserId}
             />
           )}
-          {activeSection === 'documents' && (
-            <AdminDocuments
-              documentList={documentList}
+          {activeSection === 'all-documents' && (
+            <AdminAllDocumentsView 
+              dataStore={dataStore}
+              userList={userList}
+            />
+          )}
+          {activeSection === 'org-shares' && (
+            <AdminOrgSharesView 
+              dataStore={dataStore}
+              organizationTree={organizationTree}
             />
           )}
           {activeSection === 'logs' && (
             <AdminLogAudits
-              auditLogs={auditLogs}
+              auditLogs={dataStore ? dataStore.getAllAuditLogs() : []}
               logSearchQuery={logSearchQuery}
               setLogSearchQuery={setLogSearchQuery}
               logFilterAction={logFilterAction}

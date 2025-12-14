@@ -1,4 +1,3 @@
-// components/modals/SaveOptionsModal.jsx
 import { FileText } from 'lucide-react';
 
 export default function SaveOptionsModal({ show, onClose, onSave }) {

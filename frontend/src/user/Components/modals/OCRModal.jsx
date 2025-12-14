@@ -1,4 +1,3 @@
-// components/modals/OCRModal.jsx
 import { X, Upload, ScanText } from 'lucide-react';
 
 export default function OCRModal({ 

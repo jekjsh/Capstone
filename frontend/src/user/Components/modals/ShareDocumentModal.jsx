@@ -1,4 +1,3 @@
-// components/modals/ShareDocumentModal.jsx
 import { X, Share2, Users, Eye, Edit, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 

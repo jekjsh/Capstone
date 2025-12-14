@@ -1,9 +1,7 @@
-// ============================================
-// FILE: components/admin/AdminModals.jsx
-// ============================================
-import { X, Edit, Trash2, Key } from 'lucide-react';
 
-// Floating Menu Dropdown
+import { X, Edit, Trash2, Key } from 'lucide-react';
+import { useState, useEffect } from 'react';
+
 export function UserActionMenu({ 
   openMenuUserId, 
   menuPosition, 
@@ -56,7 +54,7 @@ export function UserActionMenu({
   );
 }
 
-// Admin Verification Modal
+
 export function AdminVerificationModal({
   showAdminVerificationModal,
   setShowAdminVerificationModal,
@@ -139,7 +137,6 @@ export function AdminVerificationModal({
   );
 }
 
-// Add User Modal - Step 1
 export function AddUserModal({
   showAddUserModal,
   setShowAddUserModal,
@@ -153,13 +150,54 @@ export function AddUserModal({
   setErrors,
   setUserIdFormatValid,
   handleAddUser,
-  userList
+  userList,
+  organizationTree,
+  renderOrgUnitOptions,
+   dataStore
 }) {
-  if (!showAddUserModal) return null;
+ 
+   const [currentFormat, setCurrentFormat] = useState(null);
+    useEffect(() => {
+    if (showAddUserModal && dataStore) {
+      const format = dataStore.getUserIdFormat ? dataStore.getUserIdFormat() : null;
+      setCurrentFormat(format);
+    }
+  }, [showAddUserModal, dataStore, newUser.role]);
+   if (!showAddUserModal) return null;
+ const getPlaceholder = () => {
+    if (currentFormat) {
+      if (currentFormat.format.customFormat) {
+        return newUser.role === 'Admin' ? currentFormat.customPattern.admin : currentFormat.customPattern.user;
+      } else {
+        const separator = newUser.role === 'Admin' ? currentFormat.format.adminSeparator : currentFormat.format.userSeparator;
+        let id = currentFormat.format.prefix;
+        for (let i = 0; i < currentFormat.format.segmentCount; i++) {
+          id += separator + 'X'.repeat(currentFormat.format.segmentLength[i] || 2);
+        }
+        return `e.g., ${id}`;
+      }
+    }
+    return newUser.role === 'Admin' ? 'e.g., TUPM_01_0001' : 'e.g., TUPM-01-0001';
+  };
+
+  const getFormatHint = () => {
+    if (currentFormat) {
+      if (currentFormat.format.customFormat) {
+        return `🔹 Pattern: ${newUser.role === 'Admin' ? currentFormat.customPattern.admin : currentFormat.customPattern.user}`;
+      } else {
+        const separator = newUser.role === 'Admin' ? currentFormat.format.adminSeparator : currentFormat.format.userSeparator;
+        const sepName = separator === '_' ? 'underscores' : separator === '-' ? 'hyphens' : separator === '.' ? 'dots' : 'no separator';
+        return `🔹 ${currentFormat.format.prefix} with ${sepName}, ${currentFormat.format.segmentCount} segment(s)`;
+      }
+    }
+    return newUser.role === 'Admin' 
+      ? '🔹 Admin format: TUPM_XX_XXXX (with underscores, XX must be numbers)' 
+      : '🔹 User format: TUPM-XX-XXXX (with hyphens, XX must be numbers)';
+  };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">
             {editingUserId ? 'Edit User Information' : 'Add New User'}
@@ -170,7 +208,15 @@ export function AddUserModal({
               setErrors({});
               setUserIdFormatValid(null);
               setEditingUserId(null);
-              setNewUser({ userId: '', name: '', role: 'User', department: '', jobTitle: '' });
+              setNewUser({ 
+                userId: '', 
+                firstName: '', 
+                lastName: '', 
+                email: '', 
+                role: 'User', 
+                organizationUnitId: '', 
+                organizationPosition: '' 
+              });
             }}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -199,7 +245,7 @@ export function AddUserModal({
                     userIdFormatValid === false ? 'border-red-500 focus:ring-red-500' :
                     'border-gray-300 focus:ring-indigo-500'
                   }`} 
-                  placeholder={newUser.role === 'Admin' ? 'e.g., TUPM_01_0001' : 'e.g., TUPM-01-0001'} 
+                placeholder={getPlaceholder()}
                 />
                 {userIdFormatValid === true && (
                   <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 font-bold">✓</span>
@@ -210,10 +256,8 @@ export function AddUserModal({
               </div>
               {errors.userId && <p className="mt-1 text-sm text-red-500">{errors.userId}</p>}
               {userIdFormatValid === false && !errors.userId && (
-                <p className="mt-1 text-sm text-red-500">
-                  {newUser.role === 'Admin' 
-                    ? '❌ Invalid format! Use TUPM_XX_XXXX (e.g., TUPM_01_0001)' 
-                    : '❌ Invalid format! Use TUPM-XX-XXXX (e.g., TUPM-01-0001)'}
+                 <p className="mt-1 text-sm text-red-500">
+                  ⚠️ Invalid format! Expected: {getPlaceholder()}
                 </p>
               )}
               {userIdFormatValid === true && (
@@ -221,71 +265,117 @@ export function AddUserModal({
                   ✓ Format is correct!
                 </p>
               )}
-              <p className="mt-1 text-xs text-gray-500">
-                {newUser.role === 'Admin' 
-                  ? '🔒 Admin format: TUPM_XX_XXXX (with underscores, XX must be numbers)' 
-                  : '🔒 User format: TUPM-XX-XXXX (with hyphens, XX must be numbers)'}
+               <p className="mt-1 text-xs text-gray-500">
+                {getFormatHint()}  {/* DYNAMIC HINT */}
               </p>
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-            <input
-              type="text"
-              value={newUser.name}
-              onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.name ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="e.g., John Doe"
-            />
-            {errors.name && <p className="mt-1 text-sm text-red-500">{errors.name}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
-            <select
-              value={newUser.department}
-              onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.department ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-            >
-              <option value="">Select Department</option>
-              <option value="Computer Studies">Computer Studies Department</option>
-              <option value="Mathematics">Mathematics Department</option>
-              <option value="Chemistry">Chemistry Department</option>
-            </select>
-            {errors.department && <p className="mt-1 text-sm text-red-500">{errors.department}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Job Title</label>
-            <input
-              type="text"
-              value={newUser.jobTitle}
-              onChange={(e) => setNewUser({ ...newUser, jobTitle: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.jobTitle ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="e.g., Professor, Lecturer, Assistant"
-            />
-            {errors.jobTitle && <p className="mt-1 text-sm text-red-500">{errors.jobTitle}</p>}
-          </div>
-
-          {!editingUserId && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* First Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-              <select value={newUser.role} onChange={(e) => { setNewUser({ ...newUser, role: e.target.value, userId: '' }); setUserIdFormatValid(null); }} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="User">User</option>
-                <option value="Admin">Admin</option>
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Changing role will clear the User ID field
-              </p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+              <input
+                type="text"
+                value={newUser.firstName}
+                onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.firstName ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                }`}
+                placeholder="e.g., John"
+              />
+              {errors.firstName && <p className="mt-1 text-sm text-red-500">{errors.firstName}</p>}
             </div>
-          )}
+
+            {/* Last Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+              <input
+                type="text"
+                value={newUser.lastName}
+                onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.lastName ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                }`}
+                placeholder="e.g., Doe"
+              />
+              {errors.lastName && <p className="mt-1 text-sm text-red-500">{errors.lastName}</p>}
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
+              <input
+                type="email"
+                value={newUser.email}
+                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.email ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                }`}
+                placeholder="e.g., john.doe@example.com"
+              />
+              {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
+            </div>
+
+            {/* Role */}
+            {!editingUserId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Role *</label>
+                <select 
+                  value={newUser.role} 
+                  onChange={(e) => { 
+                    setNewUser({ ...newUser, role: e.target.value, userId: '' }); 
+                    setUserIdFormatValid(null); 
+                  }} 
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="User">User</option>
+                  <option value="Admin">Admin</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Changing role will clear the User ID field
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* ORGANIZATION FIELDS */}
+          <div className="border-t pt-4 mt-4">
+            <h3 className="text-lg font-semibold text-gray-700 mb-4">Organization Assignment</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Organization Unit *</label>
+                <select
+                  value={newUser.organizationUnitId || ''}
+                  onChange={(e) => setNewUser({ ...newUser, organizationUnitId: e.target.value })}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                    errors.organizationUnitId ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                  }`}
+                >
+                  <option value="">Select Organization Unit</option>
+                  {organizationTree && organizationTree.length > 0 && renderOrgUnitOptions(organizationTree)}
+                </select>
+                {errors.organizationUnitId && <p className="mt-1 text-sm text-red-500">{errors.organizationUnitId}</p>}
+                <p className="mt-1 text-xs text-gray-500">
+                  The organizational unit where this user belongs
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Position/Title in Organization</label>
+                <input
+                  type="text"
+                  value={newUser.organizationPosition || ''}
+                  onChange={(e) => setNewUser({ ...newUser, organizationPosition: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., President, Dean, Faculty Member"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  User's position/title within their organizational unit
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="flex gap-3 mt-6">
@@ -295,7 +385,15 @@ export function AddUserModal({
               setErrors({});
               setUserIdFormatValid(null);
               setEditingUserId(null);
-              setNewUser({ userId: '', name: '', role: 'User', department: '', jobTitle: '' });
+              setNewUser({ 
+                userId: '', 
+                firstName: '', 
+                lastName: '', 
+                email: '', 
+                role: 'User', 
+                organizationUnitId: '', 
+                organizationPosition: '' 
+              });
             }}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
@@ -319,7 +417,7 @@ export function AddUserModal({
   );
 }
 
-// Password Modal - Step 2
+
 export function PasswordModal({
   showPasswordModal,
   showEditPasswordModal,
@@ -355,8 +453,12 @@ export function PasswordModal({
           <p className="text-sm text-gray-700">
             <span className="font-semibold">Creating account for:</span>
           </p>
-          <p className="text-sm text-gray-900 font-medium">{tempUserData?.name}</p>
+          {/* Display First + Last Name */}
+          <p className="text-sm text-gray-900 font-medium">
+            {tempUserData?.firstName} {tempUserData?.lastName}
+          </p>
           <p className="text-xs text-gray-600">{tempUserData?.userId}</p>
+          <p className="text-xs text-gray-600 mt-1">{tempUserData?.email}</p>
           <p className="text-xs text-gray-600 mt-2">Role: {tempUserData?.role}</p>
         </div>
         
@@ -441,7 +543,6 @@ export function PasswordModal({
   );
 }
 
-// Edit Password Modal
 export function EditPasswordModal({
   showEditPasswordModal,
   showAdminVerificationModal,

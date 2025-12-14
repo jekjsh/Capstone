@@ -162,12 +162,15 @@ export default function OrganizationalStructure({
         </div>
       )}
 
-      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-        <p className="text-sm text-blue-800">
-          <strong>Tip:</strong> Create a hierarchical structure that matches your organization. 
-          Start with top-level units (e.g., President's Office), then add sub-units (e.g., VP Offices, Colleges, Departments). 
-          Users can then be assigned to specific positions within these units.
-        </p>
+     <div className="border-l-4 border-blue-500 p-4 rounded" style={{ backgroundColor: '#EFF6FF' }}>
+        <div className="flex items-start gap-2">
+          <span className="font-bold text-lg" style={{ color: '#2563EB' }}>💡</span>
+          <p className="text-sm font-medium" style={{ color: '#1E3A8A' }}>
+            <strong style={{ color: '#1E3A8A' }}>Tip:</strong> Create a hierarchical structure that matches your organization. 
+            Start with top-level units (e.g., President's Office), then add sub-units (e.g., VP Offices, Colleges, Departments). 
+            Users can then be assigned to specific positions within these units.
+          </p>
+        </div>
       </div>
     </div>
   );

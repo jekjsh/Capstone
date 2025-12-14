@@ -1,4 +1,3 @@
-// components/Header.jsx
 import { Bell, Settings, LogOut } from 'lucide-react';
 
 export default function Header({ activeSection, menuItems, currentUser, showSettingsMenu, setShowSettingsMenu, onLogout }) {

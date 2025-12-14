@@ -1,6 +1,16 @@
-import { LayoutDashboard, Users, FileText, ClipboardList } from 'lucide-react';
+import { FileText, Folder, LayoutDashboard, ClipboardList } from 'lucide-react';
 
-export default function AdminDashboard({ userList, documentList, auditLogs }) {
+export default function AdminDashboard({ 
+  userList, 
+  documentList,  
+  dataStore,     
+  setActiveSection 
+}) {
+  const auditLogs = dataStore ? dataStore.getAllAuditLogs() : [];
+  
+  const totalDocuments = dataStore ? dataStore.getAllDocuments().length : documentList.length;
+  const totalOrgShares = dataStore ? dataStore.getAllOrgShares().length : 0;
+  
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-800">Dashboard Overview</h2>
@@ -11,14 +21,16 @@ export default function AdminDashboard({ userList, documentList, auditLogs }) {
               <p className="text-gray-600 text-sm">Total Users</p>
               <p className="text-3xl font-bold text-gray-800">{userList.length}</p>
             </div>
-            <Users className="w-12 h-12 text-blue-500 opacity-50" />
+            <svg className="w-12 h-12 text-blue-500 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 text-sm">Documents</p>
-              <p className="text-3xl font-bold text-gray-800">{documentList.length}</p>
+              <p className="text-3xl font-bold text-gray-800">{totalDocuments}</p>
             </div>
             <FileText className="w-12 h-12 text-green-500 opacity-50" />
           </div>

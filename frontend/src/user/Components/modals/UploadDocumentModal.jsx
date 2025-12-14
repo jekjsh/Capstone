@@ -1,4 +1,3 @@
-// components/modals/UploadDocumentModal.jsx
 import { X, Upload, FileText } from 'lucide-react';
 
 export default function UploadDocumentModal({ 

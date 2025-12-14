@@ -1,4 +1,3 @@
-// components/modals/PersonalInfoFormModal.jsx
 import { X } from 'lucide-react';
 
 export default function PersonalInfoFormModal({ show, onClose, personalInfo, setPersonalInfo, errors, onSave, onBack }) {
