@@ -12,6 +12,7 @@ import OrgUnitModal from './component/OrgUnitModal';
 import OrgUnitUsersView from './component/OrgUnitUsersView';
 import AdminCustomizationModal from './component/AdminCustomizationModal';
 import  UserIdFormatModal from './component/UserIdFormatModal';
+import DocumentViewerModal from '../user/components/modals/DocumentViewerModal';
 import { 
   UserActionMenu, 
   AdminVerificationModal, 
@@ -33,7 +34,8 @@ export default function Mainframe({
   const [showCustomizationModal, setShowCustomizationModal] = useState(false);
    const [showUserIdFormatModal, setShowUserIdFormatModal] = useState(false);  // ✅ ADD THIS
   const [userIdFormat, setUserIdFormat] = useState(null);  // ✅ ADD THIS
-  
+  const [showDocumentViewer, setShowDocumentViewer] = useState(false);
+const [viewingDocument, setViewingDocument] = useState(null);
   const [customization, setCustomization] = useState({
     systemName: 'Record Keeping Management System',
     primaryColor: '#4F46E5',
@@ -644,9 +646,79 @@ useEffect(() => {
       };
       
       setOrganizationTree(deleteNode(organizationTree));
-    }
+    } 
+    
   };
+const handleViewDocument = (doc) => {
+  setViewingDocument(doc);
+  setShowDocumentViewer(true);
+};
+const handleDownloadDocument = (doc) => {
+  if (doc.fileData) {
+    const link = document.createElement('a');
+    link.href = doc.fileData;
+    link.download = doc.fileName || doc.title;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } else if (doc.content || doc.ocrContent) {
+    const content = doc.content || doc.ocrContent;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${doc.title.replace(/[^a-z0-9]/gi, '_')}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+  
+  addAuditLog('Document Downloaded', `Admin downloaded: ${doc.title} (ID: ${doc.id})`, 'Success');
+};
 
+const handlePrintDocument = (doc) => {
+  if (doc.fileData && doc.format === 'pdf') {
+    const printWindow = window.open(doc.fileData);
+    if (printWindow) {
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    }
+  } else if (doc.content || doc.ocrContent) {
+    const content = doc.content || doc.ocrContent;
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>${doc.title}</title>
+            <style>
+              body { font-family: Georgia, serif; padding: 40px; line-height: 1.6; }
+              pre { white-space: pre-wrap; }
+            </style>
+          </head>
+          <body>
+            <pre>${content}</pre>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    }
+  } else if (doc.fileData) {
+    const printWindow = window.open(doc.fileData);
+    if (printWindow) {
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    }
+  }
+  
+  addAuditLog('Document Printed', `Admin printed: ${doc.title} (ID: ${doc.id})`, 'Success');
+};
   return (
     <div className="flex h-screen bg-gray-100">
        <UserIdFormatModal
@@ -661,6 +733,16 @@ useEffect(() => {
         dataStore={dataStore}
         onSave={handleCustomizationSave}
       />
+    <DocumentViewerModal
+      show={showDocumentViewer}
+      document={viewingDocument}
+      onClose={() => {
+        setShowDocumentViewer(false);
+        setViewingDocument(null);
+      }}
+      onPrint={handlePrintDocument}
+      onDownload={handleDownloadDocument}
+    />
       <UserActionMenu
         openMenuUserId={openMenuUserId}
         menuPosition={menuPosition}
@@ -817,12 +899,16 @@ useEffect(() => {
             <AdminAllDocumentsView 
               dataStore={dataStore}
               userList={userList}
+              onViewDocument={handleViewDocument}        
+              onDownloadDocument={handleDownloadDocument}
             />
           )}
           {activeSection === 'org-shares' && (
             <AdminOrgSharesView 
               dataStore={dataStore}
               organizationTree={organizationTree}
+              onViewDocument={handleViewDocument}     
+             onDownloadDocument={handleDownloadDocument}
             />
           )}
           {activeSection === 'logs' && (

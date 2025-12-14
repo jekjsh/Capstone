@@ -1,8 +1,7 @@
-
-import { Building2, Users, FileText, Clock, User, ChevronRight } from 'lucide-react';
+import { Building2, Users, FileText, Clock, User, ChevronRight, Eye, Download } from 'lucide-react';
 import { useState } from 'react';
 
-export default function AdminOrgSharesView({ dataStore, organizationTree }) {
+export default function AdminOrgSharesView({ dataStore, organizationTree, onViewDocument, onDownloadDocument }) {
   const [searchQuery, setSearchQuery] = useState('');
   const allOrgShares = dataStore.getAllOrgShares();
 
@@ -169,17 +168,35 @@ export default function AdminOrgSharesView({ dataStore, organizationTree }) {
                   </div>
                 </div>
               )}
+
+              {/* ✅ Action Buttons */}
+              <div className="mt-4 pt-4 border-t flex gap-2">
+                <button
+                  onClick={() => onViewDocument && onViewDocument(share.document)}
+                  className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  View Document
+                </button>
+                <button
+                  onClick={() => onDownloadDocument && onDownloadDocument(share.document)}
+                  className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-       <div className="border-l-4 border-blue-500 p-4 rounded" style={{ backgroundColor: '#EFF6FF' }}>
+      <div className="border-l-4 border-blue-500 p-4 rounded" style={{ backgroundColor: '#EFF6FF' }}>
         <div className="flex items-start gap-2">
           <span className="font-bold text-lg" style={{ color: '#2563EB' }}>💡</span>
           <p className="text-sm font-medium" style={{ color: '#1E3A8A' }}>
             <strong style={{ color: '#1E3A8A' }}>Admin View:</strong> This page displays all documents that have been distributed through the organizational hierarchy. 
-          You can track who sent what, to which organizational units, and how many users received each distribution.
+            You can view, download, and track who sent what, to which organizational units, and how many users received each distribution.
           </p>
         </div>
       </div>

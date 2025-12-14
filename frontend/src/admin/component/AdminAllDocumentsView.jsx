@@ -1,8 +1,7 @@
-
 import { FileText, Search, Eye, Download, Trash2, User, Clock } from 'lucide-react';
 import { useState } from 'react';
 
-export default function AdminAllDocumentsView({ dataStore, userList }) {
+export default function AdminAllDocumentsView({ dataStore, userList, onViewDocument, onDownloadDocument }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterUser, setFilterUser] = useState('All');
   const [filterFormat, setFilterFormat] = useState('All');
@@ -184,21 +183,38 @@ export default function AdminAllDocumentsView({ dataStore, userList }) {
                   )}
                 </div>
               </div>
+
+              {/* ✅ Action Buttons */}
+              <div className="mt-4 pt-4 border-t flex gap-2">
+                <button
+                  onClick={() => onViewDocument(doc)}
+                  className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  View Document
+                </button>
+                <button
+                  onClick={() => onDownloadDocument(doc)}
+                  className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-       <div className="border-l-4 border-blue-500 p-4 rounded" style={{ backgroundColor: '#EFF6FF' }}>
+      <div className="border-l-4 border-blue-500 p-4 rounded" style={{ backgroundColor: '#EFF6FF' }}>
         <div className="flex items-start gap-2">
           <span className="font-bold text-lg" style={{ color: '#2563EB' }}>💡</span>
           <p className="text-sm font-medium" style={{ color: '#1E3A8A' }}>
-            <strong style={{ color: '#1E3A8A' }}>Admin View</strong> <strong>Admin View:</strong> This page shows all documents created by all users in the system. 
-          You can search, filter, and monitor document creation across your organization.
+            <strong style={{ color: '#1E3A8A' }}>Admin View:</strong> This page shows all documents created by all users in the system. 
+            You can view, download, search, and filter documents. Click "View Document" to open and inspect any document in detail.
           </p>
         </div>
       </div>
     </div>
   );
 }
- 
