@@ -147,7 +147,8 @@ class Document(models.Model):
         ('other', 'Other'),
     ]
     
-    id = models.CharField(max_length=100, primary_key=True)
+    # ✅ Let Django auto-generate IDs
+    id = models.AutoField(primary_key=True)  # Changed from CharField
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='documents')
     folder = models.ForeignKey(Folder, on_delete=models.SET_NULL, null=True, blank=True, related_name='documents')
     title = models.CharField(max_length=500)
@@ -157,7 +158,7 @@ class Document(models.Model):
     ocr_content = models.TextField(blank=True, null=True)
     file_name = models.CharField(max_length=255, blank=True, null=True)
     file_size = models.CharField(max_length=50, blank=True, null=True)
-    file_data = models.TextField(blank=True, null=True)  # Base64 encoded
+    file_data = models.TextField(blank=True, null=True)
     mime_type = models.CharField(max_length=100, blank=True, null=True)
     custom_field_values = models.JSONField(default=dict, blank=True)
     personal_info = models.JSONField(default=dict, blank=True)

@@ -404,14 +404,13 @@ async addDocument(doc) {
       userId = userId[0];
     }
     
-    // Convert to string to be safe
     userId = String(userId);
     
     console.log('✅ Final userId:', userId, 'type:', typeof userId);
     
-    // Backend expects JSON with base64 data
+    // ✅ DON'T send id - let backend generate it
     const backendDoc = {
-      id: doc.id,
+      // id: doc.id,  ❌ REMOVE THIS LINE
       title: doc.title,
       description: doc.description || '',
       format: doc.format || 'other',
@@ -424,17 +423,14 @@ async addDocument(doc) {
       folder: doc.folderId || null,
       custom_field_values: doc.customFieldValues || {},
       personal_info: doc.personalInfo || {},
-      user: userId  // ← Now guaranteed to be a string
+      user: userId
     };
     
     console.log('🚀 Sending to backend:', {
-      id: backendDoc.id,
       title: backendDoc.title,
       user: backendDoc.user,
-      userType: typeof backendDoc.user,
       folder: backendDoc.folder,
-      hasFileData: !!backendDoc.file_data,
-      fileDataPreview: backendDoc.file_data?.substring(0, 50) + '...'
+      hasFileData: !!backendDoc.file_data
     });
 
     const newDoc = await documentService.create(backendDoc);
@@ -494,18 +490,22 @@ async updateDocument(docId, updates) {
   },
 
   async restoreFromRecycleBin(docId) {
-    try {
-      await documentService.restore(docId);
-      await this.loadDeletedDocuments();
-      const currentUser = JSON.parse(localStorage.getItem('user_data'));
-      if (currentUser?.user_id) {
-        await this.loadDocuments(currentUser.user_id);
-      }
-    } catch (error) {
-      console.error('Failed to restore document:', error);
-      throw error;
+  try {
+    await documentService.restore(docId);
+    await this.loadDeletedDocuments();
+    const currentUser = JSON.parse(localStorage.getItem('user_data'));
+    if (currentUser?.user_id) {
+      await this.loadDocuments(currentUser.user_id);
     }
-  },
+  } catch (error) {
+    console.error('Failed to restore document:', error);
+    // Provide more helpful error message
+    if (error.response?.status === 404) {
+      throw new Error('Document not found. It may have already been restored or permanently deleted.');
+    }
+    throw error;
+  }
+},
 
   async permanentlyDelete(docId) {
     try {

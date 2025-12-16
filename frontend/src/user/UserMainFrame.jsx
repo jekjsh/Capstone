@@ -306,50 +306,48 @@ Document ID: ${Date.now()}
     `;
   };
   const handleFinalSave = (format) => {
-    const doc = {
-      id: Date.now().toString(),
-      title: currentDocumentData.title,
-      description: currentDocumentData.description,
-      customFieldValues: { ...currentDocumentData.customFieldValues },
-      personalInfo: { ...personalInfo },
-      format: format,
-      folderId: currentFolder,
-      content: generateDocumentContent(currentDocumentData.title, personalInfo, currentDocumentData.customFieldValues),
-      createdAt: new Date().toLocaleString(),
-      createdBy: currentUser.user_id 
-    };
-    
- 
-    if (dataStore) {
-      dataStore.addDocument(doc);
-      addAuditLog(
-        'Document Created',
-        `${doc.title} (${format.toUpperCase()}) - ID: ${doc.id}`,
-        'Success'
-      );
-    }
-    
-    
-    setShowSaveOptionsModal(false);
-    setNewDocument({ title: '', description: '', customFieldValues: {} });
-    setPersonalInfo({
-      fullName: '',
-      dateOfBirth: '',
-      gender: '',
-      email: '',
-      phoneNumber: '',
-      address: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      occupation: '',
-      emergencyContact: '',
-      emergencyPhone: ''
-    });
-    setCurrentDocumentData(null);
-    setErrors({});
-    alert(`Document saved as ${format.toUpperCase()}!`);
+  const doc = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 9), // ✅ Better ID
+    title: currentDocumentData.title,
+    description: currentDocumentData.description,
+    customFieldValues: { ...currentDocumentData.customFieldValues },
+    personalInfo: { ...personalInfo },
+    format: format,
+    folderId: currentFolder,
+    content: generateDocumentContent(currentDocumentData.title, personalInfo, currentDocumentData.customFieldValues),
+    createdAt: new Date().toLocaleString(),
+    createdBy: currentUser.user_id 
   };
+  
+  if (dataStore) {
+    dataStore.addDocument(doc);
+    addAuditLog(
+      'Document Created',
+      `${doc.title} (${format.toUpperCase()}) - ID: ${doc.id}`,
+      'Success'
+    );
+  }
+  
+  setShowSaveOptionsModal(false);
+  setNewDocument({ title: '', description: '', customFieldValues: {} });
+  setPersonalInfo({
+    fullName: '',
+    dateOfBirth: '',
+    gender: '',
+    email: '',
+    phoneNumber: '',
+    address: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    occupation: '',
+    emergencyContact: '',
+    emergencyPhone: ''
+  });
+  setCurrentDocumentData(null);
+  setErrors({});
+  alert(`Document saved as ${format.toUpperCase()}!`);
+};
 
   
   const handleDeleteDocument = (docId) => {
@@ -365,12 +363,23 @@ Document ID: ${Date.now()}
     }
   }
 };
-const handleRestoreDocument = (docId) => {
-  if (dataStore) {
-    const doc = dataStore.getDeletedDocuments().find(d => d.id === docId);
-    dataStore.restoreFromRecycleBin(docId);
-    addAuditLog('Document Restored', `${doc.title} - ID: ${docId}`, 'Success');
-    alert('Document restored successfully!');
+const handleRestoreDocument = async (docId) => {
+  try {
+    if (dataStore) {
+      const doc = dataStore.getDeletedDocuments().find(d => d.id === docId);
+      if (!doc) {
+        alert('❌ Document not found in recycle bin');
+        return;
+      }
+      
+      await dataStore.restoreFromRecycleBin(docId);
+      addAuditLog('Document Restored', `${doc.title} - ID: ${docId}`, 'Success');
+      alert('✅ Document restored successfully!');
+    }
+  } catch (error) {
+    console.error('Failed to restore document:', error);
+    addAuditLog('Document Restore Failed', `ID: ${docId}`, 'Failed');
+    alert(`❌ Failed to restore document: ${error.message}`);
   }
 };
 
@@ -606,7 +615,6 @@ const handleUploadDocument = async () => {
     return;
   }
   
-  // ✅ Use user_id, not id
   console.log('🔍 Current User:', currentUser);
   console.log('🔍 User ID:', currentUser.user_id, 'Type:', typeof currentUser.user_id);
   
@@ -627,7 +635,8 @@ const handleUploadDocument = async () => {
         reader.onload = async (e) => {
           try {
             const doc = {
-              id: Date.now().toString() + '-' + index,
+              // ✅ FIXED: Use simpler ID or let backend generate it
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
               title: file.name,
               description: 'Uploaded document',
               format: format,
@@ -638,13 +647,13 @@ const handleUploadDocument = async () => {
               folderId: currentFolder || null,
               customFieldValues: {},
               personalInfo: {},
-              createdBy: currentUser.user_id  // ✅ FIXED: use user_id
+              createdBy: currentUser.user_id
             };
             
             console.log('📦 Document created:', {
+              id: doc.id,
               title: doc.title,
-              createdBy: doc.createdBy,
-              createdByType: typeof doc.createdBy
+              createdBy: doc.createdBy
             });
             
             if (dataStore) {

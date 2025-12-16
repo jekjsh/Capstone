@@ -93,6 +93,7 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD', 'capstone1'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
+        
     }
 }
 

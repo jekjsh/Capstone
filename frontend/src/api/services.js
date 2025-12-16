@@ -163,7 +163,7 @@ export const documentService = {
   },
 
   restore: async (id) => {
-    const response = await apiClient.post(`/documents/${id}/restore/`);
+   const response = await apiClient.post(`/documents/${id}/restore/`);
     return response.data;
   },
 
