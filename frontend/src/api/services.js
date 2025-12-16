@@ -140,9 +140,11 @@ export const documentService = {
   },
 
   create: async (data) => {
-    return api.post('/documents/', data, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    // ✅ CORRECT: Send as JSON with base64 data
+  const response = await apiClient.post('/documents/', data, {
+    headers: { 'Content-Type': 'application/json' }  // JSON, not multipart!
   });
+  return response.data;
   },
 
   update: async (id, data) => {
@@ -186,9 +188,9 @@ export const directShareService = {
   create: async (data) => {
     const response = await apiClient.post('/direct-shares/', {
       id: data.id,
-      document: data.documentId,
-      shared_by: data.sharedBy,
-      shared_with_ids: data.sharedWith,
+      document: data.document,
+      shared_by: data.shared_by,
+      shared_with_ids: data.shared_with_ids,
       permission: data.permission,
       message: data.message,
     });
@@ -211,12 +213,12 @@ export const organizationShareService = {
   create: async (data) => {
     const response = await apiClient.post('/organization-shares/', {
       id: data.id,
-      document: data.documentId,
-      sent_by: data.sentBy,
-      sent_from: data.sentFrom,
-      distribution_mode: data.distributionMode,
-      selected_units: data.selectedUnits,
-      recipient_ids: data.recipients,
+      document: data.document,
+      sent_by: data.sent_by,
+      sent_from: data.sent_from,
+      distribution_mode: data.distribution_mode,
+      selected_units: data.selected_units,
+      recipient_ids: data.recipient_ids,
       message: data.message,
     });
     return response.data;

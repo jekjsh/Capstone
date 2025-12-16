@@ -124,7 +124,7 @@ export default function SendToOrganizationModal({
     }
 
     
-    return recipients.filter(user => user.id !== currentUser.id);
+    return recipients.filter(user => user.user_id !== currentUser.user_id);
   };
 
   const recipients = getRecipients();
@@ -243,7 +243,7 @@ export default function SendToOrganizationModal({
       distributionMode,
       selectedUnits: distributionMode === 'specific-units' ? selectedUnits : null,
       message,
-      sentBy: currentUser.id,
+      sentBy: currentUser.user_id,
       sentFrom: currentUser.organizationUnitId,
       sentAt: new Date().toLocaleString()
     });

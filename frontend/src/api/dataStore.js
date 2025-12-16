@@ -392,28 +392,69 @@ const createDataStore = () => ({
     }
   },
 
-  async addDocument(doc) {
-    try {
-     const formData = new FormData();
-
-    formData.append('title', doc.title);
-    formData.append('description', doc.description || '');
-    formData.append('user', doc.createdBy);
-    formData.append('folder', doc.folderId || '');
-    formData.append('file', doc.file); // REAL File object
-
-     const newDoc = await documentService.create(formData);
-      const transformedDoc = this.transformDocument(newDoc);
-      this.cache.documents.push(transformedDoc);
-      this.notifyListeners();
-      return transformedDoc;
-    } catch (error) {
-      console.error('Failed to add document:', error);
-      throw error;
+async addDocument(doc) {
+  try {
+    console.log('📦 Adding document:', doc.title);
+    console.log('📋 createdBy value:', doc.createdBy, 'type:', typeof doc.createdBy);
+    
+    // Ensure user is a string, not an array
+    let userId = doc.createdBy;
+    if (Array.isArray(userId)) {
+      console.warn('⚠️ User is an array, extracting first element');
+      userId = userId[0];
     }
-  },
+    
+    // Convert to string to be safe
+    userId = String(userId);
+    
+    console.log('✅ Final userId:', userId, 'type:', typeof userId);
+    
+    // Backend expects JSON with base64 data
+    const backendDoc = {
+      id: doc.id,
+      title: doc.title,
+      description: doc.description || '',
+      format: doc.format || 'other',
+      content: doc.content || '',
+      ocr_content: doc.ocrContent || '',
+      file_name: doc.fileName || '',
+      file_size: doc.fileSize || '',
+      file_data: doc.fileData || '',
+      mime_type: doc.mimeType || '',
+      folder: doc.folderId || null,
+      custom_field_values: doc.customFieldValues || {},
+      personal_info: doc.personalInfo || {},
+      user: userId  // ← Now guaranteed to be a string
+    };
+    
+    console.log('🚀 Sending to backend:', {
+      id: backendDoc.id,
+      title: backendDoc.title,
+      user: backendDoc.user,
+      userType: typeof backendDoc.user,
+      folder: backendDoc.folder,
+      hasFileData: !!backendDoc.file_data,
+      fileDataPreview: backendDoc.file_data?.substring(0, 50) + '...'
+    });
 
-  async updateDocument(docId, updates) {
+    const newDoc = await documentService.create(backendDoc);
+    console.log('✅ Backend response:', newDoc);
+    
+    const transformedDoc = this.transformDocument(newDoc);
+    this.cache.documents.push(transformedDoc);
+    this.notifyListeners();
+    
+    return transformedDoc;
+  } catch (error) {
+    console.error('❌ Failed to add document:', error);
+    if (error.response) {
+      console.error('Server error response:', error.response.data);
+      console.error('Status code:', error.response.status);
+    }
+    throw error;
+  }
+},
+async updateDocument(docId, updates) {
     try {
       const backendUpdates = this.transformDocumentForBackend({ ...updates, id: docId });
       const updated = await documentService.update(docId, backendUpdates);

@@ -100,7 +100,7 @@ const [newField, setNewField] = useState({
   const [documentToShare, setDocumentToShare] = useState(null);
   const [showSendToOrgModal, setShowSendToOrgModal] = useState(false);
   const [selectedDocForOrgShare, setSelectedDocForOrgShare] = useState(null);
-  const userDocuments = dataStore ? dataStore.getDocumentsByUser(currentUser.id) : [];
+  const userDocuments = dataStore ? dataStore.getDocumentsByUser(currentUser.user_id) : [];
  const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'documents', label: 'My Documents', icon: FileText },
@@ -121,7 +121,7 @@ const [newField, setNewField] = useState({
     });
     const logEntry = {
       time: timestamp,
-      user: `${currentUser.name} (${currentUser.id})`,
+      user: `${currentUser.name} (${currentUser.user_id})`,
       action: action,
       resource: resource,
       status: status
@@ -316,7 +316,7 @@ Document ID: ${Date.now()}
       folderId: currentFolder,
       content: generateDocumentContent(currentDocumentData.title, personalInfo, currentDocumentData.customFieldValues),
       createdAt: new Date().toLocaleString(),
-      createdBy: currentUser.id 
+      createdBy: currentUser.user_id 
     };
     
  
@@ -384,8 +384,8 @@ const handlePermanentDelete = (docId) => {
 };
 const handleEmptyRecycleBin = () => {
   if (dataStore) {
-    const count = dataStore.getDeletedDocuments().filter(d => d.createdBy === currentUser.id).length;
-    dataStore.emptyRecycleBin(currentUser.id);
+    const count = dataStore.getDeletedDocuments().filter(d => d.createdBy === currentUser.user_id).length;
+    dataStore.emptyRecycleBin(currentUser.user_id);
     addAuditLog('Recycle Bin Emptied', `${count} documents permanently deleted`, 'Success');
     alert('Recycle bin emptied!');
   }
@@ -495,7 +495,7 @@ const handleEmptyRecycleBin = () => {
       folderId: currentFolder,
       ocrContent: ocrText,
       createdAt: new Date().toLocaleString(),
-      createdBy: currentUser.id 
+      createdBy: currentUser.user_id 
     };
     
     
@@ -600,66 +600,96 @@ const handleEmptyRecycleBin = () => {
   };
 
   
-  const handleUploadDocument = async () => {
-    if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
-      alert('Please select at least one file to upload');
-      return;
-    }
+const handleUploadDocument = async () => {
+  if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
+    alert('Please select at least one file to upload');
+    return;
+  }
+  
+  // ✅ Use user_id, not id
+  console.log('🔍 Current User:', currentUser);
+  console.log('🔍 User ID:', currentUser.user_id, 'Type:', typeof currentUser.user_id);
+  
+  try {
+    console.log('🚀 Starting upload for', uploadedDocFiles.length, 'files');
     
-    const newDocuments = [];
-    let processedCount = 0;
-    
-    uploadedDocFiles.forEach((file) => {
-      const fileExtension = file.name.split('.').pop().toLowerCase();
-      let format = 'other';
-      if (fileExtension === 'pdf') format = 'pdf';
-      else if (fileExtension === 'docx' || fileExtension === 'doc') format = 'docx';
-      
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const doc = {
-          id: Date.now().toString() + '-' + processedCount,
-          title: file.name,
-          description: 'Uploaded document',
-          customFieldValues: {},
-          personalInfo: {},
-          format: format,
-          folderId: currentFolder,
-          fileName: file.name,
-          fileSize: (file.size / 1024).toFixed(2) + ' KB',
-          fileData: e.target.result,
-          mimeType: file.type,
-          createdAt: new Date().toLocaleString(),
-          createdBy: currentUser.id 
+    const uploadPromises = uploadedDocFiles.map((file, index) => {
+      return new Promise((resolve, reject) => {
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+        let format = 'other';
+        if (fileExtension === 'pdf') format = 'pdf';
+        else if (fileExtension === 'docx' || fileExtension === 'doc') format = 'docx';
+        
+        console.log(`📤 Processing file ${index + 1}:`, file.name);
+        
+        const reader = new FileReader();
+        
+        reader.onload = async (e) => {
+          try {
+            const doc = {
+              id: Date.now().toString() + '-' + index,
+              title: file.name,
+              description: 'Uploaded document',
+              format: format,
+              fileName: file.name,
+              fileSize: (file.size / 1024).toFixed(2) + ' KB',
+              fileData: e.target.result,
+              mimeType: file.type,
+              folderId: currentFolder || null,
+              customFieldValues: {},
+              personalInfo: {},
+              createdBy: currentUser.user_id  // ✅ FIXED: use user_id
+            };
+            
+            console.log('📦 Document created:', {
+              title: doc.title,
+              createdBy: doc.createdBy,
+              createdByType: typeof doc.createdBy
+            });
+            
+            if (dataStore) {
+              await dataStore.addDocument(doc);
+              
+              addAuditLog(
+                'Document Uploaded',
+                `${file.name} (${doc.fileSize}) - ${format.toUpperCase()}`,
+                'Success'
+              );
+              
+              console.log('✅ Uploaded:', file.name);
+              resolve(doc);
+            } else {
+              reject(new Error('DataStore not available'));
+            }
+          } catch (error) {
+            console.error('❌ Failed:', file.name, error);
+            reject(error);
+          }
         };
         
+        reader.onerror = (error) => {
+          console.error('❌ Read error:', file.name, error);
+          reject(error);
+        };
         
-        if (dataStore) {
-          dataStore.addDocument(doc);
-
-           addAuditLog(
-            'Document Uploaded',
-            `${doc.fileName} (${doc.fileSize}) - ${format.toUpperCase()}`,
-            'Success'
-          );
-        }
-        
-        newDocuments.push(doc);
-        processedCount++;
-        
-        if (processedCount === uploadedDocFiles.length) {
-
-          setShowUploadDocumentModal(false);
-          setUploadedDocFiles([]);
-          setUploadPreviews([]);
-          setCurrentPreviewIndex(0);
-          alert(`${newDocuments.length} document${newDocuments.length > 1 ? 's' : ''} uploaded successfully!`);
-        }
-      };
-      
-      reader.readAsDataURL(file);
+        reader.readAsDataURL(file);
+      });
     });
-  };
+    
+    await Promise.all(uploadPromises);
+    
+    setShowUploadDocumentModal(false);
+    setUploadedDocFiles([]);
+    setUploadPreviews([]);
+    setCurrentPreviewIndex(0);
+    
+    alert(`✅ Successfully uploaded ${uploadedDocFiles.length} document(s)!`);
+    
+  } catch (error) {
+    console.error('❌ Upload failed:', error);
+    alert(`❌ Upload failed: ${error.message}`);
+  }
+};
 
   const getFilteredAndSortedDocuments = () => {
     let filtered = [...userDocuments];
@@ -839,7 +869,7 @@ const handleSaveToMyDocuments = (document, source) => {
     return;
   }
   const existingDoc = userDocuments.find(doc => 
-    doc.originalDocumentId === document.id && doc.createdBy === currentUser.id
+    doc.originalDocumentId === document.id && doc.createdBy === currentUser.user_id
   );
 
   if (existingDoc) {
@@ -852,7 +882,7 @@ const handleSaveToMyDocuments = (document, source) => {
     ...document,
     id: Date.now().toString() + '-saved-' + Math.random().toString(36).substr(2, 9),
     createdAt: new Date().toLocaleString(),
-    createdBy: currentUser.id,
+    createdBy: currentUser.user_id,
     savedFrom: source,
     originalDocumentId: document.id,
     originalCreatedBy: document.createdBy,

@@ -11,19 +11,19 @@ export default function SharedDocuments({
   onSaveToMyDocuments
 }) {
   const sharedWithMe = sharedDocuments.filter(share => 
-    share.sharedWith.includes(currentUser.id)
+    share.sharedWith.includes(currentUser.user_id)
   );
 
   const sharedByMe = sharedDocuments.filter(share => 
-    share.sharedBy === currentUser.id
+    share.sharedBy === currentUser.user_id
   );
 
   const orgDistributedToMe = organizationShares ? organizationShares.filter(share =>
-    share.recipients.includes(currentUser.id)
+    share.recipients.includes(currentUser.user_id)
   ) : [];
 
   const orgDistributedByMe = organizationShares ? organizationShares.filter(share =>
-    share.sentBy === currentUser.id
+    share.sentBy === currentUser.user_id
   ) : [];
 
   const getPermissionBadge = (permission) => {

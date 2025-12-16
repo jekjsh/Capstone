@@ -17,7 +17,7 @@ export default function ShareDocumentModal({
   if (!show || !document) return null;
 
   // Filter users (exclude current user)
-  const availableUsers = allUsers.filter(user => user.id !== currentUser.id);
+  const availableUsers = allUsers.filter(user => user.user_id !== currentUser.user_id);
   
   // Filter based on search
   const filteredUsers = availableUsers.filter(user => 
@@ -44,7 +44,7 @@ export default function ShareDocumentModal({
       sharedWith: selectedUsers,
       permission: sharePermission,
       message: shareMessage,
-      sharedBy: currentUser.id,
+      sharedBy: currentUser.user_id,
       sharedAt: new Date().toLocaleString()
     });
 

@@ -9,7 +9,7 @@ export default function RecycleBin({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterFormat, setFilterFormat] = useState('All');
-  const userDeletedDocs = deletedDocuments.filter(doc => doc.createdBy === currentUser.id);
+  const userDeletedDocs = deletedDocuments.filter(doc => doc.createdBy === currentUser.user_id);
   const filteredDocs = userDeletedDocs.filter(doc => {
     const matchesSearch = 
       doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
