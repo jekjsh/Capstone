@@ -3,7 +3,7 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import CustomUser, Office
+from .models import CustomUser, Office, ActivityLog
 
 # 1. Office Serializer (So we see "College of Science" instead of just "ID: 5")
 class OfficeSerializer(serializers.ModelSerializer):
@@ -63,3 +63,23 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         
         return super().update(instance, validated_data)
+
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    """Serialize ActivityLog with user details"""
+    username = serializers.CharField(source='user.username', read_only=True)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    
+    class Meta:
+        model = ActivityLog
+        fields = [
+            'id',
+            'user_id',
+            'username',
+            'action',
+            'action_display',
+            'target_doc',
+            'log_timestamp',
+            'ip_address',
+        ]

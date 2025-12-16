@@ -1,109 +1,131 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import api from './api';
+import { ACCESS_TOKEN } from './constants';
 
-export default function LoginInterface({ onLoginSuccess, dataStore }) {
-  const [userId, setUserId] = useState('');
+const defaultCustomization = {
+  systemName: 'Record Keeping Management System',
+  systemLogo: null,
+  loginBackground: null,
+  primaryColor: '#4F46E5'
+};
+
+export default function LoginInterface({ onLoginSuccess }) {
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  
-  const [customization, setCustomization] = useState({
-    systemName: 'Record Keeping Management System',
-    systemLogo: null,
-    loginBackground: null,
-    primaryColor: '#4F46E5'
-  });
+  const [customization, setCustomization] = useState(defaultCustomization);
 
   useEffect(() => {
-    if (dataStore) {
-      const custom = dataStore.getCustomization();
-      if (custom) {
-        setCustomization(custom);
-        
-        document.documentElement.style.setProperty('--primary-color', custom.primaryColor);
+    const saved = localStorage.getItem('rkms_customization');
+    if (saved) {
+      try {
+        setCustomization(JSON.parse(saved));
+      } catch (e) {
+        console.error('Error loading customization:', e);
       }
     }
-  }, [dataStore]);
+  }, []);
 
   const validateForm = () => {
     const newErrors = {};
 
-    if (!userId) {
-      newErrors.userId = 'User ID is required';
+    if (!username) {
+      newErrors.username = 'Username is required';
     }
 
     if (!password) {
       newErrors.password = 'Password is required';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const determineUserType = (id) => {
-    if (id.includes('_')) {
-      return 'admin';
-    } else if (id.includes('-')) {
-      return 'user';
-    }
-    return null;
-  };
-
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (validateForm()) {
       setIsLoading(true);
-      setTimeout(() => {
-        setIsLoading(false);
-        
-        const userType = determineUserType(userId);
+      try {
+        const response = await api.post('/auth/token/', {
+          username: username,
+          password: password,
+        });
 
-        if (!userType) {
-          setErrors({ password: 'Invalid User ID format' });
-          return;
-        }
-
-        if (dataStore) {
-          const verifiedUser = dataStore.verifyUser(userId, password);
+        if (response.status === 200) {
+          const data = response.data;
           
-          if (verifiedUser) {
+          // Save tokens to localStorage FIRST
+          localStorage.setItem(ACCESS_TOKEN, data.access);
+          localStorage.setItem('refresh', data.refresh);
+          
+          console.log('[LoginInterface] Tokens saved to localStorage');
+          console.log('[LoginInterface] Access token:', data.access.substring(0, 20) + '...');
+          
+          // Fetch user profile to check is_system_admin
+          try {
+            const profileResponse = await api.get('/auth/profile/');
+            const userProfile = profileResponse.data;
+            
+            console.log('[LoginInterface] User Profile:', userProfile);
+            console.log('[LoginInterface] is_system_admin:', userProfile.is_system_admin);
+            
+            // Record login event - NOW the token should be in localStorage
+            try {
+              console.log('[LoginInterface] Calling POST /auth/login-event/...');
+              const loginEventResponse = await api.post('/auth/login-event/');
+              console.log('[LoginInterface] Login event recorded successfully:', loginEventResponse.data);
+            } catch (loginEventError) {
+              console.error('[LoginInterface] Error recording login event:', {
+                message: loginEventError.message,
+                status: loginEventError.response?.status,
+                statusText: loginEventError.response?.statusText,
+                data: loginEventError.response?.data
+              });
+            }
+            
+            // Determine user type based on is_system_admin field
+            const userType = userProfile.is_system_admin ? 'admin' : 'user';
+            
+            console.log('Determined userType:', userType);
+            
+            // Call success callback with full user profile and determined user type
             onLoginSuccess({
-              ...verifiedUser,
-              userType: userType,
-              name: `${verifiedUser.firstName} ${verifiedUser.lastName}`
+              id: userProfile.id,
+              username: userProfile.username,
+              email: userProfile.email,
+              first_name: userProfile.first_name,
+              last_name: userProfile.last_name,
+              name: `${userProfile.first_name} ${userProfile.last_name}`.trim() || userProfile.username,
+              is_system_admin: userProfile.is_system_admin,
+              access: data.access,
+              refresh: data.refresh,
+              userType: userType
             });
-            return;
+          } catch (profileError) {
+            console.error('Error fetching profile:', profileError);
+            // Fallback if profile fetch fails - default to user
+            onLoginSuccess({
+              username: username,
+              access: data.access,
+              refresh: data.refresh,
+              userType: 'user'
+            });
           }
         }
-
-        if (userType === 'admin' && userId === 'TUPM_01_0001' && password === 'admin123') {
-          onLoginSuccess({
-            id: userId,
-            name: 'Administrator',
-            role: 'Admin',
-            userType: 'admin'
-          });
-          return;
+      } catch (error) {
+        console.error('Login error:', error);
+        if (error.response?.status === 401) {
+          setErrors({ password: 'Invalid username or password' });
+        } else {
+          setErrors({ password: 'Connection error. Please try again.' });
         }
-
-        if (userType === 'user' && userId === 'TUPM-01-0001' && password === 'User@123') {
-          onLoginSuccess({
-            id: userId,
-            name: 'John Demo User',
-            role: 'User',
-            jobTitle: 'Professor',
-            organizationUnitId: null,
-            organizationPosition: 'Faculty Member',
-            status: 'Active',
-            userType: 'user'
-          });
-          return;
-        }
-        
-        setErrors({ password: 'Invalid User ID or Password' });
-      }, 1500);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -120,14 +142,12 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
         backgroundColor: customization.loginBackground ? 'transparent' : '#f3f4f6'
       }}
     >
-      {/*Background Image Overlay */}
       {customization.loginBackground && (
         <>
           <div 
             className="absolute inset-0 bg-cover bg-center"
             style={{
-              backgroundImage: `url(${customization.loginBackground})`,
-              filter: 'blur(0px)'
+              backgroundImage: `url(${customization.loginBackground})`
             }}
           />
           <div className="absolute inset-0 bg-black bg-opacity-40" />
@@ -135,9 +155,7 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
       )}
 
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative z-10">
-        {/* Header */}
         <div className="text-center mb-8">
-          {/* Custom Logo or Default Icon */}
           {customization.systemLogo ? (
             <img 
               src={customization.systemLogo} 
@@ -155,45 +173,38 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
             </div>
           )}
           
-          {/*Custom System Name */}
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
             {customization.systemName}
           </h1>
           <p className="text-gray-600">Please sign in to your account</p>
         </div>
 
-        {/* Form Fields */}
         <div className="space-y-6">
-          {/* User ID Field */}
           <div>
-            <label htmlFor="userId" className="block text-sm font-medium text-gray-700 mb-2">
-              User ID
+            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+              Username
             </label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
-                id="userId"
+                id="username"
                 type="text"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 onKeyPress={handleKeyPress}
                 className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 transition-all ${
-                  errors.userId
+                  errors.username
                     ? 'border-red-500 focus:ring-red-500'
                     : 'border-gray-300'
                 }`}
-                style={{
-                  focusRingColor: customization.primaryColor
-                }}
-                placeholder="Enter your user ID"
+                placeholder="Enter your username"
               />
             </div>
-            {errors.userId && (
-              <p className="mt-1 text-sm text-red-500">{errors.userId}</p>
+            {errors.username && (
+              <p className="mt-1 text-sm text-red-500">{errors.username}</p>
             )}
           </div>
 
-          {/* Password Field */}
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
               Password
@@ -226,7 +237,6 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
             )}
           </div>
 
-          {/* Remember Me */}
           <div className="flex items-center">
             <label className="flex items-center cursor-pointer">
               <input
@@ -240,14 +250,12 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
             </label>
           </div>
 
-          {/* Submit Button */}
           <button
             onClick={handleSubmit}
             disabled={isLoading}
             className="w-full text-white py-3 rounded-lg font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
-              backgroundColor: customization.primaryColor,
-              focusRingColor: customization.primaryColor
+              backgroundColor: customization.primaryColor
             }}
           >
             {isLoading ? (

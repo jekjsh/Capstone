@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import LoginInterface from './LoginInterface';
 import MainFrame from './admin/Mainframe';
 import UserMainFrame from './user/UserMainFrame';
+import api from './api';
+import { ACCESS_TOKEN, REFRESH_TOKEN } from './constants';
 
 const createDataStore = () => ({
   allDocuments: [],
@@ -324,41 +327,117 @@ validateUserId(userId, userType) {
 
 const AppDataStore = createDataStore();
 
-export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+// Protected Route Component
+function ProtectedRoute({ children, isAuthenticated }) {
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
+}
+
+// Admin Route Component  
+function AdminRoute({ children, userType }) {
+  return userType === 'admin' ? children : <Navigate to="/dashboard" replace />;
+}
+
+// App Routes Component
+function AppRoutes() {
+  const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Check if user is already logged in (token in localStorage)
+  useEffect(() => {
+    const token = localStorage.getItem(ACCESS_TOKEN);
+    if (token) {
+      // Restore user from localStorage (you may want to validate token with backend)
+      const savedUser = localStorage.getItem('currentUser');
+      if (savedUser) {
+        try {
+          setCurrentUser(JSON.parse(savedUser));
+        } catch (e) {
+          console.error('Error restoring user:', e);
+          handleLogout();
+        }
+      }
+    }
+    setIsLoading(false);
+  }, []);
 
   const handleLoginSuccess = (userData) => {
     setCurrentUser(userData);
-    setIsLoggedIn(true);
+    localStorage.setItem('currentUser', JSON.stringify(userData));
+    
+    // Redirect based on user type
+    if (userData.userType === 'admin') {
+      navigate('/admin/dashboard');
+    } else {
+      navigate('/dashboard');
+    }
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
+  const handleLogout = async () => {
+    try {
+      // Record logout event on backend
+      await api.post('/auth/logout-event/');
+      console.log('Logout event recorded');
+    } catch (error) {
+      console.error('Error recording logout event:', error);
+    }
+    
+    localStorage.clear();
     setCurrentUser(null);
+    navigate('/login');
   };
 
-  if (!isLoggedIn) {
-    return <LoginInterface onLoginSuccess={handleLoginSuccess} dataStore={AppDataStore} />;
+  if (isLoading) {
+    return <div>Loading...</div>;
   }
 
+  return (
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<LoginInterface onLoginSuccess={handleLoginSuccess} dataStore={AppDataStore} />} />
 
-  if (currentUser.userType === 'admin') {
-    return (
-      <MainFrame 
-        currentUser={currentUser} 
-        onLogout={handleLogout}
-        dataStore={AppDataStore}
+      {/* Protected User Routes */}
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute isAuthenticated={currentUser && currentUser.userType !== 'admin'}>
+            <UserMainFrame 
+              currentUser={currentUser}
+              onLogout={handleLogout}
+              organizationTree={AppDataStore.getOrganizationTree()}
+              dataStore={AppDataStore}
+            />
+          </ProtectedRoute>
+        }
       />
-    );
-  } else {
-    return (
-      <UserMainFrame 
-        currentUser={currentUser} 
-        onLogout={handleLogout}
-        organizationTree={AppDataStore.getOrganizationTree()}
-        dataStore={AppDataStore}
+
+      {/* Protected Admin Routes */}
+      <Route 
+        path="/admin/dashboard"
+        element={
+          <ProtectedRoute isAuthenticated={currentUser && currentUser.userType === 'admin'}>
+            <AdminRoute userType={currentUser?.userType}>
+              <MainFrame 
+                currentUser={currentUser}
+                onLogout={handleLogout}
+                dataStore={AppDataStore}
+              />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
       />
-    );
-  }
+
+      {/* Catch all - redirect to login */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <Router>
+      <AppRoutes />
+    </Router>
+  );
 }

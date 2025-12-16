@@ -81,12 +81,12 @@ export default function Sidebar({
             className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold"
             style={{ color: customization.sidebarGradientStart }}
           >
-            {currentUser.name.charAt(0)}
+            {(currentUser?.name || currentUser?.username || 'U').charAt(0)}
           </div>
           {sidebarOpen && (
             <div className="flex-1">
-              <p className="font-medium text-sm">{currentUser.name}</p>
-              <p className="text-xs opacity-75">{currentUser.role}</p>
+              <p className="font-medium text-sm">{currentUser?.name || currentUser?.username || 'User'}</p>
+              <p className="text-xs opacity-75">{currentUser?.role || 'User'}</p>
             </div>
           )}
         </div>
