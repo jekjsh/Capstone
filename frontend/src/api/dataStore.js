@@ -30,19 +30,116 @@ const createDataStore = () => ({
   listeners: [],
   isInitialized: false,
 
+
+  normalizeArray(response) {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.results)) return response.results;
+
+  console.error('Expected array but got:', response);
+  return [];
+},
+
+  // Transform backend user data to frontend format
+  transformUser(backendUser) {
+    return {
+      id: backendUser.user_id,
+      firstName: backendUser.first_name,
+      lastName: backendUser.last_name,
+      name: `${backendUser.first_name} ${backendUser.last_name}`,
+      email: backendUser.email,
+      role: backendUser.role,
+      status: backendUser.is_active ? 'Active' : 'Inactive',
+      organizationUnitId: backendUser.organization_unit,
+      organizationPosition: backendUser.organization_position,
+      jobTitle: backendUser.job_title || '',
+      department: backendUser.department || '',
+      password: backendUser.password, // Only used during creation
+    };
+  },
+
+  // Transform frontend user data to backend format
+  transformUserForBackend(frontendUser) {
+    return {
+      user_id: frontendUser.id || frontendUser.userId,
+      first_name: frontendUser.firstName,
+      last_name: frontendUser.lastName,
+      email: frontendUser.email,
+      role: frontendUser.role,
+      is_active: frontendUser.status === 'Active',
+      organization_unit: frontendUser.organizationUnitId || null,
+      organization_position: frontendUser.organizationPosition || '',
+      job_title: frontendUser.jobTitle || '',
+      department: frontendUser.department || '',
+      password: frontendUser.password,
+    };
+  },
+
+  // Transform backend document to frontend format
+  transformDocument(backendDoc) {
+    return {
+      id: backendDoc.id?.toString(),
+      title: backendDoc.title,
+      description: backendDoc.description || '',
+      format: backendDoc.format || 'other',
+      content: backendDoc.content || '',
+      ocrContent: backendDoc.ocr_content || '',
+      fileData: backendDoc.file_data || '',
+      fileName: backendDoc.file_name || '',
+      fileSize: backendDoc.file_size || '',
+      mimeType: backendDoc.mime_type || '',
+      folderId: backendDoc.folder?.toString() || null,
+      customFieldValues: backendDoc.custom_field_values || {},
+      personalInfo: backendDoc.personal_info || {},
+      createdAt: backendDoc.created_at || new Date().toLocaleString(),
+      createdBy: backendDoc.user,
+      isDeleted: backendDoc.is_deleted || false,
+      deletedAt: backendDoc.deleted_at || null,
+    };
+  },
+
+  // Transform frontend document to backend format
+  transformDocumentForBackend(frontendDoc) {
+    return {
+      id: frontendDoc.id,
+      title: frontendDoc.title,
+      description: frontendDoc.description || '',
+      format: frontendDoc.format || 'other',
+      content: frontendDoc.content || '',
+      ocr_content: frontendDoc.ocrContent || '',
+      file_data: frontendDoc.fileData || '',
+      file_name: frontendDoc.fileName || '',
+      file_size: frontendDoc.fileSize || '',
+      mime_type: frontendDoc.mimeType || '',
+      folder: frontendDoc.folderId || null,
+      custom_field_values: frontendDoc.customFieldValues || {},
+      personal_info: frontendDoc.personalInfo || {},
+      user: frontendDoc.createdBy,
+    };
+  },
+
   // Initialize data from backend
   async initialize() {
     if (this.isInitialized) return;
+
+    
     
     try {
+      const currentUser = JSON.parse(localStorage.getItem('user_data') || '{}');
+      
+      
       await Promise.all([
         this.loadUsers(),
         this.loadOrganizationTree(),
         this.loadCustomization(),
         this.loadUserIdFormat(),
-        this.loadAuditLogs(),      
-        this.loadOrgShares(),     
-        this.loadDocuments(), 
+        this.loadAuditLogs(),
+        this.loadOrgShares(),
+        currentUser.user_id ? this.loadDocuments(currentUser.user_id) : Promise.resolve(),
+        currentUser.user_id ? this.loadCustomFields() : Promise.resolve(),
+        currentUser.user_id ? this.loadFolders() : Promise.resolve(),
+        currentUser.user_id ? this.loadDirectShares() : Promise.resolve(),
+        currentUser.user_id ? this.loadDeletedDocuments() : Promise.resolve(),
       ]);
       
       this.isInitialized = true;
@@ -56,7 +153,8 @@ const createDataStore = () => ({
   // Users
   async loadUsers() {
     try {
-      this.cache.users = await userService.getAll();
+      const backendUsers = this.normalizeArray(await userService.getAll());
+      this.cache.users = backendUsers.map(user => this.transformUser(user));
       this.notifyListeners();
       return this.cache.users;
     } catch (error) {
@@ -67,10 +165,12 @@ const createDataStore = () => ({
 
   async addUser(user) {
     try {
-      const newUser = await userService.create(user);
-      this.cache.users.push(newUser);
+      const backendUser = this.transformUserForBackend(user);
+      const newUser = await userService.create(backendUser);
+      const transformedUser = this.transformUser(newUser);
+      this.cache.users.push(transformedUser);
       this.notifyListeners();
-      return newUser;
+      return transformedUser;
     } catch (error) {
       console.error('Failed to add user:', error);
       throw error;
@@ -79,12 +179,14 @@ const createDataStore = () => ({
 
   async updateUser(userId, updatedData) {
     try {
-      const updated = await userService.update(userId, updatedData);
+      const backendData = this.transformUserForBackend({ ...updatedData, id: userId });
+      const updated = await userService.update(userId, backendData);
+      const transformedUser = this.transformUser(updated);
       this.cache.users = this.cache.users.map(user =>
-        user.user_id === userId ? updated : user
+        user.id === userId ? transformedUser : user
       );
       this.notifyListeners();
-      return updated;
+      return transformedUser;
     } catch (error) {
       console.error('Failed to update user:', error);
       throw error;
@@ -94,7 +196,7 @@ const createDataStore = () => ({
   async deleteUser(userId) {
     try {
       await userService.delete(userId);
-      this.cache.users = this.cache.users.filter(user => user.user_id !== userId);
+      this.cache.users = this.cache.users.filter(user => user.id !== userId);
       this.notifyListeners();
     } catch (error) {
       console.error('Failed to delete user:', error);
@@ -107,13 +209,15 @@ const createDataStore = () => ({
   },
 
   getUserById(userId) {
-    return this.cache.users.find(user => user.user_id === userId);
+    return this.cache.users.find(user => user.id === userId);
   },
 
   // Organization Tree
   async loadOrganizationTree() {
     try {
-      this.cache.organizationTree = await organizationService.getAll();
+      const tree = this.normalizeArray(await organizationService.getAll());
+
+      this.cache.organizationTree = tree;
       this.notifyListeners();
       return this.cache.organizationTree;
     } catch (error) {
@@ -164,7 +268,16 @@ const createDataStore = () => ({
   // Custom Fields
   async loadCustomFields() {
     try {
-      this.cache.customFields = await customFieldService.getAll();
+      const fields = this.normalizeArray(await customFieldService.getAll());
+
+      this.cache.customFields = fields.map(field => ({
+        id: field.id?.toString(),
+        name: field.name,
+        type: field.field_type,
+        showInDocuments: field.show_in_documents !== false,
+        required: field.required || false,
+        options: field.options || [],
+      }));
       this.notifyListeners();
       return this.cache.customFields;
     } catch (error) {
@@ -175,10 +288,25 @@ const createDataStore = () => ({
 
   async addCustomField(field) {
     try {
-      const newField = await customFieldService.create(field);
-      this.cache.customFields.push(newField);
+      const backendField = {
+        name: field.name,
+        field_type: field.type,
+        show_in_documents: field.showInDocuments !== false,
+        required: field.required || false,
+        options: field.options || [],
+      };
+      const newField = await customFieldService.create(backendField);
+      const transformedField = {
+        id: newField.id?.toString(),
+        name: newField.name,
+        type: newField.field_type,
+        showInDocuments: newField.show_in_documents !== false,
+        required: newField.required || false,
+        options: newField.options || [],
+      };
+      this.cache.customFields.push(transformedField);
       this.notifyListeners();
-      return newField;
+      return transformedField;
     } catch (error) {
       console.error('Failed to add custom field:', error);
       throw error;
@@ -199,7 +327,14 @@ const createDataStore = () => ({
   // Folders
   async loadFolders() {
     try {
-      this.cache.folders = await folderService.getAll();
+      const folders = this.normalizeArray(await folderService.getAll());
+      this.cache.folders = folders.map(folder => ({
+        id: folder.id?.toString(),
+        name: folder.name,
+        color: folder.color || 'blue',
+        createdAt: folder.created_at || new Date().toLocaleString(),
+        documentCount: 0,
+      }));
       this.notifyListeners();
       return this.cache.folders;
     } catch (error) {
@@ -210,10 +345,21 @@ const createDataStore = () => ({
 
   async addFolder(folder) {
     try {
-      const newFolder = await folderService.create(folder);
-      this.cache.folders.push(newFolder);
+      const backendFolder = {
+        name: folder.name,
+        color: folder.color || 'blue',
+      };
+      const newFolder = await folderService.create(backendFolder);
+      const transformedFolder = {
+        id: newFolder.id?.toString(),
+        name: newFolder.name,
+        color: newFolder.color || 'blue',
+        createdAt: newFolder.created_at || new Date().toLocaleString(),
+        documentCount: 0,
+      };
+      this.cache.folders.push(transformedFolder);
       this.notifyListeners();
-      return newFolder;
+      return transformedFolder;
     } catch (error) {
       console.error('Failed to add folder:', error);
       throw error;
@@ -234,8 +380,10 @@ const createDataStore = () => ({
   // Documents
   async loadDocuments(userId) {
     try {
-      const allDocs = await documentService.getAll();
-      this.cache.documents = allDocs.filter(doc => doc.user === userId);
+      const allDocs = this.normalizeArray(await documentService.getAll());
+
+      const backendDocs = allDocs.filter(doc => doc.user === userId && !doc.is_deleted);
+      this.cache.documents = backendDocs.map(doc => this.transformDocument(doc));
       this.notifyListeners();
       return this.cache.documents;
     } catch (error) {
@@ -246,10 +394,19 @@ const createDataStore = () => ({
 
   async addDocument(doc) {
     try {
-      const newDoc = await documentService.create(doc);
-      this.cache.documents.push(newDoc);
+     const formData = new FormData();
+
+    formData.append('title', doc.title);
+    formData.append('description', doc.description || '');
+    formData.append('user', doc.createdBy);
+    formData.append('folder', doc.folderId || '');
+    formData.append('file', doc.file); // REAL File object
+
+     const newDoc = await documentService.create(formData);
+      const transformedDoc = this.transformDocument(newDoc);
+      this.cache.documents.push(transformedDoc);
       this.notifyListeners();
-      return newDoc;
+      return transformedDoc;
     } catch (error) {
       console.error('Failed to add document:', error);
       throw error;
@@ -258,12 +415,14 @@ const createDataStore = () => ({
 
   async updateDocument(docId, updates) {
     try {
-      const updated = await documentService.update(docId, updates);
+      const backendUpdates = this.transformDocumentForBackend({ ...updates, id: docId });
+      const updated = await documentService.update(docId, backendUpdates);
+      const transformedDoc = this.transformDocument(updated);
       this.cache.documents = this.cache.documents.map(doc =>
-        doc.id === docId ? updated : doc
+        doc.id === docId ? transformedDoc : doc
       );
       this.notifyListeners();
-      return updated;
+      return transformedDoc;
     } catch (error) {
       console.error('Failed to update document:', error);
       throw error;
@@ -297,9 +456,10 @@ const createDataStore = () => ({
     try {
       await documentService.restore(docId);
       await this.loadDeletedDocuments();
-      // Reload documents to get the restored one
       const currentUser = JSON.parse(localStorage.getItem('user_data'));
-      await this.loadDocuments(currentUser.user_id);
+      if (currentUser?.user_id) {
+        await this.loadDocuments(currentUser.user_id);
+      }
     } catch (error) {
       console.error('Failed to restore document:', error);
       throw error;
@@ -320,7 +480,14 @@ const createDataStore = () => ({
   async emptyRecycleBin() {
     try {
       await documentService.emptyRecycleBin();
-      this.cache.deletedDocuments = [];
+      const currentUser = JSON.parse(localStorage.getItem('user_data'));
+      if (currentUser?.user_id) {
+        this.cache.deletedDocuments = this.cache.deletedDocuments.filter(
+          d => d.createdBy !== currentUser.user_id
+        );
+      } else {
+        this.cache.deletedDocuments = [];
+      }
       this.notifyListeners();
     } catch (error) {
       console.error('Failed to empty recycle bin:', error);
@@ -330,7 +497,9 @@ const createDataStore = () => ({
 
   async loadDeletedDocuments() {
     try {
-      this.cache.deletedDocuments = await documentService.getDeleted();
+      const deletedDocs = this.normalizeArray(await documentService.getDeleted());
+
+      this.cache.deletedDocuments = deletedDocs.map(doc => this.transformDocument(doc));
       this.notifyListeners();
       return this.cache.deletedDocuments;
     } catch (error) {
@@ -344,7 +513,7 @@ const createDataStore = () => ({
   },
 
   getDocumentsByUser(userId) {
-    return this.cache.documents.filter(doc => doc.user === userId);
+    return this.cache.documents.filter(doc => doc.createdBy === userId);
   },
 
   getDeletedDocuments() {
@@ -354,7 +523,18 @@ const createDataStore = () => ({
   // Direct Shares
   async loadDirectShares() {
     try {
-      this.cache.directShares = await directShareService.getAll();
+      const shares = this.normalizeArray(await directShareService.getAll());
+
+      this.cache.directShares = shares.map(share => ({
+        id: share.id?.toString(),
+        documentId: share.document?.toString(),
+        document: share.document_data ? this.transformDocument(share.document_data) : null,
+        sharedWith: Array.isArray(share.shared_with) ? share.shared_with : [],
+        sharedBy: share.shared_by,
+        permission: share.permission || 'view',
+        message: share.message || '',
+        sharedAt: share.shared_at || new Date().toLocaleString(),
+      }));
       this.notifyListeners();
       return this.cache.directShares;
     } catch (error) {
@@ -365,7 +545,15 @@ const createDataStore = () => ({
 
   async addDirectShare(share) {
     try {
-      await directShareService.create(share);
+      const backendShare = {
+        id: share.id,
+        document: parseInt(share.documentId),
+        shared_by: share.sharedBy,
+        shared_with_ids: share.sharedWith,
+        permission: share.permission,
+        message: share.message || '',
+      };
+      await directShareService.create(backendShare);
       await this.loadDirectShares();
     } catch (error) {
       console.error('Failed to add direct share:', error);
@@ -391,7 +579,20 @@ const createDataStore = () => ({
   // Organization Shares
   async loadOrgShares() {
     try {
-      this.cache.orgShares = await organizationShareService.getAll();
+      const shares = this.normalizeArray(await organizationShareService.getAll());
+
+      this.cache.orgShares = shares.map(share => ({
+        id: share.id?.toString(),
+        documentId: share.document?.toString(),
+        document: share.document_data ? this.transformDocument(share.document_data) : null,
+        recipients: Array.isArray(share.recipients) ? share.recipients : [],
+        distributionMode: share.distribution_mode || 'all-sub-units',
+        selectedUnits: share.selected_units || null,
+        message: share.message || '',
+        sentBy: share.sent_by,
+        sentFrom: share.sent_from,
+        sentAt: share.sent_at || new Date().toLocaleString(),
+      }));
       this.notifyListeners();
       return this.cache.orgShares;
     } catch (error) {
@@ -402,7 +603,17 @@ const createDataStore = () => ({
 
   async addOrgShare(share) {
     try {
-      await organizationShareService.create(share);
+      const backendShare = {
+        id: share.id,
+        document: parseInt(share.documentId),
+        sent_by: share.sentBy,
+        sent_from: share.sentFrom,
+        distribution_mode: share.distributionMode,
+        selected_units: share.selectedUnits,
+        recipient_ids: share.recipients,
+        message: share.message || '',
+      };
+      await organizationShareService.create(backendShare);
       await this.loadOrgShares();
     } catch (error) {
       console.error('Failed to add org share:', error);
@@ -417,7 +628,15 @@ const createDataStore = () => ({
   // Audit Logs
   async loadAuditLogs() {
     try {
-      this.cache.auditLogs = await auditLogService.getAll();
+      const logs = this.normalizeArray(await auditLogService.getAll());
+
+      this.cache.auditLogs = logs.map(log => ({
+        time: log.timestamp || log.created_at || new Date().toLocaleString(),
+        user: log.user || 'Unknown',
+        action: log.action || '',
+        resource: log.resource || '',
+        status: log.status || 'Success',
+      }));
       this.notifyListeners();
       return this.cache.auditLogs;
     } catch (error) {
@@ -427,7 +646,7 @@ const createDataStore = () => ({
   },
 
   addAuditLog(log) {
-    // Logs are created on the backend automatically
+    // Logs are created on the backend automatically via signals
     // Just reload to get the latest
     this.loadAuditLogs();
   },
@@ -439,7 +658,15 @@ const createDataStore = () => ({
   // Customization
   async loadCustomization() {
     try {
-      this.cache.customization = await customizationService.getCurrent();
+      const customization = await customizationService.getCurrent();
+      this.cache.customization = {
+        systemName: customization.system_name || 'Record Keeping Management System',
+        systemLogo: customization.system_logo || null,
+        loginBackground: customization.login_background || null,
+        primaryColor: customization.primary_color || '#4F46E5',
+        sidebarGradientStart: customization.sidebar_gradient_start || '#4F46E5',
+        sidebarGradientEnd: customization.sidebar_gradient_end || '#7C3AED',
+      };
       this.notifyListeners();
       return this.cache.customization;
     } catch (error) {
@@ -450,7 +677,23 @@ const createDataStore = () => ({
 
   async setCustomization(settings) {
     try {
-      this.cache.customization = await customizationService.update(settings);
+      const backendSettings = {
+        system_name: settings.systemName,
+        system_logo: settings.systemLogo,
+        login_background: settings.loginBackground,
+        primary_color: settings.primaryColor,
+        sidebar_gradient_start: settings.sidebarGradientStart,
+        sidebar_gradient_end: settings.sidebarGradientEnd,
+      };
+      const updated = await customizationService.update(backendSettings);
+      this.cache.customization = {
+        systemName: updated.system_name,
+        systemLogo: updated.system_logo,
+        loginBackground: updated.login_background,
+        primaryColor: updated.primary_color,
+        sidebarGradientStart: updated.sidebar_gradient_start,
+        sidebarGradientEnd: updated.sidebar_gradient_end,
+      };
       this.notifyListeners();
       return this.cache.customization;
     } catch (error) {
@@ -466,7 +709,8 @@ const createDataStore = () => ({
   // User ID Format
   async loadUserIdFormat() {
     try {
-      this.cache.userIdFormat = await userIdFormatService.getCurrent();
+      const format = await userIdFormatService.getCurrent();
+      this.cache.userIdFormat = format;
       this.notifyListeners();
       return this.cache.userIdFormat;
     } catch (error) {
@@ -477,7 +721,8 @@ const createDataStore = () => ({
 
   async setUserIdFormat(settings) {
     try {
-      this.cache.userIdFormat = await userIdFormatService.update(settings);
+      const updated = await userIdFormatService.update(settings);
+      this.cache.userIdFormat = updated;
       this.notifyListeners();
       return this.cache.userIdFormat;
     } catch (error) {
@@ -493,10 +738,40 @@ const createDataStore = () => ({
   // Validation helpers
   validateUserId(userId, userType) {
     const format = this.getUserIdFormat();
-    if (!format) return true; // Skip validation if format not loaded
+    if (!format || !format.format) return true;
     
-    // Implement validation logic based on format
-    return true; // Simplified for now
+    if (format.format.customFormat) {
+      const pattern = userType === 'admin' 
+        ? format.customPattern?.admin 
+        : format.customPattern?.user;
+      
+      if (!pattern) return true;
+      
+      // Convert pattern to regex (X = digit)
+      const regexPattern = '^' + pattern.replace(/X/g, '\\d') + '$';
+      const regex = new RegExp(regexPattern);
+      return regex.test(userId);
+    } else {
+      // Template builder format
+      const separator = userType === 'admin' 
+        ? format.format.adminSeparator 
+        : format.format.userSeparator;
+      
+      const prefix = format.format.prefix;
+      const segments = format.format.segmentCount;
+      const lengths = format.format.segmentLength || [];
+      
+      // Build regex pattern
+      let pattern = '^' + prefix;
+      for (let i = 0; i < segments; i++) {
+        const length = lengths[i] || 2;
+        pattern += (separator || '') + '\\d{' + length + '}';
+      }
+      pattern += '$';
+      
+      const regex = new RegExp(pattern);
+      return regex.test(userId);
+    }
   },
 
   // Listeners

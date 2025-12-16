@@ -140,8 +140,9 @@ export const documentService = {
   },
 
   create: async (data) => {
-    const response = await apiClient.post('/documents/', data);
-    return response.data;
+    return api.post('/documents/', data, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
   },
 
   update: async (id, data) => {
