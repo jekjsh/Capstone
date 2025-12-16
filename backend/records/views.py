@@ -224,7 +224,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        queryset = Document.objects.filter(user=self.request.user, is_deleted=False)
+        # ✅ FIX: Don't filter by is_deleted here - let the specific endpoints handle it
+        queryset = Document.objects.filter(user=self.request.user)
         folder_id = self.request.query_params.get('folder', None)
         if folder_id:
             queryset = queryset.filter(folder_id=folder_id)
@@ -285,7 +286,23 @@ class DocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def restore(self, request, pk=None):
-        document = self.get_object()
+        # ✅ FIX: Get the document even if it's deleted
+        try:
+            document = Document.objects.get(pk=pk, user=request.user)
+        except Document.DoesNotExist:
+            return Response(
+                {'error': 'Document not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if document is actually deleted
+        if not document.is_deleted:
+            return Response(
+                {'error': 'Document is not in recycle bin'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Restore the document
         document.is_deleted = False
         document.deleted_at = None
         document.save()
@@ -299,10 +316,14 @@ class DocumentViewSet(viewsets.ModelViewSet):
             status='Success'
         )
         
-        return Response({'message': 'Document restored'})
+        return Response({
+            'message': 'Document restored successfully',
+            'document': DocumentSerializer(document).data
+        })
     
     @action(detail=False, methods=['get'])
     def deleted(self, request):
+        # ✅ FIX: Get only deleted documents
         queryset = Document.objects.filter(user=request.user, is_deleted=True)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
