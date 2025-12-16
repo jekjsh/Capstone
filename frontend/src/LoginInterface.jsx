@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { authService } from './api/services';
 
 export default function LoginInterface({ onLoginSuccess, dataStore }) {
   const [userId, setUserId] = useState('');
@@ -9,21 +10,34 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
   const [isLoading, setIsLoading] = useState(false);
   
   const [customization, setCustomization] = useState({
-    systemName: 'Record Keeping Management System',
-    systemLogo: null,
-    loginBackground: null,
-    primaryColor: '#4F46E5'
+    system_name: 'Record Keeping Management System',
+    system_logo: null,
+    login_background: null,
+    primary_color: '#4F46E5'
   });
 
   useEffect(() => {
-    if (dataStore) {
-      const custom = dataStore.getCustomization();
-      if (custom) {
-        setCustomization(custom);
-        
-        document.documentElement.style.setProperty('--primary-color', custom.primaryColor);
+    const loadCustomization = async () => {
+      if (dataStore) {
+        try {
+          const custom = await dataStore.loadCustomization();
+          if (custom) {
+            setCustomization({
+              system_name: custom.system_name || 'Record Keeping Management System',
+              system_logo: custom.system_logo,
+              login_background: custom.login_background,
+              primary_color: custom.primary_color || '#4F46E5'
+            });
+            
+            document.documentElement.style.setProperty('--primary-color', custom.primary_color);
+          }
+        } catch (error) {
+          console.error('Failed to load customization:', error);
+        }
       }
-    }
+    };
+
+    loadCustomization();
   }, [dataStore]);
 
   const validateForm = () => {
@@ -43,67 +57,27 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const determineUserType = (id) => {
-    if (id.includes('_')) {
-      return 'admin';
-    } else if (id.includes('-')) {
-      return 'user';
-    }
-    return null;
-  };
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
 
-  const handleSubmit = () => {
-    if (validateForm()) {
-      setIsLoading(true);
-      setTimeout(() => {
-        setIsLoading(false);
-        
-        const userType = determineUserType(userId);
+    setIsLoading(true);
+    setErrors({});
 
-        if (!userType) {
-          setErrors({ password: 'Invalid User ID format' });
-          return;
-        }
-
-        if (dataStore) {
-          const verifiedUser = dataStore.verifyUser(userId, password);
-          
-          if (verifiedUser) {
-            onLoginSuccess({
-              ...verifiedUser,
-              userType: userType,
-              name: `${verifiedUser.firstName} ${verifiedUser.lastName}`
-            });
-            return;
-          }
-        }
-
-        if (userType === 'admin' && userId === 'TUPM_01_0001' && password === 'admin123') {
-          onLoginSuccess({
-            id: userId,
-            name: 'Administrator',
-            role: 'Admin',
-            userType: 'admin'
-          });
-          return;
-        }
-
-        if (userType === 'user' && userId === 'TUPM-01-0001' && password === 'User@123') {
-          onLoginSuccess({
-            id: userId,
-            name: 'John Demo User',
-            role: 'User',
-            jobTitle: 'Professor',
-            organizationUnitId: null,
-            organizationPosition: 'Faculty Member',
-            status: 'Active',
-            userType: 'user'
-          });
-          return;
-        }
-        
+    try {
+      const response = await authService.login(userId, password);
+      onLoginSuccess(response);
+    } catch (error) {
+      console.error('Login error:', error);
+      
+      if (error.response?.status === 400 || error.response?.status === 401) {
         setErrors({ password: 'Invalid User ID or Password' });
-      }, 1500);
+      } else if (error.response?.data?.non_field_errors) {
+        setErrors({ password: error.response.data.non_field_errors[0] });
+      } else {
+        setErrors({ password: 'Login failed. Please try again.' });
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -117,16 +91,16 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
     <div 
       className="min-h-screen flex items-center justify-center p-4 relative"
       style={{
-        backgroundColor: customization.loginBackground ? 'transparent' : '#f3f4f6'
+        backgroundColor: customization.login_background ? 'transparent' : '#f3f4f6'
       }}
     >
-      {/*Background Image Overlay */}
-      {customization.loginBackground && (
+      {/* Background Image Overlay */}
+      {customization.login_background && (
         <>
           <div 
             className="absolute inset-0 bg-cover bg-center"
             style={{
-              backgroundImage: `url(${customization.loginBackground})`,
+              backgroundImage: `url(${customization.login_background})`,
               filter: 'blur(0px)'
             }}
           />
@@ -138,9 +112,9 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
         {/* Header */}
         <div className="text-center mb-8">
           {/* Custom Logo or Default Icon */}
-          {customization.systemLogo ? (
+          {customization.system_logo ? (
             <img 
-              src={customization.systemLogo} 
+              src={customization.system_logo} 
               alt="System Logo" 
               className="h-16 mx-auto mb-4 object-contain"
             />
@@ -148,16 +122,16 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
             <div 
               className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
               style={{
-                background: `linear-gradient(to right, ${customization.primaryColor}, ${customization.primaryColor}dd)`
+                background: `linear-gradient(to right, ${customization.primary_color}, ${customization.primary_color}dd)`
               }}
             >
               <Lock className="w-8 h-8 text-white" />
             </div>
           )}
           
-          {/*Custom System Name */}
+          {/* Custom System Name */}
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            {customization.systemName}
+            {customization.system_name}
           </h1>
           <p className="text-gray-600">Please sign in to your account</p>
         </div>
@@ -177,14 +151,12 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 onKeyPress={handleKeyPress}
+                disabled={isLoading}
                 className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 transition-all ${
                   errors.userId
                     ? 'border-red-500 focus:ring-red-500'
                     : 'border-gray-300'
                 }`}
-                style={{
-                  focusRingColor: customization.primaryColor
-                }}
                 placeholder="Enter your user ID"
               />
             </div>
@@ -206,6 +178,7 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyPress={handleKeyPress}
+                disabled={isLoading}
                 className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:outline-none focus:ring-2 transition-all ${
                   errors.password
                     ? 'border-red-500 focus:ring-red-500'
@@ -216,6 +189,7 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                disabled={isLoading}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -233,8 +207,9 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
                 type="checkbox"
                 className="w-4 h-4 rounded border-gray-300 focus:ring-2"
                 style={{
-                  accentColor: customization.primaryColor
+                  accentColor: customization.primary_color
                 }}
+                disabled={isLoading}
               />
               <span className="ml-2 text-sm text-gray-600">Remember me</span>
             </label>
@@ -246,8 +221,8 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
             disabled={isLoading}
             className="w-full text-white py-3 rounded-lg font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
-              backgroundColor: customization.primaryColor,
-              focusRingColor: customization.primaryColor
+              backgroundColor: customization.primary_color,
+              focusRingColor: customization.primary_color
             }}
           >
             {isLoading ? (
@@ -275,6 +250,15 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
             )}
           </button>
         </div>
+
+        {/* Demo Credentials Info */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-xs text-blue-800 font-semibold mb-2">Demo Credentials:</p>
+            <p className="text-xs text-blue-700">Admin: TUPM_01_0001 / admin123</p>
+            <p className="text-xs text-blue-700">User: TUPM-01-0001 / User@123</p>
+          </div>
+        )}
       </div>
     </div>
   );
