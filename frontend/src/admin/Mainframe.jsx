@@ -17,7 +17,6 @@ import {
   UserActionMenu, 
   AdminVerificationModal, 
   AddUserModal, 
-  PasswordModal, 
   EditPasswordModal 
 } from './component/AdminModals';
 import AdminAllDocumentsView from './component/AdminAllDocumentsView';
@@ -60,11 +59,14 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const [newUser, setNewUser] = useState({
     userId: '',
     firstName: '',
-  lastName: '',
+    lastName: '',
+    email: '',
     role: 'User',
     jobTitle: '',
+    department: '',
     organizationUnitId: '',
-    organizationPosition: ''
+    organizationPosition: '',
+    status: 'Active'
   });
   const [userIdFormatValid, setUserIdFormatValid] = useState(null);
   const [errors, setErrors] = useState({});
@@ -205,24 +207,31 @@ useEffect(() => {
   const validateUserIdFormat = (userId, role) => {
     if (!userId) return null;
     
+    // ✅ FIXED: Pass the role correctly to dataStore
+    // Normalize to lowercase and remove spaces, but keep system-admin separate
+    let normalizedRole = role.toLowerCase().replace(/\s+/g, '');
+    
     if (dataStore) {
-      return dataStore.validateUserId(userId, role.toLowerCase());
+      return dataStore.validateUserId(userId, normalizedRole);
     }
     
-
-    const userIdPattern = /^TUPM-\d{2}-\d{4}$/;
+    // Fallback validation if dataStore is not available
+    const systemAdminIdPattern = /^TUPM\*\d{2}\*\d{4}$/;
     const adminIdPattern = /^TUPM_\d{2}_\d{4}$/;
+    const userIdPattern = /^TUPM-\d{2}-\d{4}$/;
     
-    if (role === 'User') {
-      return userIdPattern.test(userId);
+    if (role === 'System Admin') {
+      return systemAdminIdPattern.test(userId);
     } else if (role === 'Admin') {
       return adminIdPattern.test(userId);
+    } else if (role === 'User') {
+      return userIdPattern.test(userId);
     }
     return null;
   };
 
   const handleUserIdChange = (value) => {
-    setNewUser({ ...newUser, userId: value });
+    setNewUser(prevUser => ({ ...prevUser, userId: value }));
     const isValid = validateUserIdFormat(value, newUser.role);
     setUserIdFormatValid(isValid);
   };
@@ -281,33 +290,6 @@ useEffect(() => {
 
 
 
-  const validatePasswordForm = () => {
-    const newErrors = {};
-
-    if (!passwordData.password) {
-      newErrors.password = 'Password is required';
-    } else if (passwordData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    } else if (!/[A-Z]/.test(passwordData.password)) {
-      newErrors.password = 'Password must contain at least 1 uppercase letter';
-    } else if (!/[a-z]/.test(passwordData.password)) {
-      newErrors.password = 'Password must contain at least 1 lowercase letter';
-    } else if (!/[0-9]/.test(passwordData.password)) {
-      newErrors.password = 'Password must contain at least 1 digit (0-9)';
-    } else if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password)) {
-      newErrors.password = 'Password must contain at least 1 symbol (!@#$%^&*...)';
-    }
-
-    if (!passwordData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
-    } else if (passwordData.password !== passwordData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const addAuditLog = (action, resource, status = 'Success') => {
     const timestamp = new Date().toLocaleString('en-US', {
       year: 'numeric',
@@ -335,6 +317,7 @@ useEffect(() => {
  const handleAddUser = () => {
   if (validateUserForm()) {
     if (editingUserId) {
+      // ✅ Editing existing user - update info only
       if (dataStore) {
         dataStore.updateUser(editingUserId, {
           firstName: newUser.firstName, 
@@ -361,56 +344,33 @@ useEffect(() => {
       setErrors({});
       alert('User information updated successfully!');
     } else {
-      setTempUserData({
-        userId: newUser.userId,
-        firstName: newUser.firstName,   
-        lastName: newUser.lastName,  
-        email: newUser.email,  
+      // ✅ Creating new user - auto-generate default password
+      const defaultPassword = newUser.lastName.toUpperCase();
+      
+      const user = {
+        id: newUser.userId,
+        firstName: newUser.firstName,  
+        lastName: newUser.lastName,   
+        name: `${newUser.firstName} ${newUser.lastName}`,
+        email: newUser.email, 
         role: newUser.role,
         organizationUnitId: newUser.organizationUnitId,
-        organizationPosition: newUser.organizationPosition
-      });
-      setShowAddUserModal(false);
-      setShowPasswordModal(true);
-    }
-  }
-};
-
-
- const handleSaveUser = () => {
-  if (validatePasswordForm()) {
-    if (editingUserId) {
-      if (dataStore) {
-        dataStore.updateUser(editingUserId, {
-          password: passwordData.password 
-        });
-      }
-      addAuditLog('Password Changed', `${editingUserId} - Password updated`, 'Success');
-      setShowEditPasswordModal(false);
-      setEditingUserId(null);
-      setPasswordData({ password: '', confirmPassword: '' });
-      setErrors({});
-      alert('Password updated successfully!');
-    } else {
-      const user = {
-        id: tempUserData.userId,
-        firstName: tempUserData.firstName,  
-        lastName: tempUserData.lastName,   
-        name: `${tempUserData.firstName} ${tempUserData.lastName}`,
-        email: tempUserData.email, 
-         role: tempUserData.role,
-        organizationUnitId: tempUserData.organizationUnitId,
-        organizationPosition: tempUserData.organizationPosition,
+        organizationPosition: newUser.organizationPosition,
         status: 'Active',
-        password: passwordData.password 
+        password: defaultPassword // ✅ Auto-generated default password
       };
       
       if (dataStore) {
         dataStore.addUser(user);
       }
-      addAuditLog('User Created', `${tempUserData.userId} - ${user.name}`, 'Success');
       
-      setShowPasswordModal(false);
+      addAuditLog(
+        'User Created', 
+        `${user.id} - ${user.name} (Default password: ${defaultPassword})`, 
+        'Success'
+      );
+      
+      setShowAddUserModal(false);
       setNewUser({
         userId: '',
         firstName: '',
@@ -420,15 +380,55 @@ useEffect(() => {
         organizationUnitId: '',
         organizationPosition: ''
       });
-      setPasswordData({
-        password: '',
-        confirmPassword: ''
-      });
-      setTempUserData(null);
       setErrors({});
+      
+      // ✅ Show success message with default password
+      alert(
+        `✅ User created successfully!\n\n` +
+        `User ID: ${user.id}\n` +
+        `Name: ${user.name}\n` +
+        `Default Password: ${defaultPassword}\n\n` +
+        `⚠️ Please inform the user of their credentials.`
+      );
     }
   }
 };
+
+const handleSaveUser = () => {
+  if (validatePasswordForm()) {
+    if (editingUserId) {
+      // ✅ Changing password for existing user
+      if (dataStore) {
+        dataStore.updateUser(editingUserId, {
+          password: passwordData.password 
+        });
+      }
+      
+      const user = userList.find(u => u.id === editingUserId);
+      const defaultPassword = user ? user.lastName.toUpperCase() : '';
+      const isDefaultPassword = passwordData.password === defaultPassword;
+      
+      addAuditLog(
+        'Password Changed', 
+        `${editingUserId} - Password ${isDefaultPassword ? 'reset to default' : 'updated'}`, 
+        'Success'
+      );
+      
+      setShowEditPasswordModal(false);
+      setEditingUserId(null);
+      setPasswordData({ password: '', confirmPassword: '' });
+      setErrors({});
+      
+      alert(
+        isDefaultPassword 
+          ? `✅ Password reset to default: ${defaultPassword}` 
+          : '✅ Password updated successfully!'
+      );
+    }
+  }
+};
+
+
 
 
   const handleDeleteUser = (userId) => {
@@ -513,8 +513,12 @@ useEffect(() => {
 
  const getFilteredUsers = () => {
   return userList.filter(user => {
+    // ✅ FIXED: Safely handle id field (might be undefined or not a string)
+    const userId = user.id || user.userId || '';
+    const userIdStr = String(userId).toLowerCase();
+    
     const matchesSearch = 
-      user.id.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+      userIdStr.includes(userSearchQuery.toLowerCase()) ||
       user.firstName?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
       user.lastName?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
       user.email?.toLowerCase().includes(userSearchQuery.toLowerCase());
@@ -780,20 +784,9 @@ const handlePrintDocument = (doc) => {
         userList={userList}
         organizationTree={organizationTree}
         renderOrgUnitOptions={renderOrgUnitOptions}
+        dataStore={dataStore}
       />
 
-      <PasswordModal
-        showPasswordModal={showPasswordModal}
-        showEditPasswordModal={showEditPasswordModal}
-        setShowPasswordModal={setShowPasswordModal}
-        setShowAddUserModal={setShowAddUserModal}
-        tempUserData={tempUserData}
-        passwordData={passwordData}
-        setPasswordData={setPasswordData}
-        errors={errors}
-        setErrors={setErrors}
-        handleSaveUser={handleSaveUser}
-      />
 
       <EditPasswordModal
         showEditPasswordModal={showEditPasswordModal}

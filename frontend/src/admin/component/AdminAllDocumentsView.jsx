@@ -184,7 +184,7 @@ export default function AdminAllDocumentsView({ dataStore, userList, onViewDocum
                 </div>
               </div>
 
-              {/* ✅ Action Buttons */}
+              {/* âœ… Action Buttons */}
               <div className="mt-4 pt-4 border-t flex gap-2">
                 <button
                   onClick={() => onViewDocument(doc)}
@@ -208,7 +208,7 @@ export default function AdminAllDocumentsView({ dataStore, userList, onViewDocum
 
       <div className="border-l-4 border-blue-500 p-4 rounded" style={{ backgroundColor: '#EFF6FF' }}>
         <div className="flex items-start gap-2">
-          <span className="font-bold text-lg" style={{ color: '#2563EB' }}>💡</span>
+          <span className="font-bold text-lg" style={{ color: '#2563EB' }}>ðŸ’¡</span>
           <p className="text-sm font-medium" style={{ color: '#1E3A8A' }}>
             <strong style={{ color: '#1E3A8A' }}>Admin View:</strong> This page shows all documents created by all users in the system. 
             You can view, download, search, and filter documents. Click "View Document" to open and inspect any document in detail.

@@ -169,7 +169,7 @@ export default function AdminOrgSharesView({ dataStore, organizationTree, onView
                 </div>
               )}
 
-              {/* ✅ Action Buttons */}
+              {/* âœ… Action Buttons */}
               <div className="mt-4 pt-4 border-t flex gap-2">
                 <button
                   onClick={() => onViewDocument && onViewDocument(share.document)}
@@ -193,7 +193,7 @@ export default function AdminOrgSharesView({ dataStore, organizationTree, onView
 
       <div className="border-l-4 border-blue-500 p-4 rounded" style={{ backgroundColor: '#EFF6FF' }}>
         <div className="flex items-start gap-2">
-          <span className="font-bold text-lg" style={{ color: '#2563EB' }}>💡</span>
+          <span className="font-bold text-lg" style={{ color: '#2563EB' }}>ðŸ’¡</span>
           <p className="text-sm font-medium" style={{ color: '#1E3A8A' }}>
             <strong style={{ color: '#1E3A8A' }}>Admin View:</strong> This page displays all documents that have been distributed through the organizational hierarchy. 
             You can view, download, and track who sent what, to which organizational units, and how many users received each distribution.

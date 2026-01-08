@@ -1,32 +1,28 @@
-
 import { useState ,useEffect} from 'react';
-import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, Folder, Share2, Trash2 } from 'lucide-react';
+import { Tag,LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, Folder, Share2, Trash2 } from 'lucide-react';
 import Header from './Components/Header';
 import Dashboard from './Components/Dashboard';
 import Documents from './Components/Documents';
 import Folders from './Components/Folders';
-import CustomFields from './Components/CustomFields';
 import Sidebar from './Components/Sidebar';
 import CreateFolderModal from './components/modals/CreateFolderModal';
 import MoveToFolderModal from './components/modals/MoveToFolderModal';
 import DocumentViewerModal from './components/modals/DocumentViewerModal';
 import UploadDocumentModal from './components/modals/UploadDocumentModal';
 import OCRModal from './components/modals/OCRModal';
-import AddDocumentModal from './components/modals/AddDocumentModal';
-import PersonalInfoFormModal from './components/modals/PersonalInfoFormModal';
-import SaveOptionsModal from './components/modals/SaveOptionsModal';
-import AddFieldModal from './components/modals/AddFieldModal';
-import ShareDocumentModal from './components/modals/ShareDocumentModal';
+import ShareDocumentModal from './Components/modals/ShareDocumentModal';
 import SendToOrganizationModal from "../admin/component/SendToOrganizationModal";
 import SharedDocuments from './Components/SharedDocuments';
 import RecycleBin from './Components/RecycleBin';
+import { TagManagement } from './Components/TagComponents';
+import UserChangePasswordModal from './Components/modals/UserChangePasswordModal';
 export default function UserMainFrame({ 
   currentUser = { name: 'User', role: 'User', id: 'user1' }, 
   onLogout = () => {}, 
   organizationTree,
   dataStore 
 }) {
-  
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -47,8 +43,6 @@ export default function UserMainFrame({
   const [documentToMove, setDocumentToMove] = useState(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState('blue');
-  const [customFields, setCustomFields] = useState([]);
-  const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showUploadDocumentModal, setShowUploadDocumentModal] = useState(false);
   const [showOCRModal, setShowOCRModal] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -57,41 +51,12 @@ export default function UserMainFrame({
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
   const [ocrText, setOcrText] = useState('');
   const [isProcessingOCR, setIsProcessingOCR] = useState(false);
-  const [showAddFieldModal, setShowAddFieldModal] = useState(false);
-  const [showPersonalInfoForm, setShowPersonalInfoForm] = useState(false);
-  const [showSaveOptionsModal, setShowSaveOptionsModal] = useState(false);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
   const [viewingDocument, setViewingDocument] = useState(null);
-  const [currentDocumentData, setCurrentDocumentData] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('date-desc');
   const [filterFormat, setFilterFormat] = useState('all');
    const orgTree = dataStore ? dataStore.getOrganizationTree() : (organizationTree || []);
-  const [personalInfo, setPersonalInfo] = useState({
-    fullName: '',
-    dateOfBirth: '',
-    gender: '',
-    email: '',
-    phoneNumber: '',
-    address: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    occupation: '',
-    emergencyContact: '',
-    emergencyPhone: ''
-  });
-  
-  const [newDocument, setNewDocument] = useState({
-    title: '',
-    description: '',
-    customFieldValues: {}
-  });
-const [newField, setNewField] = useState({
-  fieldName: '',
-  fieldType: 'text',
-  showInDocuments: true
-});
   const [errors, setErrors] = useState({});
   const allUsers = dataStore ? dataStore.getAllUsers() : [];
   const sharedDocuments = dataStore ? dataStore.getAllDirectShares() : [];
@@ -105,8 +70,8 @@ const [newField, setNewField] = useState({
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'documents', label: 'My Documents', icon: FileText },
   { id: 'shared', label: 'Shared Documents', icon: Share2 },
-  { id: 'folders', label: 'Folders', icon: Folder },
-  { id: 'fields', label: 'Custom Fields', icon: Settings },
+  { id: 'folders', label: 'Folders', icon: Folder },  
+  { id: 'tags', label: 'Tags', icon: Tag },
   { id: 'recycle-bin', label: 'Recycle Bin', icon: Trash2 }
 ];
   const addAuditLog = (action, resource, status = 'Success') => {
@@ -128,38 +93,6 @@ const [newField, setNewField] = useState({
     };
      if (dataStore) {
       dataStore.addAuditLog(logEntry);
-    }
-  };
- const handleAddField = () => {
-  if (!newField.fieldName.trim()) {
-    setErrors({ fieldName: 'Field name is required' });
-    return;
-  }
-  if (customFields.some(field => field.name === newField.fieldName)) {
-    setErrors({ fieldName: 'Field name already exists' });
-    return;
-  }
-  const field = {
-    id: Date.now().toString(),
-    name: newField.fieldName,
-    type: newField.fieldType,
-    showInDocuments: newField.showInDocuments !== false
-  };
-  setCustomFields([...customFields, field]);
-  setShowAddFieldModal(false);
-  setNewField({ fieldName: '', fieldType: 'text', showInDocuments: true });
-  setErrors({});
-};
-const handleToggleFieldActive = (fieldId) => {
-  setCustomFields(customFields.map(field => 
-    field.id === fieldId 
-      ? { ...field, showInDocuments: !field.showInDocuments } 
-      : field
-  ));
-};
-  const handleDeleteField = (fieldId) => {
-    if (window.confirm('Are you sure you want to delete this field? This will remove the field from all documents.')) {
-      setCustomFields(customFields.filter(field => field.id !== fieldId));
     }
   };
 
@@ -224,132 +157,7 @@ const handleToggleFieldActive = (fieldId) => {
     setShowMoveToFolderModal(true);
   };
 
-  const handleAddDocument = () => {
-    if (!newDocument.title.trim()) {
-      setErrors({ title: 'Document title is required' });
-      return;
-    }
-    setCurrentDocumentData({
-      title: newDocument.title,
-      description: newDocument.description,
-      customFieldValues: { ...newDocument.customFieldValues }
-    });
-    setShowAddDocumentModal(false);
-    setShowPersonalInfoForm(true);
-  };
 
-  const handleSavePersonalInfo = () => {
-    if (!personalInfo.fullName.trim() || !personalInfo.email.trim()) {
-      setErrors({ personalInfo: 'Full Name and Email are required' });
-      return;
-    }
-    setShowPersonalInfoForm(false);
-    setShowSaveOptionsModal(true);
-    setErrors({});
-  };
-
-  const generateDocumentContent = (title, personalInfo, customFields) => {
-    return `
-OFFICIAL DOCUMENT
-
-${title}
-
-This document contains the official records and information as submitted and verified by the Record Keeping Management System.
-
-PERSONAL INFORMATION
-────────────────────────────────────────────────────────────
-
-Full Name: ${personalInfo.fullName || 'N/A'}
-Date of Birth: ${personalInfo.dateOfBirth || 'N/A'}
-Gender: ${personalInfo.gender || 'N/A'}
-Occupation: ${personalInfo.occupation || 'N/A'}
-
-CONTACT INFORMATION
-────────────────────────────────────────────────────────────
-
-Email: ${personalInfo.email || 'N/A'}
-Phone: ${personalInfo.phoneNumber || 'N/A'}
-Address: ${personalInfo.address || 'N/A'}
-City: ${personalInfo.city || 'N/A'}
-State: ${personalInfo.state || 'N/A'}
-ZIP Code: ${personalInfo.zipCode || 'N/A'}
-
-${personalInfo.emergencyContact ? `EMERGENCY CONTACT
-────────────────────────────────────────────────────────────
-
-Contact Name: ${personalInfo.emergencyContact}
-Contact Phone: ${personalInfo.emergencyPhone || 'N/A'}
-
-` : ''}${Object.keys(customFields).length > 0 ? `ADDITIONAL INFORMATION
-────────────────────────────────────────────────────────────
-
-${Object.entries(customFields).map(([key, value]) => `${key}: ${value || 'N/A'}`).join('\n')}
-
-` : ''}
-DOCUMENT CERTIFICATION
-────────────────────────────────────────────────────────────
-
-This document has been generated and stored in the Record Keeping Management System.
-
-I hereby certify that the information provided in this document is true and accurate to the best of my knowledge.
-
-Signature: _________________________
-
-Date: _____________________________
-
-
-────────────────────────────────────────────────────────────
-Record Keeping Management System
-Generated: ${new Date().toLocaleString()}
-Document ID: ${Date.now()}
-────────────────────────────────────────────────────────────
-    `;
-  };
-  const handleFinalSave = (format) => {
-    const doc = {
-      id: Date.now().toString(),
-      title: currentDocumentData.title,
-      description: currentDocumentData.description,
-      customFieldValues: { ...currentDocumentData.customFieldValues },
-      personalInfo: { ...personalInfo },
-      format: format,
-      folderId: currentFolder,
-      content: generateDocumentContent(currentDocumentData.title, personalInfo, currentDocumentData.customFieldValues),
-      createdAt: new Date().toLocaleString(),
-      createdBy: currentUser.id 
-    };
-    
- 
-    if (dataStore) {
-      dataStore.addDocument(doc);
-      addAuditLog(
-        'Document Created',
-        `${doc.title} (${format.toUpperCase()}) - ID: ${doc.id}`,
-        'Success'
-      );
-    }
-    
-    
-    setShowSaveOptionsModal(false);
-    setNewDocument({ title: '', description: '', customFieldValues: {} });
-    setPersonalInfo({
-      fullName: '',
-      dateOfBirth: '',
-      gender: '',
-      email: '',
-      phoneNumber: '',
-      address: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      occupation: '',
-      emergencyContact: '',
-      emergencyPhone: ''
-    });
-    setCurrentDocumentData(null);
-    setErrors({});
-    alert(`Document saved as ${format.toUpperCase()}!`);
-  };
 
   
   const handleDeleteDocument = (docId) => {
@@ -515,90 +323,168 @@ const handleEmptyRecycleBin = () => {
     alert('Document created from OCR text!');
   };
 
-  const handleDocumentFileUpload = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length > 0) {
-      setUploadedDocFiles(files);
-      setCurrentPreviewIndex(0);
+ const handleDocumentFileUpload = (e) => {
+  const files = Array.from(e.target.files);
+  if (files.length > 0) {
+    setUploadedDocFiles(files);
+    setCurrentPreviewIndex(0);
+    
+    const previews = [];
+    let processedCount = 0;
+    
+    files.forEach((file, index) => {
+      const fileType = file.type;
+      const fileName = file.name.toLowerCase();
       
-      const previews = [];
-      let processedCount = 0;
+      // âœ… Check if it's an Excel file
+      const isExcel = fileName.endsWith('.xlsx') || 
+                      fileName.endsWith('.xls') || 
+                      fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+                      fileType === 'application/vnd.ms-excel';
       
-      files.forEach((file, index) => {
-        const fileType = file.type;
-        const reader = new FileReader();
-        
-        if (fileType.startsWith('image/')) {
-          reader.onload = (e) => {
-            previews[index] = {
-              type: 'image',
-              url: e.target.result,
-              fileName: file.name,
-              fileSize: (file.size / 1024).toFixed(2) + ' KB'
-            };
-            processedCount++;
-            if (processedCount === files.length) {
-              setUploadPreviews([...previews]);
-            }
-          };
-          reader.readAsDataURL(file);
-        } else if (fileType === 'application/pdf') {
-          reader.onload = (e) => {
-            previews[index] = {
-              type: 'pdf',
-              url: e.target.result,
-              fileName: file.name,
-              fileSize: (file.size / 1024).toFixed(2) + ' KB'
-            };
-            processedCount++;
-            if (processedCount === files.length) {
-              setUploadPreviews([...previews]);
-            }
-          };
-          reader.readAsDataURL(file);
-        } else if (fileType.includes('text/') || file.name.endsWith('.txt')) {
-          reader.onload = (e) => {
-            previews[index] = {
-              type: 'text',
-              content: e.target.result,
-              fileName: file.name,
-              fileSize: (file.size / 1024).toFixed(2) + ' KB'
-            };
-            processedCount++;
-            if (processedCount === files.length) {
-              setUploadPreviews([...previews]);
-            }
-          };
-          reader.readAsText(file);
-        } else {
+      const reader = new FileReader();
+      
+      if (fileType.startsWith('image/')) {
+        // Handle images
+        reader.onload = (e) => {
           previews[index] = {
-            type: 'other',
+            type: 'image',
+            url: e.target.result,
             fileName: file.name,
-            fileSize: (file.size / 1024).toFixed(2) + ' KB',
-            fileType: fileType || 'Unknown'
+            fileSize: (file.size / 1024).toFixed(2) + ' KB'
           };
           processedCount++;
           if (processedCount === files.length) {
             setUploadPreviews([...previews]);
           }
+        };
+        reader.readAsDataURL(file);
+      } else if (fileType === 'application/pdf') {
+        // Handle PDFs
+        reader.onload = (e) => {
+          previews[index] = {
+            type: 'pdf',
+            url: e.target.result,
+            fileName: file.name,
+            fileSize: (file.size / 1024).toFixed(2) + ' KB'
+          };
+          processedCount++;
+          if (processedCount === files.length) {
+            setUploadPreviews([...previews]);
+          }
+        };
+        reader.readAsDataURL(file);
+      } else if (isExcel) {
+        // âœ… Handle Excel files
+        reader.onload = async (e) => {
+          try {
+            // Import SheetJS library (if available)
+            const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs');
+            
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            previews[index] = {
+              type: 'excel',
+              url: e.target.result, // Store as base64 for upload
+              fileName: file.name,
+              fileSize: (file.size / 1024).toFixed(2) + ' KB',
+              sheets: workbook.SheetNames.length,
+              sheetNames: workbook.SheetNames
+            };
+          } catch (error) {
+            console.warn('Could not parse Excel file, storing as binary:', error);
+            // If parsing fails, just store the file data
+            previews[index] = {
+              type: 'excel',
+              url: e.target.result,
+              fileName: file.name,
+              fileSize: (file.size / 1024).toFixed(2) + ' KB'
+            };
+          }
+          
+          processedCount++;
+          if (processedCount === files.length) {
+            setUploadPreviews([...previews]);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (fileType.includes('text/') || fileName.endsWith('.txt')) {
+        // Handle text files
+        reader.onload = (e) => {
+          previews[index] = {
+            type: 'text',
+            content: e.target.result,
+            fileName: file.name,
+            fileSize: (file.size / 1024).toFixed(2) + ' KB'
+          };
+          processedCount++;
+          if (processedCount === files.length) {
+            setUploadPreviews([...previews]);
+          }
+        };
+        reader.readAsText(file);
+      } else {
+        // Handle other file types
+        previews[index] = {
+          type: 'other',
+          fileName: file.name,
+          fileSize: (file.size / 1024).toFixed(2) + ' KB',
+          fileType: fileType || 'Unknown'
+        };
+        processedCount++;
+        if (processedCount === files.length) {
+          setUploadPreviews([...previews]);
         }
-      });
-    }
-  };
+      }
+    });
+  }
+};
+const handleChangePassword = (currentPassword, newPassword) => {
+  console.log('ðŸ”’ Attempting password change for:', currentUser.id);
+  
 
-  const removeFileFromUpload = (index) => {
-    const newFiles = uploadedDocFiles.filter((_, i) => i !== index);
-    const newPreviews = uploadPreviews.filter((_, i) => i !== index);
-    setUploadedDocFiles(newFiles);
-    setUploadPreviews(newPreviews);
+  if (dataStore) {
+    const verifiedUser = dataStore.verifyUser(currentUser.id, currentPassword);
     
-    if (currentPreviewIndex >= newFiles.length && newFiles.length > 0) {
-      setCurrentPreviewIndex(newFiles.length - 1);
-    } else if (newFiles.length === 0) {
-      setCurrentPreviewIndex(0);
+    if (!verifiedUser) {
+      alert('âŒ Current password is incorrect!');
+      return;
     }
-  };
-
+    
+   
+    dataStore.updateUser(currentUser.id, {
+      password: newPassword
+    });
+    
+  
+    addAuditLog(
+      'Password Changed',
+      `User changed their own password`,
+      'Success'
+    );
+    
+  
+    setShowChangePasswordModal(false);
+    
+    
+    alert('âœ… Password changed successfully!\n\nYour password has been updated. Please use your new password when logging in next time.');
+  } else {
+    alert('âŒ Error: Unable to update password');
+  }
+};
+const removeFileFromUpload = (index) => {
+  const newFiles = uploadedDocFiles.filter((_, i) => i !== index);
+  const newPreviews = uploadPreviews.filter((_, i) => i !== index);
+  setUploadedDocFiles(newFiles);
+  setUploadPreviews(newPreviews);
+  
+  if (currentPreviewIndex >= newFiles.length && newFiles.length > 0) {
+    setCurrentPreviewIndex(newFiles.length - 1);
+  } else if (newFiles.length === 0) {
+    setCurrentPreviewIndex(0);
+  }
+};
   
   const handleUploadDocument = async () => {
     if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
@@ -614,13 +500,15 @@ const handleEmptyRecycleBin = () => {
       let format = 'other';
       if (fileExtension === 'pdf') format = 'pdf';
       else if (fileExtension === 'docx' || fileExtension === 'doc') format = 'docx';
+       else if (fileExtension === 'xlsx' || fileExtension === 'xls') format = 'excel';
       
       const reader = new FileReader();
       reader.onload = (e) => {
         const doc = {
           id: Date.now().toString() + '-' + processedCount,
           title: file.name,
-          description: 'Uploaded document',
+         description: format === 'excel' ? 'Excel Spreadsheet Document' : 'Uploaded document',
+
           customFieldValues: {},
           personalInfo: {},
           format: format,
@@ -709,12 +597,12 @@ const handleEmptyRecycleBin = () => {
   };
 
   const handleShareDocument = (shareData) => {
-  console.log('📤 Sharing document:', shareData);
+  console.log('ðŸ“¤ Sharing document:', shareData);
 
   const documentToShare = userDocuments.find(doc => doc.id === shareData.documentId);
   
   if (!documentToShare) {
-    alert('❌ Error: Document not found');
+    alert('âŒ Error: Document not found');
     return;
   }
 
@@ -728,7 +616,7 @@ const handleEmptyRecycleBin = () => {
     message: shareData.message,
     sharedAt: shareData.sharedAt
   };
-  console.log('✅ Created share object:', newShare);
+  console.log('âœ… Created share object:', newShare);
   if (dataStore) {
     dataStore.addDirectShare(newShare);
     
@@ -745,19 +633,19 @@ const handleEmptyRecycleBin = () => {
       'Success'
     );
 
-    console.log('✅ Share saved to DataStore');
+    console.log('âœ… Share saved to DataStore');
   } else {
-    console.error('❌ DataStore not available');
+    console.error('âŒ DataStore not available');
   }
 
-  alert(`✅ Document "${documentToShare.title}" successfully shared with ${shareData.sharedWith.length} user(s)!`);
+  alert(`âœ… Document "${documentToShare.title}" successfully shared with ${shareData.sharedWith.length} user(s)!`);
   setShowShareModal(false);
   setDocumentToShare(null);
 };
 
 
   const openShareModal = (doc) => {
-  console.log('📂 Opening share modal for:', doc.title);
+  console.log('ðŸ“‚ Opening share modal for:', doc.title);
   setDocumentToShare(doc);
   setShowShareModal(true);
 };  
@@ -780,7 +668,7 @@ const handleEmptyRecycleBin = () => {
       );
     }
 
-    alert('✅ Share removed successfully!');
+    alert('âœ… Share removed successfully!');
   }
 };
 
@@ -788,17 +676,17 @@ const handleEmptyRecycleBin = () => {
 
   
  const handleSendToOrganization = (doc) => {
-  console.log('🏢 Opening organization share modal for:', doc.title);
+  console.log('ðŸ¢ Opening organization share modal for:', doc.title);
   setSelectedDocForOrgShare(doc);
   setShowSendToOrgModal(true);
 };
 const handleConfirmSendToOrganization = (shareData) => {
-  console.log('🏢 Sending to organization:', shareData);
+  console.log('ðŸ¢ Sending to organization:', shareData);
 
   const documentToShare = userDocuments.find(d => d.id === shareData.documentId);
   
   if (!documentToShare) {
-    alert('❌ Error: Document not found');
+    alert('âŒ Error: Document not found');
     return;
   }
 
@@ -815,7 +703,7 @@ const handleConfirmSendToOrganization = (shareData) => {
     sentAt: shareData.sentAt
   };
 
-  console.log('✅ Created org share:', newShare);
+  console.log('âœ… Created org share:', newShare);
   if (dataStore) {
     dataStore.addOrgShare(newShare);
     addAuditLog(
@@ -824,18 +712,18 @@ const handleConfirmSendToOrganization = (shareData) => {
       'Success'
     );
 
-    console.log('✅ Org share saved to DataStore');
+    console.log('âœ… Org share saved to DataStore');
   } else {
-    console.error('❌ DataStore not available');
+    console.error('âŒ DataStore not available');
   }
-  alert(`✅ Document "${documentToShare.title}" successfully sent to ${shareData.recipients.length} user(s) in your organization!`);
+  alert(`âœ… Document "${documentToShare.title}" successfully sent to ${shareData.recipients.length} user(s) in your organization!`);
 
   setShowSendToOrgModal(false);
   setSelectedDocForOrgShare(null);
 };
 const handleSaveToMyDocuments = (document, source) => {
   if (!document) {
-    alert('❌ Invalid document');
+    alert('âŒ Invalid document');
     return;
   }
   const existingDoc = userDocuments.find(doc => 
@@ -860,7 +748,7 @@ const handleSaveToMyDocuments = (document, source) => {
     folderId: null
   };
 
-  console.log('💾 Saving shared document:', savedDoc);
+  console.log('ðŸ’¾ Saving shared document:', savedDoc);
   if (dataStore) {
     dataStore.addDocument(savedDoc);
     addAuditLog(
@@ -869,10 +757,10 @@ const handleSaveToMyDocuments = (document, source) => {
       'Success'
     );
     
-    console.log('✅ Document saved to My Documents');
+    console.log('âœ… Document saved to My Documents');
     
     const goToMyDocs = window.confirm(
-      `✅ Document "${document.title}" has been saved to your "My Documents"!\n\nWould you like to go to My Documents now?`
+      `âœ… Document "${document.title}" has been saved to your "My Documents"!\n\nWould you like to go to My Documents now?`
     );
     
     if (goToMyDocs) {
@@ -880,10 +768,12 @@ const handleSaveToMyDocuments = (document, source) => {
       setCurrentFolder(null);
     }
   } else {
-    console.error('❌ DataStore not available');
-    alert('❌ Error: Could not save document');
+    console.error('âŒ DataStore not available');
+    alert('âŒ Error: Could not save document');
   }
 };
+
+
   return (
     <div className="flex h-screen bg-gray-100">
       <CreateFolderModal
@@ -950,57 +840,12 @@ const handleSaveToMyDocuments = (document, source) => {
         onUseOCRText={handleUseOCRText}
       />
 
-      <PersonalInfoFormModal
-        show={showPersonalInfoForm}
-        onClose={() => { 
-          setShowPersonalInfoForm(false); 
-          setPersonalInfo({
-            fullName: '', dateOfBirth: '', gender: '', email: '', phoneNumber: '',
-            address: '', city: '', state: '', zipCode: '', occupation: '',
-            emergencyContact: '', emergencyPhone: ''
-          }); 
-        }}
-        personalInfo={personalInfo}
-        setPersonalInfo={setPersonalInfo}
-        errors={errors}
-        onSave={handleSavePersonalInfo}
-        onBack={() => { setShowPersonalInfoForm(false); setShowAddDocumentModal(true); }}
-      />
-
-      <SaveOptionsModal
-        show={showSaveOptionsModal}
-        onClose={() => { setShowSaveOptionsModal(false); setShowPersonalInfoForm(true); }}
-        onSave={handleFinalSave}
-      />
-
-      <AddFieldModal
-        show={showAddFieldModal}
-        onClose={() => { 
-          setShowAddFieldModal(false); 
-          setErrors({}); 
-          setNewField({ fieldName: '', fieldType: 'text', showInDocuments: true }); 
-          
-        }}
-        newField={newField}
-        setNewField={setNewField}
-        errors={errors}
-        onAddField={handleAddField}
-      />
-
-      <AddDocumentModal
-        show={showAddDocumentModal}
-        onClose={() => { 
-          setShowAddDocumentModal(false); 
-          setErrors({}); 
-          setNewDocument({ title: '', description: '', customFieldValues: {} }); 
-        }}
-        newDocument={newDocument}
-        setNewDocument={setNewDocument}
-        customFields={customFields}
-        errors={errors}
-        onAddDocument={handleAddDocument}
-      />
-
+     <UserChangePasswordModal
+     show={showChangePasswordModal}
+     onClose={() => setShowChangePasswordModal(false)}
+     currentUser={currentUser}
+     onChangePassword={handleChangePassword}
+     />
       <ShareDocumentModal
         show={showShareModal}
         onClose={() => {
@@ -1044,6 +889,7 @@ const handleSaveToMyDocuments = (document, source) => {
           showSettingsMenu={showSettingsMenu}
           setShowSettingsMenu={setShowSettingsMenu}
           onLogout={onLogout}
+          onChangePassword={() => setShowChangePasswordModal(true)}
         />
 
         <div className="flex-1 overflow-auto p-6">
@@ -1069,8 +915,7 @@ const handleSaveToMyDocuments = (document, source) => {
               sortBy={sortBy}
               setSortBy={setSortBy}
               setShowUploadDocumentModal={setShowUploadDocumentModal}
-              setShowOCRModal={setShowOCRModal}
-              setShowAddDocumentModal={setShowAddDocumentModal}
+              setShowOCRModal={setShowOCRModal} 
               onOpenDocument={handleOpenDocument}
               onDeleteDocument={handleDeleteDocument}
               onDownloadDocument={handleDownloadDocument}
@@ -1101,14 +946,10 @@ const handleSaveToMyDocuments = (document, source) => {
               setCurrentFolder={setCurrentFolder}
               setActiveSection={setActiveSection}
             />
+            
           )}
-          {activeSection === 'fields' && (
-            <CustomFields
-              customFields={customFields}
-              setShowAddFieldModal={setShowAddFieldModal}
-              onDeleteField={handleDeleteField}
-              onToggleFieldActive={handleToggleFieldActive}
-            />
+          {activeSection === 'tags' && (
+           <TagManagement dataStore={dataStore} />
           )}
           {activeSection === 'recycle-bin' && (
            <RecycleBin
@@ -1124,3 +965,5 @@ const handleSaveToMyDocuments = (document, source) => {
     </div>
   );
 }
+
+
