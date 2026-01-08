@@ -34,7 +34,7 @@ export default function AdminDocuments({ documentList }) {
                 <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded">{doc.type}</span>
               </div>
               <h3 className="font-semibold text-gray-800 mb-1 truncate">{doc.name}</h3>
-              <p className="text-sm text-gray-500 mb-2">{doc.size} • {doc.date}</p>
+              <p className="text-sm text-gray-500 mb-2">{doc.size} â€¢ {doc.date}</p>
               <div className="flex gap-2">
                 <button className="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200">View</button>
                 <button className="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200">Download</button>

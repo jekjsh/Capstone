@@ -1,6 +1,9 @@
-
-import { X, Edit, Trash2, Key } from 'lucide-react';
+import { X, Edit, Trash2, Key, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
+
+const generateDefaultPassword = (lastName) => {
+  return lastName.toUpperCase();
+};
 
 export function UserActionMenu({ 
   openMenuUserId, 
@@ -39,7 +42,7 @@ export function UserActionMenu({
           className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors text-left"
         >
           <Key className="w-4 h-4 text-green-600" />
-          <span>Edit Password</span>
+          <span>Change Password</span>
         </button>
         <div className="border-t border-gray-200 my-1"></div>
         <button
@@ -53,7 +56,6 @@ export function UserActionMenu({
     </div>
   );
 }
-
 
 export function AdminVerificationModal({
   showAdminVerificationModal,
@@ -153,23 +155,40 @@ export function AddUserModal({
   userList,
   organizationTree,
   renderOrgUnitOptions,
-   dataStore
+  dataStore,
+  isSystemAdmin = false  // ✅ NEW: Flag to restrict to User role only
 }) {
- 
-   const [currentFormat, setCurrentFormat] = useState(null);
-    useEffect(() => {
+  const [currentFormat, setCurrentFormat] = useState(null);
+  
+  useEffect(() => {
     if (showAddUserModal && dataStore) {
       const format = dataStore.getUserIdFormat ? dataStore.getUserIdFormat() : null;
       setCurrentFormat(format);
     }
   }, [showAddUserModal, dataStore, newUser.role]);
-   if (!showAddUserModal) return null;
- const getPlaceholder = () => {
+  
+  if (!showAddUserModal) return null;
+
+  const getPlaceholder = () => {
     if (currentFormat) {
-      if (currentFormat.format.customFormat) {
-        return newUser.role === 'Admin' ? currentFormat.customPattern.admin : currentFormat.customPattern.user;
+      // ✅ FIXED: Handle System Admin (*), Admin (_), and User (-) separately
+      let separator;
+      let pattern;
+      
+      if (newUser.role === 'System Admin') {
+        separator = currentFormat.format.systemAdminSeparator || '*';
+        pattern = currentFormat.customPattern?.systemAdmin;
+      } else if (newUser.role === 'Admin') {
+        separator = currentFormat.format.adminSeparator || '_';
+        pattern = currentFormat.customPattern?.admin;
       } else {
-        const separator = newUser.role === 'Admin' ? currentFormat.format.adminSeparator : currentFormat.format.userSeparator;
+        separator = currentFormat.format.userSeparator || '-';
+        pattern = currentFormat.customPattern?.user;
+      }
+      
+      if (currentFormat.format.customFormat) {
+        return pattern;
+      } else {
         let id = currentFormat.format.prefix;
         for (let i = 0; i < currentFormat.format.segmentCount; i++) {
           id += separator + 'X'.repeat(currentFormat.format.segmentLength[i] || 2);
@@ -177,22 +196,48 @@ export function AddUserModal({
         return `e.g., ${id}`;
       }
     }
-    return newUser.role === 'Admin' ? 'e.g., TUPM_01_0001' : 'e.g., TUPM-01-0001';
+    // ✅ FIXED: Different separators for System Admin (*), Admin (_), and User (-)
+    if (newUser.role === 'System Admin') {
+      return 'e.g., TUPM*01*0001';
+    } else if (newUser.role === 'Admin') {
+      return 'e.g., TUPM_01_0001';
+    } else {
+      return 'e.g., TUPM-01-0001';
+    }
   };
 
   const getFormatHint = () => {
     if (currentFormat) {
-      if (currentFormat.format.customFormat) {
-        return `🔹 Pattern: ${newUser.role === 'Admin' ? currentFormat.customPattern.admin : currentFormat.customPattern.user}`;
+      // ✅ FIXED: Handle System Admin (*), Admin (_), and User (-) differently
+      let separator;
+      let pattern;
+      
+      if (newUser.role === 'System Admin') {
+        separator = currentFormat.format.systemAdminSeparator || '*';
+        pattern = currentFormat.customPattern?.systemAdmin;
+      } else if (newUser.role === 'Admin') {
+        separator = currentFormat.format.adminSeparator || '_';
+        pattern = currentFormat.customPattern?.admin;
       } else {
-        const separator = newUser.role === 'Admin' ? currentFormat.format.adminSeparator : currentFormat.format.userSeparator;
-        const sepName = separator === '_' ? 'underscores' : separator === '-' ? 'hyphens' : separator === '.' ? 'dots' : 'no separator';
+        separator = currentFormat.format.userSeparator || '-';
+        pattern = currentFormat.customPattern?.user;
+      }
+      
+      if (currentFormat.format.customFormat) {
+        return `🔹 Pattern: ${pattern}`;
+      } else {
+        const sepName = separator === '_' ? 'underscores' : separator === '-' ? 'hyphens' : separator === '.' ? 'dots' : separator === '*' ? 'asterisks' : 'custom separator';
         return `🔹 ${currentFormat.format.prefix} with ${sepName}, ${currentFormat.format.segmentCount} segment(s)`;
       }
     }
-    return newUser.role === 'Admin' 
-      ? '🔹 Admin format: TUPM_XX_XXXX (with underscores, XX must be numbers)' 
-      : '🔹 User format: TUPM-XX-XXXX (with hyphens, XX must be numbers)';
+    // ✅ FIXED: Different formats for each role
+    if (newUser.role === 'System Admin') {
+      return '🔹 Format: TUPM*XX*XXXX';
+    } else if (newUser.role === 'Admin') {
+      return '🔹 Format: TUPM_XX_XXXX';
+    } else {
+      return '🔹 Format: TUPM-XX-XXXX';
+    }
   };
 
   return (
@@ -232,43 +277,63 @@ export function AddUserModal({
               </p>
             </div>
           ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">User ID *</label>
-              <div className="relative">
-                <input 
-                  type="text" 
-                  value={newUser.userId} 
-                  onChange={(e) => handleUserIdChange(e.target.value)} 
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                    errors.userId ? 'border-red-500 focus:ring-red-500' : 
-                    userIdFormatValid === true ? 'border-green-500 focus:ring-green-500' :
-                    userIdFormatValid === false ? 'border-red-500 focus:ring-red-500' :
-                    'border-gray-300 focus:ring-indigo-500'
-                  }`} 
-                placeholder={getPlaceholder()}
-                />
-                {userIdFormatValid === true && (
-                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 font-bold">✓</span>
-                )}
-                {userIdFormatValid === false && (
-                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 font-bold">✗</span>
-                )}
+            <>
+              {/* ✅ Default Password Info Banner */}
+              <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Key className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-green-800">Default Password System</p>
+                    <p className="text-xs text-green-700 mt-1">
+                      New users will automatically receive a default password: <strong>LASTNAME</strong> (all uppercase)
+                    </p>
+                    {newUser.lastName && (
+                      <p className="text-xs text-green-600 mt-2 font-mono bg-white px-2 py-1 rounded inline-block">
+                        Default password will be: <strong>{generateDefaultPassword(newUser.lastName)}</strong>
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
-              {errors.userId && <p className="mt-1 text-sm text-red-500">{errors.userId}</p>}
-              {userIdFormatValid === false && !errors.userId && (
-                 <p className="mt-1 text-sm text-red-500">
-                  ⚠️ Invalid format! Expected: {getPlaceholder()}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">User ID *</label>
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={newUser.userId || ""} 
+                    onChange={(e) => handleUserIdChange(e.target.value)} 
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                      errors.userId ? 'border-red-500 focus:ring-red-500' : 
+                      userIdFormatValid === true ? 'border-green-500 focus:ring-green-500' :
+                      userIdFormatValid === false ? 'border-red-500 focus:ring-red-500' :
+                      'border-gray-300 focus:ring-indigo-500'
+                    }`} 
+                    placeholder={getPlaceholder()}
+                  />
+                  {userIdFormatValid === true && (
+                    <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 font-bold">✓</span>
+                  )}
+                  {userIdFormatValid === false && (
+                    <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 font-bold">✗</span>
+                  )}
+                </div>
+                {errors.userId && <p className="mt-1 text-sm text-red-500">{errors.userId}</p>}
+                {userIdFormatValid === false && !errors.userId && (
+                  <p className="mt-1 text-sm text-red-500">
+                    ⚠️ Invalid format! Expected: {getPlaceholder()}
+                  </p>
+                )}
+                {userIdFormatValid === true && (
+                  <p className="mt-1 text-sm text-green-600">
+                    ✓ Format is correct!
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  {getFormatHint()}
                 </p>
-              )}
-              {userIdFormatValid === true && (
-                <p className="mt-1 text-sm text-green-600">
-                  ✓ Format is correct!
-                </p>
-              )}
-               <p className="mt-1 text-xs text-gray-500">
-                {getFormatHint()}  {/* DYNAMIC HINT */}
-              </p>
-            </div>
+              </div>
+            </>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -282,7 +347,7 @@ export function AddUserModal({
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   errors.firstName ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
                 }`}
-                placeholder="e.g., John"
+                placeholder="e.g., Juan"
               />
               {errors.firstName && <p className="mt-1 text-sm text-red-500">{errors.firstName}</p>}
             </div>
@@ -297,7 +362,7 @@ export function AddUserModal({
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   errors.lastName ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
                 }`}
-                placeholder="e.g., Doe"
+                placeholder="e.g., Dela Cruz"
               />
               {errors.lastName && <p className="mt-1 text-sm text-red-500">{errors.lastName}</p>}
             </div>
@@ -312,7 +377,7 @@ export function AddUserModal({
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   errors.email ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
                 }`}
-                placeholder="e.g., john.doe@example.com"
+                placeholder="e.g., john.delacruz@example.com"
               />
               {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
             </div>
@@ -321,20 +386,39 @@ export function AddUserModal({
             {!editingUserId && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Role *</label>
-                <select 
-                  value={newUser.role} 
-                  onChange={(e) => { 
-                    setNewUser({ ...newUser, role: e.target.value, userId: '' }); 
-                    setUserIdFormatValid(null); 
-                  }} 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="User">User</option>
-                  <option value="Admin">Admin</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  Changing role will clear the User ID field
-                </p>
+                {isSystemAdmin ? (
+                  // ✅ System Admin can only create Users
+                  <div>
+                    <input
+                      type="text"
+                      value="User"
+                      disabled
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
+                    />
+                    <p className="mt-1 text-xs text-orange-600 font-medium">
+                      ⚠️ System Admins can only create User accounts (not Admin accounts)
+                    </p>
+                  </div>
+                ) : (
+                  // ✅ Regular Admin can create Users, Admins, and System Admins
+                  <>
+                    <select 
+                      value={newUser.role} 
+                      onChange={(e) => { 
+                        setNewUser({ ...newUser, role: e.target.value, userId: '' }); 
+                        setUserIdFormatValid(null); 
+                      }} 
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="User">User</option>
+                      <option value="Admin">Admin</option>
+                      <option value="System Admin">System Admin</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Changing role will clear the User ID field
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -404,7 +488,7 @@ export function AddUserModal({
             disabled={!editingUserId && userIdFormatValid !== true}
             className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {editingUserId ? 'Update User' : 'Next: Set Password'}
+            {editingUserId ? 'Update User' : 'Create User'}
           </button>
         </div>
         {!editingUserId && userIdFormatValid !== true && newUser.userId && (
@@ -417,131 +501,7 @@ export function AddUserModal({
   );
 }
 
-
-export function PasswordModal({
-  showPasswordModal,
-  showEditPasswordModal,
-  setShowPasswordModal,
-  setShowAddUserModal,
-  tempUserData,
-  passwordData,
-  setPasswordData,
-  errors,
-  setErrors,
-  handleSaveUser
-}) {
-  if (!showPasswordModal || showEditPasswordModal) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Set Password</h2>
-          <button 
-            onClick={() => {
-              setShowPasswordModal(false);
-              setShowAddUserModal(true);
-              setErrors({});
-            }}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-          <p className="text-sm text-gray-700">
-            <span className="font-semibold">Creating account for:</span>
-          </p>
-          {/* Display First + Last Name */}
-          <p className="text-sm text-gray-900 font-medium">
-            {tempUserData?.firstName} {tempUserData?.lastName}
-          </p>
-          <p className="text-xs text-gray-600">{tempUserData?.userId}</p>
-          <p className="text-xs text-gray-600 mt-1">{tempUserData?.email}</p>
-          <p className="text-xs text-gray-600 mt-2">Role: {tempUserData?.role}</p>
-        </div>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-            <input
-              type="password"
-              value={passwordData.password}
-              onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.password ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="Enter password"
-            />
-            {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
-            <div className="mt-2 text-xs text-gray-600">
-              <p className="font-semibold mb-1">Password must contain:</p>
-              <ul className="list-disc list-inside space-y-1">
-                <li className={passwordData.password.length >= 8 ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 8 characters
-                </li>
-                <li className={/[A-Z]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 uppercase letter (A-Z)
-                </li>
-                <li className={/[a-z]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 lowercase letter (a-z)
-                </li>
-                <li className={/[0-9]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 digit (0-9)
-                </li>
-                <li className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 symbol (!@#$%^&*...)
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
-            <input
-              type="password"
-              value={passwordData.confirmPassword}
-              onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.confirmPassword ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="Re-enter password"
-            />
-            {errors.confirmPassword && <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>}
-          </div>
-        </div>
-
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={() => {
-              setShowPasswordModal(false);
-              setShowAddUserModal(true);
-              setErrors({});
-            }}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Back
-          </button>
-          <button
-            onClick={handleSaveUser}
-            disabled={!passwordData.password || !passwordData.confirmPassword || 
-              passwordData.password.length < 8 || 
-              !/[A-Z]/.test(passwordData.password) || 
-              !/[a-z]/.test(passwordData.password) || 
-              !/[0-9]/.test(passwordData.password) || 
-              !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password) ||
-              passwordData.password !== passwordData.confirmPassword
-            }
-            className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Create User
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// ✅ Removed PasswordModal completely - no longer needed
 
 export function EditPasswordModal({
   showEditPasswordModal,
@@ -556,7 +516,19 @@ export function EditPasswordModal({
   setErrors,
   handleSaveUser
 }) {
+  const [useCustomPassword, setUseCustomPassword] = useState(false);
+  
   if (!showEditPasswordModal || showAdminVerificationModal) return null;
+
+  const user = userList.find(u => u.id === editingUserId);
+  const defaultPassword = user ? generateDefaultPassword(user.lastName) : '';
+
+  const handleResetToDefault = () => {
+    if (window.confirm(`Reset password to default (${defaultPassword})?`)) {
+      setPasswordData({ password: defaultPassword, confirmPassword: defaultPassword });
+      setUseCustomPassword(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -569,6 +541,7 @@ export function EditPasswordModal({
               setEditingUserId(null);
               setPasswordData({ password: '', confirmPassword: '' });
               setErrors({});
+              setUseCustomPassword(false);
             }}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -581,44 +554,51 @@ export function EditPasswordModal({
             <span className="font-semibold">Changing password for:</span>
           </p>
           <p className="text-sm text-gray-900 font-medium">
-            {userList.find(u => u.id === editingUserId)?.name}
+            {user?.firstName} {user?.lastName}
           </p>
           <p className="text-xs text-gray-600">{editingUserId}</p>
         </div>
-        
+
+        {/* ✅ Reset to Default Option */}
+        <div className="mb-6">
+          <button
+            onClick={handleResetToDefault}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg font-medium"
+          >
+            <RefreshCw className="w-5 h-5" />
+            Reset to Default Password ({defaultPassword})
+          </button>
+          <p className="text-xs text-center text-gray-500 mt-2">
+            Click to reset password to: <strong className="font-mono">{defaultPassword}</strong>
+          </p>
+        </div>
+
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-300"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">OR set custom password</span>
+          </div>
+        </div>
+
+        {/* ✅ Custom Password Option - NO VALIDATION */}
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">New Password</label>
             <input
               type="password"
               value={passwordData.password}
-              onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
+              onChange={(e) => {
+                setPasswordData({ ...passwordData, password: e.target.value });
+                setUseCustomPassword(true);
+              }}
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                 errors.password ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
               }`}
               placeholder="Enter new password"
             />
             {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
-            <div className="mt-2 text-xs text-gray-600">
-              <p className="font-semibold mb-1">Password must contain:</p>
-              <ul className="list-disc list-inside space-y-1">
-                <li className={passwordData.password.length >= 8 ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 8 characters
-                </li>
-                <li className={/[A-Z]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 uppercase letter (A-Z)
-                </li>
-                <li className={/[a-z]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 lowercase letter (a-z)
-                </li>
-                <li className={/[0-9]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 digit (0-9)
-                </li>
-                <li className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 symbol (!@#$%^&*...)
-                </li>
-              </ul>
-            </div>
           </div>
 
           <div>
@@ -643,6 +623,7 @@ export function EditPasswordModal({
               setEditingUserId(null);
               setPasswordData({ password: '', confirmPassword: '' });
               setErrors({});
+              setUseCustomPassword(false);
             }}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
@@ -650,14 +631,7 @@ export function EditPasswordModal({
           </button>
           <button
             onClick={handleSaveUser}
-            disabled={!passwordData.password || !passwordData.confirmPassword || 
-              passwordData.password.length < 8 || 
-              !/[A-Z]/.test(passwordData.password) || 
-              !/[a-z]/.test(passwordData.password) || 
-              !/[0-9]/.test(passwordData.password) || 
-              !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password) ||
-              passwordData.password !== passwordData.confirmPassword
-            }
+            disabled={!passwordData.password || !passwordData.confirmPassword || passwordData.password !== passwordData.confirmPassword}
             className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Update Password

@@ -52,60 +52,70 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
     return null;
   };
 
-  const handleSubmit = () => {
-    if (validateForm()) {
-      setIsLoading(true);
-      setTimeout(() => {
-        setIsLoading(false);
+const handleSubmit = () => {
+  if (validateForm()) {
+    setIsLoading(true);
+    setTimeout(() => {
+      setIsLoading(false);
+      
+      // âœ… UNIFIED USER VERIFICATION - Works for all user types
+      if (dataStore) {
+        const verifiedUser = dataStore.verifyUser(userId, password);
         
-        const userType = determineUserType(userId);
-
-        if (!userType) {
-          setErrors({ password: 'Invalid User ID format' });
-          return;
-        }
-
-        if (dataStore) {
-          const verifiedUser = dataStore.verifyUser(userId, password);
+        if (verifiedUser) {
+          // Determine user type based on ID format
+          let userType;
           
-          if (verifiedUser) {
-            onLoginSuccess({
-              ...verifiedUser,
-              userType: userType,
-              name: `${verifiedUser.firstName} ${verifiedUser.lastName}`
-            });
-            return;
+          if (/^TUPM\*\d{2}\*\d{4}$/.test(userId)) {
+            userType = 'system-admin';
+          } else if (userId.includes('_')) {
+            userType = 'admin';
+          } else if (userId.includes('-')) {
+            userType = 'user';
+          } else {
+            userType = dataStore.determineUserType(userId);
           }
-        }
-
-        if (userType === 'admin' && userId === 'TUPM_01_0001' && password === 'admin123') {
+          
           onLoginSuccess({
-            id: userId,
-            name: 'Administrator',
-            role: 'Admin',
-            userType: 'admin'
+            ...verifiedUser,
+            userType: userType,
+            name: `${verifiedUser.firstName} ${verifiedUser.lastName}`
           });
           return;
         }
+      }
 
-        if (userType === 'user' && userId === 'TUPM-01-0001' && password === 'User@123') {
-          onLoginSuccess({
-            id: userId,
-            name: 'John Demo User',
-            role: 'User',
-            jobTitle: 'Professor',
-            organizationUnitId: null,
-            organizationPosition: 'Faculty Member',
-            status: 'Active',
-            userType: 'user'
-          });
-          return;
-        }
-        
-        setErrors({ password: 'Invalid User ID or Password' });
-      }, 1500);
-    }
-  };
+      // âœ… Demo credentials ONLY for Admin and User (for testing)
+      const userType = determineUserType(userId);
+      
+      if (userType === 'admin' && userId === 'TUPM_01_0001' && password === 'admin123') {
+        onLoginSuccess({
+          id: userId,
+          name: 'Administrator',
+          role: 'Admin',
+          userType: 'admin'
+        });
+        return;
+      }
+
+      if (userType === 'user' && userId === 'TUPM-01-0001' && password === 'User@123') {
+        onLoginSuccess({
+          id: userId,
+          name: 'John Demo User',
+          role: 'User',
+          jobTitle: 'Professor',
+          organizationUnitId: null,
+          organizationPosition: 'Faculty Member',
+          status: 'Active',
+          userType: 'user'
+        });
+        return;
+      }
+      
+      setErrors({ password: 'Invalid User ID or Password' });
+    }, 1500);
+  }
+};
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
@@ -211,7 +221,7 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
                     ? 'border-red-500 focus:ring-red-500'
                     : 'border-gray-300'
                 }`}
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
               />
               <button
                 type="button"

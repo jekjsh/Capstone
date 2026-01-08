@@ -1,4 +1,3 @@
-
 import { Folder, FolderPlus, FolderOpen, Trash2 } from 'lucide-react';
 
 export default function Folders({ folders, getFolderDocumentCount, setShowCreateFolderModal, onDeleteFolder, setCurrentFolder, setActiveSection }) {
@@ -78,7 +77,7 @@ export default function Folders({ folders, getFolderDocumentCount, setShowCreate
 
     <div className="border-l-4 border-blue-500 p-4 rounded" style={{ backgroundColor: '#EFF6FF' }}>
         <div className="flex items-start gap-2">
-          <span className="font-bold text-lg" style={{ color: '#2563EB' }}>💡</span>
+          <span className="font-bold text-lg" style={{ color: '#2563EB' }}>ðŸ’¡</span>
           <p className="text-sm font-medium" style={{ color: '#1E3A8A' }}>
             <strong style={{ color: '#1E3A8A' }}>Tip:</strong> Create folders to organize your documents by category, project, or any system that works for you. Click on a folder to view its documents.
         </p>

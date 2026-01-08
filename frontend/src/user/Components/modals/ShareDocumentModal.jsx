@@ -1,4 +1,4 @@
-import { X, Share2, Users, Eye, Edit, Trash2 } from 'lucide-react';
+import { X, Share2, Users, Eye } from 'lucide-react';
 import { useState } from 'react';
 
 export default function ShareDocumentModal({ 
@@ -10,16 +10,14 @@ export default function ShareDocumentModal({
   onShareDocument 
 }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [sharePermission, setSharePermission] = useState('view');
   const [shareMessage, setShareMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   if (!show || !document) return null;
 
-  // Filter users (exclude current user)
+
   const availableUsers = allUsers.filter(user => user.id !== currentUser.id);
-  
-  // Filter based on search
+
   const filteredUsers = availableUsers.filter(user => 
     user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.email?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -42,27 +40,17 @@ export default function ShareDocumentModal({
     onShareDocument({
       documentId: document.id,
       sharedWith: selectedUsers,
-      permission: sharePermission,
+      permission: 'view', 
       message: shareMessage,
       sharedBy: currentUser.id,
       sharedAt: new Date().toLocaleString()
     });
 
-    // Reset form
+
     setSelectedUsers([]);
-    setSharePermission('view');
     setShareMessage('');
     setSearchQuery('');
     onClose();
-  };
-
-  const getPermissionIcon = (permission) => {
-    switch(permission) {
-      case 'view': return <Eye className="w-4 h-4" />;
-      case 'edit': return <Edit className="w-4 h-4" />;
-      case 'full': return <Trash2 className="w-4 h-4" />;
-      default: return <Eye className="w-4 h-4" />;
-    }
   };
 
   return (
@@ -84,46 +72,16 @@ export default function ShareDocumentModal({
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Permission Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Access Permission</label>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                onClick={() => setSharePermission('view')}
-                className={`p-4 border-2 rounded-lg transition-all ${
-                  sharePermission === 'view' 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Eye className={`w-6 h-6 mx-auto mb-2 ${sharePermission === 'view' ? 'text-blue-600' : 'text-gray-400'}`} />
-                <p className={`font-semibold text-sm ${sharePermission === 'view' ? 'text-blue-600' : 'text-gray-700'}`}>View Only</p>
-                <p className="text-xs text-gray-500 mt-1">Can only view</p>
-              </button>
-              <button
-                onClick={() => setSharePermission('edit')}
-                className={`p-4 border-2 rounded-lg transition-all ${
-                  sharePermission === 'edit' 
-                    ? 'border-green-500 bg-green-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Edit className={`w-6 h-6 mx-auto mb-2 ${sharePermission === 'edit' ? 'text-green-600' : 'text-gray-400'}`} />
-                <p className={`font-semibold text-sm ${sharePermission === 'edit' ? 'text-green-600' : 'text-gray-700'}`}>Can Edit</p>
-                <p className="text-xs text-gray-500 mt-1">Can view & edit</p>
-              </button>
-              <button
-                onClick={() => setSharePermission('full')}
-                className={`p-4 border-2 rounded-lg transition-all ${
-                  sharePermission === 'full' 
-                    ? 'border-purple-500 bg-purple-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Users className={`w-6 h-6 mx-auto mb-2 ${sharePermission === 'full' ? 'text-purple-600' : 'text-gray-400'}`} />
-                <p className={`font-semibold text-sm ${sharePermission === 'full' ? 'text-purple-600' : 'text-gray-700'}`}>Full Access</p>
-                <p className="text-xs text-gray-500 mt-1">View, edit & delete</p>
-              </button>
+          {/* Permission Info - View Only */}
+          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+            <div className="flex items-center gap-3">
+              <Eye className="w-6 h-6 text-blue-600" />
+              <div>
+                <p className="font-semibold text-blue-800">View Only Access</p>
+                <p className="text-sm text-blue-600 mt-1">
+                  Recipients will be able to view this document.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -188,8 +146,8 @@ export default function ShareDocumentModal({
                       </div>
                       {selectedUsers.includes(user.id) && (
                         <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                          {getPermissionIcon(sharePermission)}
-                          <span className="capitalize">{sharePermission}</span>
+                          <Eye className="w-3 h-3" />
+                          <span>View Only</span>
                         </div>
                       )}
                     </label>
@@ -203,7 +161,7 @@ export default function ShareDocumentModal({
           {selectedUsers.length > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm font-medium text-blue-800 mb-2">
-                Sharing with {selectedUsers.length} user{selectedUsers.length > 1 ? 's' : ''}:
+                Sharing with {selectedUsers.length} user{selectedUsers.length > 1 ? 's' : ''} (View Only):
               </p>
               <div className="flex flex-wrap gap-2">
                 {selectedUsers.map(userId => {

@@ -1,6 +1,14 @@
-import { Bell, Settings, LogOut } from 'lucide-react';
+import { Bell, Settings, LogOut, Key } from 'lucide-react';
 
-export default function Header({ activeSection, menuItems, currentUser, showSettingsMenu, setShowSettingsMenu, onLogout }) {
+export default function Header({ 
+  activeSection, 
+  menuItems, 
+  currentUser, 
+  showSettingsMenu, 
+  setShowSettingsMenu, 
+  onLogout,
+  onChangePassword
+}) {
   return (
     <div className="bg-white shadow-sm px-6 py-4 flex items-center justify-between">
       <h1 className="text-2xl font-bold text-gray-800">
@@ -21,7 +29,21 @@ export default function Header({ activeSection, menuItems, currentUser, showSett
           {showSettingsMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowSettingsMenu(false)} />
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                {/* âœ… Change Password Button */}
+                <button
+                  onClick={() => {
+                    setShowSettingsMenu(false);
+                    onChangePassword();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Key className="w-4 h-4 text-blue-600" />
+                  <span>Change Password</span>
+                </button>
+                
+                <div className="border-t border-gray-200 my-1"></div>
+                
                 <button
                   onClick={onLogout}
                   className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
