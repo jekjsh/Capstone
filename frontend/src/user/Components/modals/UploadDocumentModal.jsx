@@ -1,4 +1,6 @@
 import { X, Upload, FileText, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TagInput } from '../../Components/TagComponents';
 
 export default function UploadDocumentModal({ 
   show, 
@@ -9,8 +11,18 @@ export default function UploadDocumentModal({
   setCurrentPreviewIndex,
   onFileUpload, 
   onRemoveFile, 
-  onUpload 
+  onUpload,
+  dataStore
 }) {
+  const [documentTags, setDocumentTags] = useState([]);
+  
+  // ✅ Reset tags when modal is opened/closed
+  useEffect(() => {
+    if (!show) {
+      setDocumentTags([]);
+    }
+  }, [show]);
+  
   if (!show) return null;
 
   const getFileIcon = (fileType) => {
@@ -28,12 +40,25 @@ export default function UploadDocumentModal({
     return 'File';
   };
 
+  const handleUploadWithTags = () => {
+    onUpload(documentTags);  // Pass tags to the upload handler
+    setDocumentTags([]);  // Reset tags after upload
+  };
+
+  const handleClose = () => {
+    setDocumentTags([]);  // Reset tags on close
+    onClose();
+  };
+
+  // Get available tags from dataStore
+  const availableTags = dataStore ? dataStore.getAllTags() : [];
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">Upload Documents</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -150,6 +175,25 @@ export default function UploadDocumentModal({
             </div>
           )}
 
+          {/* ✅ TAG INPUT SECTION - ADD TAGS TO ALL UPLOADED DOCUMENTS */}
+          {uploadedDocFiles.length > 0 && (
+            <div className="border-2 border-indigo-200 rounded-lg p-4 bg-indigo-50">
+              <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-indigo-600" />
+                Add Tags to All Documents
+              </h3>
+              <p className="text-sm text-gray-600 mb-3">
+                These tags will be applied to all {uploadedDocFiles.length} document{uploadedDocFiles.length > 1 ? 's' : ''} you're uploading.
+              </p>
+              <TagInput 
+                tags={documentTags} 
+                setTags={setDocumentTags} 
+                availableTags={availableTags}
+                errors={{}}
+              />
+            </div>
+          )}
+
           {/* Preview Section */}
           {uploadPreviews.length > 0 && uploadPreviews[currentPreviewIndex] && (
             <div className="border-2 border-gray-200 rounded-lg overflow-hidden">
@@ -214,8 +258,8 @@ export default function UploadDocumentModal({
                 {uploadPreviews[currentPreviewIndex].type === 'text' && (
                   <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
                     <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
-                      {uploadPreviews[currentPreviewIndex].content.substring(0, 2000)}
-                      {uploadPreviews[currentPreviewIndex].content.length > 2000 && '\n\n... (Content truncated for preview)'}
+                      {uploadPreviews[currentPreviewIndex].content && uploadPreviews[currentPreviewIndex].content.substring(0, 2000)}
+                      {uploadPreviews[currentPreviewIndex].content && uploadPreviews[currentPreviewIndex].content.length > 2000 && '\n\n... (Content truncated for preview)'}
                     </pre>
                   </div>
                 )}
@@ -265,13 +309,13 @@ export default function UploadDocumentModal({
         {/* Action Buttons */}
         <div className="flex gap-3 mt-6">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
-            onClick={onUpload}
+            onClick={handleUploadWithTags}
             disabled={uploadedDocFiles.length === 0}
             className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium shadow-md hover:shadow-lg"
           >

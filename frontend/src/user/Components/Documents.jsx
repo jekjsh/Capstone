@@ -1,6 +1,7 @@
 import { Plus, Upload, ScanText, FileText, Trash2, Folder, Share2, Building2, Tag, FileSpreadsheet, LayoutGrid, List, Grid, Eye, Download, Calendar } from 'lucide-react';
 import { useState } from 'react';
 import { TagFilter, TagDisplay, getAllTagsFromDocuments } from './TagComponents';
+import EditTagsModal from '../components/modals/EditTagsModal';
 
 export default function Documents({
   currentFolder,
@@ -28,6 +29,8 @@ export default function Documents({
 }) {
   const [selectedTags, setSelectedTags] = useState([]);
   const [viewMode, setViewMode] = useState('card'); // 'grid', 'card', 'list', 'details'
+  const [showEditTagsModal, setShowEditTagsModal] = useState(false);
+  const [editingDocument, setEditingDocument] = useState(null);
 
   // Get all unique tags from user documents
   const allTags = getAllTagsFromDocuments(userDocuments);
@@ -42,6 +45,17 @@ export default function Documents({
 
   const handleClearTags = () => {
     setSelectedTags([]);
+  };
+
+  // Handle opening edit tags modal
+  const handleEditTags = (doc) => {
+    setEditingDocument(doc);
+    setShowEditTagsModal(true);
+  };
+
+  // Handle saving tags
+  const handleSaveTags = (docId, tags) => {
+    console.log(`Tags updated for document ${docId}:`, tags);
   };
 
   // Filter documents by selected tags
@@ -250,6 +264,9 @@ export default function Documents({
               </div>
             </div>
             <div className="flex gap-2">
+              <button onClick={() => handleEditTags(doc)} className="text-indigo-600 hover:text-indigo-900 p-2" title="Edit tags">
+                <Tag className="w-5 h-5" />
+              </button>
               <button onClick={() => onSendToOrganization(doc)} className="text-blue-600 hover:text-blue-900 p-2" title="Send to organization">
                 <Building2 className="w-5 h-5" />
               </button>
@@ -714,6 +731,18 @@ export default function Documents({
           {viewMode === 'details' && <DetailsView />}
         </>
       )}
+
+      {/* Edit Tags Modal */}
+      <EditTagsModal
+        show={showEditTagsModal}
+        onClose={() => {
+          setShowEditTagsModal(false);
+          setEditingDocument(null);
+        }}
+        document={editingDocument}
+        dataStore={dataStore}
+        onSave={handleSaveTags}
+      />
     </div>
   );
 }
