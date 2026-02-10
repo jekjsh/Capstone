@@ -7,14 +7,14 @@ export default function AddFieldModal({ show, onClose, newField, setNewField, er
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Add Custom Field</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Add Tag</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-6 h-6" />
           </button>
         </div>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Field Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tag Name</label>
             <input 
               type="text" 
               value={newField.fieldName} 
@@ -25,7 +25,7 @@ export default function AddFieldModal({ show, onClose, newField, setNewField, er
             {errors.fieldName && <p className="mt-1 text-sm text-red-500">{errors.fieldName}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Field Type</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tag Type</label>
             <select 
               value={newField.fieldType} 
               onChange={(e) => setNewField({ ...newField, fieldType: e.target.value })} 
@@ -34,11 +34,11 @@ export default function AddFieldModal({ show, onClose, newField, setNewField, er
               <option value="text">Text</option>
               <option value="number">Number</option>
               <option value="date">Date</option>
-              <option value="textarea">Long Text</option>
+              <option value="select">Select</option>
             </select>
           </div>
           
-          {/* NEW: Show in Documents Toggle */}
+          {/* Show in Documents Toggle */}
           <div className="border-t pt-4">
             <label className="flex items-start gap-3 cursor-pointer group">
               <div className="flex items-center h-6">
@@ -72,7 +72,7 @@ export default function AddFieldModal({ show, onClose, newField, setNewField, er
             Cancel
           </button>
           <button onClick={onAddField} className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors">
-            Add Field
+            Add Tag
           </button>
         </div>
       </div>

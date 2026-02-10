@@ -1,12 +1,18 @@
 import { FileText, Search, Eye, Download, Trash2, User, Clock } from 'lucide-react';
 import { useState } from 'react';
 
-export default function AdminAllDocumentsView({ dataStore, userList, onViewDocument, onDownloadDocument }) {
+export default function AdminAllDocumentsView({ 
+  documents = [], 
+  dataStore, 
+  userList = [], 
+  onViewDocument, 
+  onDownloadDocument 
+}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterUser, setFilterUser] = useState('All');
   const [filterFormat, setFilterFormat] = useState('All');
   
-  const allDocuments = dataStore.getAllDocuments();
+  const allDocuments = documents || [];
 
   const filteredDocuments = allDocuments.filter(doc => {
     const matchesSearch = 
@@ -21,8 +27,9 @@ export default function AdminAllDocumentsView({ dataStore, userList, onViewDocum
   });
 
   const getUserName = (userId) => {
+    if (!userList || userList.length === 0) return userId;
     const user = userList.find(u => u.id === userId);
-    return user ? user.name : userId;
+    return user ? (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username) : userId;
   };
 
   return (
@@ -57,7 +64,7 @@ export default function AdminAllDocumentsView({ dataStore, userList, onViewDocum
           >
             <option value="All">All Users</option>
             {userList.map(user => (
-              <option key={user.id} value={user.id}>{user.name} ({user.id})</option>
+              <option key={user.id} value={user.id}>{user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username} ({user.id})</option>
             ))}
           </select>
 

@@ -1,9 +1,10 @@
 import { Building2, Users, FileText, Clock, User, ChevronRight, Eye, Download } from 'lucide-react';
 import { useState } from 'react';
 
-export default function AdminOrgSharesView({ dataStore, organizationTree, onViewDocument, onDownloadDocument }) {
+export default function AdminOrgSharesView({ dataStore, organizationTree = [], orgShares = [], onViewDocument, onDownloadDocument }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const allOrgShares = dataStore.getAllOrgShares();
+  
+  const allOrgShares = orgShares || [];
 
   const getOrgUnitName = (unitId) => {
     const findUnit = (nodes) => {

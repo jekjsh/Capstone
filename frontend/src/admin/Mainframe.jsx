@@ -22,6 +22,7 @@ import {
 } from './component/AdminModals';
 import AdminAllDocumentsView from './component/AdminAllDocumentsView';
 import AdminOrgSharesView from './component/AdminOrgSharesView';
+import { organizationAPI, userAPI, auditLogAPI, documentAPI, systemSettingsAPI, organizationShareAPI, sessionAPI } from '../services/api';
 
 export default function Mainframe({ 
   currentUser = { name: 'Administrator', role: 'Admin' }, 
@@ -44,6 +45,15 @@ const [viewingDocument, setViewingDocument] = useState(null);
   });
    const [, forceUpdate] = useState(0);
   const [documentList, setDocumentList] = useState([]);
+  const [userList, setUserList] = useState([]);
+  const [organizationTree, setOrganizationTree] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [orgShares, setOrgShares] = useState([]);
+  const [isLoadingOrg, setIsLoadingOrg] = useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showEditPasswordModal, setShowEditPasswordModal] = useState(false);
@@ -60,7 +70,8 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const [newUser, setNewUser] = useState({
     userId: '',
     firstName: '',
-  lastName: '',
+    lastName: '',
+    email: '',
     role: 'User',
     jobTitle: '',
     organizationUnitId: '',
@@ -87,14 +98,122 @@ const [viewingDocument, setViewingDocument] = useState(null);
     code: '',
     description: ''
   });
-  const userList = dataStore ? dataStore.getAllUsers() : [];
-  const organizationTree = dataStore ? dataStore.getOrganizationTree() : [];
   
-  const setOrganizationTree = (newTree) => {
-    if (dataStore) {
-      dataStore.setOrganizationTree(newTree);
-    }
+  const applyCustomization = (custom) => {
+    document.documentElement.style.setProperty('--primary-color', custom.primaryColor);
+    document.documentElement.style.setProperty('--sidebar-gradient-start', custom.sidebarGradientStart);
+    document.documentElement.style.setProperty('--sidebar-gradient-end', custom.sidebarGradientEnd);
   };
+
+  // Fetch users from API
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setIsLoadingUsers(true);
+      try {
+        const data = await userAPI.getAll();
+        console.log('Users fetched from API:', data);
+        setUserList(data);
+      } catch (error) {
+        console.error('Failed to load users:', error);
+        if (dataStore) {
+          const fallbackData = dataStore.getAllUsers();
+          console.log('Using fallback users from dataStore:', fallbackData);
+          setUserList(fallbackData);
+        }
+      } finally {
+        setIsLoadingUsers(false);
+      }
+    };
+    fetchUsers();
+  }, [dataStore]);
+
+  // Fetch organization structure from API
+  useEffect(() => {
+    const fetchOrganizationTree = async () => {
+      setIsLoadingOrg(true);
+      try {
+        const data = await organizationAPI.getAll();
+        console.log('Organization structure fetched from API:', data);
+        setOrganizationTree(data);
+      } catch (error) {
+        console.error('Failed to load organization structure:', error);
+        if (dataStore) {
+          const fallbackData = dataStore.getOrganizationTree();
+          console.log('Using fallback organization structure from dataStore:', fallbackData);
+          setOrganizationTree(fallbackData);
+        }
+      } finally {
+        setIsLoadingOrg(false);
+      }
+    };
+    fetchOrganizationTree();
+  }, [dataStore]);
+
+  // Fetch documents from API
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      setIsLoadingDocuments(true);
+      try {
+        const data = await documentAPI.getAll();
+        console.log('Documents fetched from API:', data);
+        setDocuments(data);
+        setDocumentList(data);
+      } catch (error) {
+        console.error('Failed to load documents:', error);
+        if (dataStore) {
+          const fallbackData = dataStore.getAllDocuments();
+          console.log('Using fallback documents from dataStore:', fallbackData);
+          setDocuments(fallbackData);
+          setDocumentList(fallbackData);
+        }
+      } finally {
+        setIsLoadingDocuments(false);
+      }
+    };
+    fetchDocuments();
+  }, [dataStore]);
+
+  // Fetch audit logs from API
+  useEffect(() => {
+    const fetchAuditLogs = async () => {
+      setIsLoadingLogs(true);
+      try {
+        const data = await auditLogAPI.getAll();
+        console.log('Audit logs fetched from API:', data);
+        setAuditLogs(data);
+      } catch (error) {
+        console.error('Failed to load audit logs:', error);
+        if (dataStore) {
+          const fallbackData = dataStore.getAllAuditLogs();
+          console.log('Using fallback audit logs from dataStore:', fallbackData);
+          setAuditLogs(fallbackData);
+        }
+      } finally {
+        setIsLoadingLogs(false);
+      }
+    };
+    fetchAuditLogs();
+  }, [dataStore]);
+
+  // Fetch organization shares from API
+  useEffect(() => {
+    const fetchOrgShares = async () => {
+      try {
+        const data = await organizationShareAPI.getAll();
+        console.log('Organization shares fetched from API:', data);
+        setOrgShares(data);
+      } catch (error) {
+        console.error('Failed to load organization shares:', error);
+        if (dataStore) {
+          const fallbackData = dataStore.getAllOrgShares();
+          console.log('Using fallback org shares from dataStore:', fallbackData);
+          setOrgShares(fallbackData);
+        }
+      }
+    };
+    fetchOrgShares();
+  }, [dataStore]);
+
   useEffect(() => {
     if (dataStore) {
       const custom = dataStore.getCustomization();
@@ -121,18 +240,31 @@ const [viewingDocument, setViewingDocument] = useState(null);
     }
   }, [dataStore]);
 
-  const applyCustomization = (custom) => {
-    document.documentElement.style.setProperty('--primary-color', custom.primaryColor);
-    document.documentElement.style.setProperty('--sidebar-gradient-start', custom.sidebarGradientStart);
-    document.documentElement.style.setProperty('--sidebar-gradient-end', custom.sidebarGradientEnd);
-  };
-useEffect(() => {
+  useEffect(() => {
     if (dataStore) {
       const format = dataStore.getUserIdFormat();
       if (format) {
         setUserIdFormat(format);
       }
     }
+    
+    // Load user ID format from API
+    const loadUserIdFormat = async () => {
+      try {
+        const data = await systemSettingsAPI.getUserIdFormat();
+        if (data && data.setting_value) {
+          setUserIdFormat(data.setting_value);
+          // Also update dataStore
+          if (dataStore) {
+            dataStore.setUserIdFormat(data.setting_value);
+          }
+        }
+      } catch (error) {
+        console.log('User ID format not found in backend, using default');
+      }
+    };
+    
+    loadUserIdFormat();
   }, [dataStore]);
  const handleCustomizationSave = (newSettings) => {
    
@@ -167,6 +299,23 @@ useEffect(() => {
   const handleUserIdFormatSave = (newFormat) => {
     setUserIdFormat(newFormat);
     forceUpdate(prev => prev + 1);
+    
+    // Save to API
+    const saveFormat = async () => {
+      try {
+        await systemSettingsAPI.saveUserIdFormat(newFormat);
+        console.log('User ID format saved to backend');
+      } catch (error) {
+        console.error('Failed to save user ID format to backend:', error);
+      }
+    };
+    
+    saveFormat();
+    
+    // Save to dataStore
+    if (dataStore) {
+      dataStore.setUserIdFormat(newFormat);
+    }
     
     addAuditLog(
       'User ID Format Updated',
@@ -286,16 +435,8 @@ useEffect(() => {
 
     if (!passwordData.password) {
       newErrors.password = 'Password is required';
-    } else if (passwordData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    } else if (!/[A-Z]/.test(passwordData.password)) {
-      newErrors.password = 'Password must contain at least 1 uppercase letter';
-    } else if (!/[a-z]/.test(passwordData.password)) {
-      newErrors.password = 'Password must contain at least 1 lowercase letter';
-    } else if (!/[0-9]/.test(passwordData.password)) {
-      newErrors.password = 'Password must contain at least 1 digit (0-9)';
-    } else if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password)) {
-      newErrors.password = 'Password must contain at least 1 symbol (!@#$%^&*...)';
+    } else if (passwordData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
     }
 
     if (!passwordData.confirmPassword) {
@@ -308,7 +449,7 @@ useEffect(() => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const addAuditLog = (action, resource, status = 'Success') => {
+  const addAuditLog = async (action, resource, status = 'Success') => {
     const timestamp = new Date().toLocaleString('en-US', {
       year: 'numeric',
       month: '2-digit',
@@ -327,6 +468,23 @@ useEffect(() => {
       status: status
     };
 
+    // Save to backend API
+    try {
+      await auditLogAPI.create({
+        user: currentUser.username || currentUser.id,
+        action: action,
+        resource: resource,
+        status: status
+      });
+      
+      // Refresh audit logs after adding new log
+      const logs = await auditLogAPI.getAll();
+      setAuditLogs(logs);
+    } catch (error) {
+      console.error('Failed to save audit log to backend:', error);
+    }
+
+    // Also save to dataStore for backward compatibility
     if (dataStore) {
       dataStore.addAuditLog(newLog);
     }
@@ -335,31 +493,60 @@ useEffect(() => {
  const handleAddUser = () => {
   if (validateUserForm()) {
     if (editingUserId) {
-      if (dataStore) {
-        dataStore.updateUser(editingUserId, {
-          firstName: newUser.firstName, 
-          lastName: newUser.lastName,  
-          email: newUser.email, 
-          role: newUser.role,
-          organizationUnitId: newUser.organizationUnitId,
-          organizationPosition: newUser.organizationPosition
-        });
-      }
-      addAuditLog('User Updated', `${editingUserId} - Personal info updated`, 'Success');
-      setShowAddUserModal(false);
-      setEditingUserId(null);
-      setNewUser({ 
-        userId: '', 
-        firstName: '', 
-        lastName: '', 
-        email: '', 
-        role: 'User', 
-        organizationUnitId: '', 
-        organizationPosition: '' 
-      });
-      setTempUserData(null);
-      setErrors({});
-      alert('User information updated successfully!');
+      const updateUserAPI = async () => {
+        try {
+          const updateData = {
+            first_name: newUser.firstName,
+            last_name: newUser.lastName,
+            email: newUser.email,
+            role: newUser.role,
+            organization_unit_id: newUser.organizationUnitId || null,
+            organization_position: newUser.organizationPosition || ''
+          };
+
+          await userAPI.update(editingUserId, updateData);
+
+          // Refresh user list from API
+          const users = await userAPI.getAll();
+          setUserList(users);
+
+          if (dataStore) {
+            dataStore.updateUser(editingUserId, {
+              firstName: newUser.firstName,
+              lastName: newUser.lastName,
+              email: newUser.email,
+              role: newUser.role,
+              organizationUnitId: newUser.organizationUnitId,
+              organizationPosition: newUser.organizationPosition
+            });
+          }
+
+          addAuditLog('User Updated', `${editingUserId} - Personal info updated`, 'Success');
+          setShowAddUserModal(false);
+          setEditingUserId(null);
+          setNewUser({ 
+            userId: '', 
+            firstName: '', 
+            lastName: '', 
+            email: '', 
+            role: 'User', 
+            organizationUnitId: '', 
+            organizationPosition: '' 
+          });
+          setTempUserData(null);
+          setErrors({});
+          alert('User information updated successfully!');
+        } catch (error) {
+          console.error('Failed to update user:', error);
+          const message = error.status === 401
+            ? 'Session expired. Please log in again.'
+            : error.message;
+          setErrors({ general: message });
+          alert(`Failed to update user: ${message}`);
+        }
+      };
+
+      updateUserAPI();
     } else {
       setTempUserData({
         userId: newUser.userId,
@@ -380,52 +567,89 @@ useEffect(() => {
  const handleSaveUser = () => {
   if (validatePasswordForm()) {
     if (editingUserId) {
-      if (dataStore) {
-        dataStore.updateUser(editingUserId, {
-          password: passwordData.password 
-        });
-      }
-      addAuditLog('Password Changed', `${editingUserId} - Password updated`, 'Success');
-      setShowEditPasswordModal(false);
-      setEditingUserId(null);
-      setPasswordData({ password: '', confirmPassword: '' });
-      setErrors({});
-      alert('Password updated successfully!');
+      const updatePasswordAPI = async () => {
+        try {
+          await userAPI.changePassword(editingUserId, passwordData.password);
+
+          if (dataStore) {
+            dataStore.updateUser(editingUserId, {
+              password: passwordData.password
+            });
+          }
+
+          addAuditLog('Password Changed', `${editingUserId} - Password updated`, 'Success');
+          setShowEditPasswordModal(false);
+          setEditingUserId(null);
+          setPasswordData({ password: '', confirmPassword: '' });
+          setErrors({});
+          alert('Password updated successfully!');
+        } catch (error) {
+          console.error('Failed to update password:', error);
+          const message = error.status === 401
+            ? 'Session expired. Please log in again.'
+            : error.message;
+          setErrors({ general: message });
+          alert(`Failed to update password: ${message}`);
+        }
+      };
+
+      updatePasswordAPI();
     } else {
-      const user = {
-        id: tempUserData.userId,
-        firstName: tempUserData.firstName,  
-        lastName: tempUserData.lastName,   
-        name: `${tempUserData.firstName} ${tempUserData.lastName}`,
-        email: tempUserData.email, 
-         role: tempUserData.role,
-        organizationUnitId: tempUserData.organizationUnitId,
-        organizationPosition: tempUserData.organizationPosition,
-        status: 'Active',
-        password: passwordData.password 
+      // Create user in backend API
+      const createUserAPI = async () => {
+        try {
+          const userData = {
+            username: tempUserData.userId,
+            first_name: tempUserData.firstName,
+            last_name: tempUserData.lastName,
+            email: tempUserData.email,
+            password: passwordData.password,
+            job_title: '',
+            department: '',
+            organization_unit_id: tempUserData.organizationUnitId || null,
+            organization_position: tempUserData.organizationPosition || '',
+            status: 'Active',
+            role: tempUserData.role
+          };
+          
+          const newUser = await userAPI.create(userData);
+          console.log('User created successfully:', newUser);
+          
+          // Refresh user list from API
+          const users = await userAPI.getAll();
+          setUserList(users);
+          console.log('User list refreshed:', users);
+          
+          addAuditLog('User Created', `${tempUserData.userId} - ${tempUserData.firstName} ${tempUserData.lastName}`, 'Success');
+          
+          setShowPasswordModal(false);
+          setNewUser({
+            userId: '',
+            firstName: '',
+            lastName: '',
+            email: '',
+            role: 'User',
+            organizationUnitId: '',
+            organizationPosition: ''
+          });
+          setPasswordData({
+            password: '',
+            confirmPassword: ''
+          });
+          setTempUserData(null);
+          setErrors({});
+          alert('User created successfully!');
+        } catch (error) {
+          console.error('Failed to create user:', error);
+          const message = error.status === 401
+            ? 'Session expired. Please log in again.'
+            : error.message;
+          setErrors({ general: message });
+          alert(`Failed to create user: ${message}`);
+        }
       };
       
-      if (dataStore) {
-        dataStore.addUser(user);
-      }
-      addAuditLog('User Created', `${tempUserData.userId} - ${user.name}`, 'Success');
-      
-      setShowPasswordModal(false);
-      setNewUser({
-        userId: '',
-        firstName: '',
-        lastName: '',
-        email: '',
-        role: 'User',
-        organizationUnitId: '',
-        organizationPosition: ''
-      });
-      setPasswordData({
-        password: '',
-        confirmPassword: ''
-      });
-      setTempUserData(null);
-      setErrors({});
+      createUserAPI();
     }
   }
 };
@@ -435,15 +659,34 @@ useEffect(() => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       const deletedUser = userList.find(user => user.id === userId);
       
-    
-      if (dataStore) {
-        dataStore.deleteUser(userId);
-      }
+      const deleteUserAPI = async () => {
+        try {
+          await userAPI.delete(userId);
+          
+          // Refresh user list from API
+          const users = await userAPI.getAll();
+          setUserList(users);
+          
+          // Also update dataStore
+          if (dataStore) {
+            dataStore.deleteUser(userId);
+          }
+          
+          if (deletedUser) {
+            addAuditLog('User Deleted', `${deletedUser.id} - ${deletedUser.firstName} ${deletedUser.lastName}`, 'Success');
+          }
+          setOpenMenuUserId(null);
+          alert('User deleted successfully!');
+        } catch (error) {
+          console.error('Failed to delete user:', error);
+          const message = error.status === 401
+            ? 'Session expired. Please log in again.'
+            : error.message;
+          alert(`Failed to delete user: ${message}`);
+        }
+      };
       
-      if (deletedUser) {
-        addAuditLog('User Deleted', `${deletedUser.id} - ${deletedUser.name}`, 'Success');
-      }
-      setOpenMenuUserId(null);
+      deleteUserAPI();
     }
   };
 
@@ -462,30 +705,38 @@ useEffect(() => {
     setOpenMenuUserId(null);
   };
 
- const handleVerifyAdmin = () => {
-  if (adminVerificationPassword === 'admin123') {
-    setShowAdminVerificationModal(false);
-    if (showEditPasswordModal) {
-      setPasswordData({ password: '', confirmPassword: '' });
-    } else {
-      const user = userList.find(u => u.id === editingUserId);
-      if (user) {
-        setNewUser({
-          userId: user.id,
-          firstName: user.firstName,  
-          lastName: user.lastName,  
-          email: user.email,  
-          role: user.role,
-          organizationUnitId: user.organizationUnitId || '',
-          organizationPosition: user.organizationPosition || ''
-        });
-        setShowAddUserModal(true);
+ const handleVerifyAdmin = async () => {
+  try {
+    // Verify password with backend
+    const result = await sessionAPI.verifyPassword(adminVerificationPassword);
+    
+    if (result.valid) {
+      setShowAdminVerificationModal(false);
+      if (showEditPasswordModal) {
+        setPasswordData({ password: '', confirmPassword: '' });
+      } else {
+        const user = userList.find(u => u.id === editingUserId);
+        if (user) {
+          setNewUser({
+            userId: user.id,
+            firstName: user.firstName,  
+            lastName: user.lastName,  
+            email: user.email,  
+            role: user.role,
+            organizationUnitId: user.organizationUnitId || '',
+            organizationPosition: user.organizationPosition || ''
+          });
+          setShowAddUserModal(true);
+        }
       }
+      setAdminVerificationPassword('');
+      setErrors({});
+    } else {
+      setErrors({ adminPassword: 'Incorrect password' });
     }
-    setAdminVerificationPassword('');
-    setErrors({});
-  } else {
-    setErrors({ adminPassword: 'Incorrect admin password' });
+  } catch (error) {
+    console.error('Password verification failed:', error);
+    setErrors({ adminPassword: 'Failed to verify password. Please try again.' });
   }
 };
 
@@ -527,15 +778,14 @@ useEffect(() => {
 };
 
   const getFilteredLogs = () => {
-    const auditLogs = dataStore ? dataStore.getAllAuditLogs() : [];
     return auditLogs.filter(log => {
       const matchesSearch = 
-        log.user.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
-        log.action.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
-        log.resource.toLowerCase().includes(logSearchQuery.toLowerCase());
+        (log.user || log.createdBy || '').toLowerCase().includes(logSearchQuery.toLowerCase()) ||
+        (log.action || log.actionType || '').toLowerCase().includes(logSearchQuery.toLowerCase()) ||
+        (log.resource || log.details || '').toLowerCase().includes(logSearchQuery.toLowerCase());
       
-      const matchesAction = logFilterAction === 'All' || log.action === logFilterAction;
-      const matchesStatus = logFilterStatus === 'All' || log.status === logFilterStatus;
+      const matchesAction = logFilterAction === 'All' || (log.action || log.actionType) === logFilterAction;
+      const matchesStatus = logFilterStatus === 'All' || (log.status || log.statusCode) === logFilterStatus;
       
       return matchesSearch && matchesAction && matchesStatus;
     });
@@ -543,8 +793,7 @@ useEffect(() => {
 
 
   const getActions = () => {
-    const auditLogs = dataStore ? dataStore.getAllAuditLogs() : [];
-    const actions = [...new Set(auditLogs.map(log => log.action))];
+    const actions = [...new Set(auditLogs.map(log => log.action || log.actionType || ''))];
     return actions.filter(action => action);
   };
 
@@ -856,6 +1105,7 @@ const handlePrintDocument = (doc) => {
             <AdminDashboard
               userList={userList}
               documentList={documentList}
+              auditLogs={auditLogs}
               dataStore={dataStore}
               setActiveSection={setActiveSection}
             />
@@ -898,6 +1148,7 @@ const handlePrintDocument = (doc) => {
           {activeSection === 'all-documents' && (
             <AdminAllDocumentsView 
               dataStore={dataStore}
+              documents={documents}
               userList={userList}
               onViewDocument={handleViewDocument}        
               onDownloadDocument={handleDownloadDocument}
@@ -907,13 +1158,14 @@ const handlePrintDocument = (doc) => {
             <AdminOrgSharesView 
               dataStore={dataStore}
               organizationTree={organizationTree}
+              orgShares={orgShares}
               onViewDocument={handleViewDocument}     
-             onDownloadDocument={handleDownloadDocument}
+              onDownloadDocument={handleDownloadDocument}
             />
           )}
           {activeSection === 'logs' && (
             <AdminLogAudits
-              auditLogs={dataStore ? dataStore.getAllAuditLogs() : []}
+              auditLogs={auditLogs}
               logSearchQuery={logSearchQuery}
               setLogSearchQuery={setLogSearchQuery}
               logFilterAction={logFilterAction}

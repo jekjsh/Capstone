@@ -2,21 +2,20 @@ import { Search } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function AdminLogAudits({
-  auditLogs,
-  logSearchQuery,
-  setLogSearchQuery,
-  logFilterAction,
-  setLogFilterAction,
-  logFilterStatus,
-  setLogFilterStatus,
-  getActions,
-  getFilteredLogs
+  auditLogs = [],
+  logSearchQuery = '',
+  setLogSearchQuery = () => {},
+  logFilterAction = 'All',
+  setLogFilterAction = () => {},
+  logFilterStatus = 'All',
+  setLogFilterStatus = () => {},
+  getActions = () => [],
+  getFilteredLogs = () => []
 }) {
   
   const [, setRenderKey] = useState(0);
   
   useEffect(() => {
-   
     setRenderKey(prev => prev + 1);
   }, [auditLogs, auditLogs.length]);
   
@@ -109,7 +108,7 @@ export default function AdminLogAudits({
               ) : (
                 filteredLogs.map((log, idx) => (
                   <tr key={`${log.time}-${idx}`} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm text-gray-900">{log.time}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{log.timestamp ? new Date(log.timestamp).toLocaleString() : log.time}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">{log.user}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">{log.action}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">{log.resource}</td>

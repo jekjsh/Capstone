@@ -430,6 +430,18 @@ export function PasswordModal({
   setErrors,
   handleSaveUser
 }) {
+  const defaultPassword = tempUserData?.lastName?.toUpperCase() || '';
+
+  // Auto-fill password on modal open
+  useEffect(() => {
+    if (showPasswordModal && !passwordData.password && defaultPassword) {
+      setPasswordData({
+        password: defaultPassword,
+        confirmPassword: defaultPassword
+      });
+    }
+  }, [showPasswordModal, defaultPassword, passwordData.password, setPasswordData]);
+
   if (!showPasswordModal || showEditPasswordModal) return null;
 
   return (
@@ -478,22 +490,11 @@ export function PasswordModal({
             <div className="mt-2 text-xs text-gray-600">
               <p className="font-semibold mb-1">Password must contain:</p>
               <ul className="list-disc list-inside space-y-1">
-                <li className={passwordData.password.length >= 8 ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 8 characters
-                </li>
-                <li className={/[A-Z]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 uppercase letter (A-Z)
-                </li>
-                <li className={/[a-z]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 lowercase letter (a-z)
-                </li>
-                <li className={/[0-9]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 digit (0-9)
-                </li>
-                <li className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 symbol (!@#$%^&*...)
+                <li className={passwordData.password.length >= 6 ? 'text-green-600 font-semibold' : 'text-gray-600'}>
+                  ✓ At least 6 characters
                 </li>
               </ul>
+              <p className="text-xs text-gray-500 mt-2 italic">Default: Your surname in CAPITALS</p>
             </div>
           </div>
 
@@ -526,11 +527,7 @@ export function PasswordModal({
           <button
             onClick={handleSaveUser}
             disabled={!passwordData.password || !passwordData.confirmPassword || 
-              passwordData.password.length < 8 || 
-              !/[A-Z]/.test(passwordData.password) || 
-              !/[a-z]/.test(passwordData.password) || 
-              !/[0-9]/.test(passwordData.password) || 
-              !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password) ||
+              passwordData.password.length < 6 || 
               passwordData.password !== passwordData.confirmPassword
             }
             className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -599,26 +596,6 @@ export function EditPasswordModal({
               placeholder="Enter new password"
             />
             {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
-            <div className="mt-2 text-xs text-gray-600">
-              <p className="font-semibold mb-1">Password must contain:</p>
-              <ul className="list-disc list-inside space-y-1">
-                <li className={passwordData.password.length >= 8 ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 8 characters
-                </li>
-                <li className={/[A-Z]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 uppercase letter (A-Z)
-                </li>
-                <li className={/[a-z]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 lowercase letter (a-z)
-                </li>
-                <li className={/[0-9]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 digit (0-9)
-                </li>
-                <li className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password) ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 1 symbol (!@#$%^&*...)
-                </li>
-              </ul>
-            </div>
           </div>
 
           <div>
@@ -651,11 +628,6 @@ export function EditPasswordModal({
           <button
             onClick={handleSaveUser}
             disabled={!passwordData.password || !passwordData.confirmPassword || 
-              passwordData.password.length < 8 || 
-              !/[A-Z]/.test(passwordData.password) || 
-              !/[a-z]/.test(passwordData.password) || 
-              !/[0-9]/.test(passwordData.password) || 
-              !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(passwordData.password) ||
               passwordData.password !== passwordData.confirmPassword
             }
             className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

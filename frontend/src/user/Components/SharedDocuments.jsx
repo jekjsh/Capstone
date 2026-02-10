@@ -46,7 +46,7 @@ export default function SharedDocuments({
 
   const getUserName = (userId) => {
     const user = allUsers.find(u => u.id === userId);
-    return user ? user.name : 'Unknown User';
+    return user ? (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username) : 'Unknown User';
   };
 
   const getOrgUnitName = (unitId) => {

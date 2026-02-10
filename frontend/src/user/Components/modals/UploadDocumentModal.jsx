@@ -9,7 +9,10 @@ export default function UploadDocumentModal({
   setCurrentPreviewIndex,
   onFileUpload, 
   onRemoveFile, 
-  onUpload 
+  onUpload,
+  customFields = [],
+  uploadTagValues = {},
+  setUploadTagValues = () => {}
 }) {
   if (!show) return null;
 
@@ -153,6 +156,15 @@ export default function UploadDocumentModal({
                   </div>
                 )}
                 
+                {uploadPreviews[currentPreviewIndex].type === 'docx' && (
+                  <div className="bg-white rounded-lg p-6 max-h-96 overflow-y-auto border border-gray-200">
+                    <div 
+                      className="prose prose-sm max-w-none"
+                      dangerouslySetInnerHTML={{ __html: uploadPreviews[currentPreviewIndex].content }}
+                    />
+                  </div>
+                )}
+                
                 {uploadPreviews[currentPreviewIndex].type === 'other' && (
                   <div className="bg-gray-50 rounded-lg p-6 text-center">
                     <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -170,6 +182,69 @@ export default function UploadDocumentModal({
             </div>
           )}
         </div>
+
+        {/* Display tags/custom fields */}
+        {customFields && customFields.filter(field => field.showInDocuments).length > 0 && (
+          <div className="bg-gray-50 rounded-lg p-6 mt-6 border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Add Tags (Optional)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {customFields.filter(field => field.showInDocuments).map((field) => (
+                <div key={field.id}>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {field.name}
+                  </label>
+                  {field.type === 'text' && (
+                    <input
+                      type="text"
+                      value={uploadTagValues[field.name] || ''}
+                      onChange={(e) => setUploadTagValues({ ...uploadTagValues, [field.name]: e.target.value })}
+                      placeholder={`Enter ${field.name}`}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                  {field.type === 'number' && (
+                    <input
+                      type="number"
+                      value={uploadTagValues[field.name] || ''}
+                      onChange={(e) => setUploadTagValues({ ...uploadTagValues, [field.name]: e.target.value })}
+                      placeholder={`Enter ${field.name}`}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                  {field.type === 'date' && (
+                    <input
+                      type="date"
+                      value={uploadTagValues[field.name] || ''}
+                      onChange={(e) => setUploadTagValues({ ...uploadTagValues, [field.name]: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                  {field.type === 'select' && field.options && (
+                    <select
+                      value={uploadTagValues[field.name] || ''}
+                      onChange={(e) => setUploadTagValues({ ...uploadTagValues, [field.name]: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select an option</option>
+                      {field.options.split(',').map((option) => (
+                        <option key={option.trim()} value={option.trim()}>{option.trim()}</option>
+                      ))}
+                    </select>
+                  )}
+                  {field.type === 'select' && !field.options && (
+                    <input
+                      type="text"
+                      value={uploadTagValues[field.name] || ''}
+                      onChange={(e) => setUploadTagValues({ ...uploadTagValues, [field.name]: e.target.value })}
+                      placeholder={`Enter ${field.name}`}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex gap-3 mt-6">
           <button

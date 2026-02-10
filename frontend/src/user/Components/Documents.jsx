@@ -12,6 +12,9 @@ export default function Documents({
   setFilterFormat,
   sortBy,
   setSortBy,
+  customFields = [],
+  filterByTag = {},
+  setFilterByTag = () => {},
   setShowUploadDocumentModal,
   setShowOCRModal,
   setShowAddDocumentModal,
@@ -103,16 +106,47 @@ export default function Documents({
           </div>
         </div>
 
+        {customFields && customFields.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            {customFields.map((tag) => (
+              <div key={tag.id}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Filter by {tag.name}</label>
+                {tag.type === 'select' && tag.options ? (
+                  <select
+                    value={filterByTag[tag.name] || ''}
+                    onChange={(e) => setFilterByTag({...filterByTag, [tag.name]: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">All {tag.name}</option>
+                    {tag.options.split(',').map((option) => (
+                      <option key={option.trim()} value={option.trim()}>{option.trim()}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={tag.type === 'number' ? 'number' : 'text'}
+                    value={filterByTag[tag.name] || ''}
+                    onChange={(e) => setFilterByTag({...filterByTag, [tag.name]: e.target.value})}
+                    placeholder={`Filter by ${tag.name}...`}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
           <span>
             Showing {filteredDocuments.length} of {userDocuments.length} document{userDocuments.length !== 1 ? 's' : ''}
           </span>
-          {(searchQuery || filterFormat !== 'all' || sortBy !== 'date-desc') && (
+          {(searchQuery || filterFormat !== 'all' || sortBy !== 'date-desc' || Object.keys(filterByTag).some(k => filterByTag[k])) && (
             <button
               onClick={() => {
                 setSearchQuery('');
                 setFilterFormat('all');
                 setSortBy('date-desc');
+                setFilterByTag({});
               }}
               className="text-indigo-600 hover:text-indigo-800 font-medium"
             >
@@ -142,6 +176,7 @@ export default function Documents({
               setSearchQuery('');
               setFilterFormat('all');
               setSortBy('date-desc');
+              setFilterByTag({});
             }}
             className="text-indigo-600 hover:text-indigo-800 font-medium"
           >
@@ -217,14 +252,18 @@ export default function Documents({
               </div>
               {Object.keys(doc.customFieldValues || {}).length > 0 && (
                 <div className="border-t pt-4 mt-4">
-                  <h4 className="font-semibold text-gray-700 mb-2">Custom Fields:</h4>
+                  <h4 className="font-semibold text-gray-700 mb-2">Tags:</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {Object.entries(doc.customFieldValues).map(([fieldName, value]) => (
-                      <div key={fieldName} className="bg-gray-50 p-3 rounded">
-                        <p className="text-sm text-gray-600 font-medium">{fieldName}</p>
-                        <p className="text-gray-800">{value || 'N/A'}</p>
-                      </div>
-                    ))}
+                    {Object.entries(doc.customFieldValues).map(([fieldName, value]) => {
+                      const tagDef = customFields.find(f => f.name === fieldName);
+                      return (
+                        <div key={fieldName} className="bg-indigo-50 p-3 rounded border border-indigo-200">
+                          <p className="text-sm text-indigo-600 font-medium">{fieldName}</p>
+                          <p className="text-gray-800 font-semibold">{value || 'N/A'}</p>
+                          {tagDef && <p className="text-xs text-gray-500 mt-1">Type: {tagDef.type}</p>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -9,6 +9,7 @@ export default function OrgUnitUsersView({
   const [selectedUnitId, setSelectedUnitId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [includeSubUnits, setIncludeSubUnits] = useState(false); // ✅ NEW: Toggle for sub-units
+  const [detailsUser, setDetailsUser] = useState(null);
 
   const getUsersInUnit = (unitId, includeChildren = false) => {
     const users = userList.filter(user => user.organizationUnitId === unitId);
@@ -314,7 +315,10 @@ const directUsers = selectedUnitId
                             </div>
                             
                             <button
-                              onClick={() => onUserClick && onUserClick(user)}
+                              onClick={() => {
+                                setDetailsUser(user);
+                                if (onUserClick) onUserClick(user);
+                              }}
                               className="ml-4 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors text-sm"
                             >
                               View Details
@@ -330,6 +334,84 @@ const directUsers = selectedUnitId
           )}
         </div>
       </div>
+
+      {detailsUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">User Details</h3>
+                <p className="text-sm text-gray-500">Complete profile information</p>
+              </div>
+              <button
+                onClick={() => setDetailsUser(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-2xl">
+                  {detailsUser.firstName?.charAt(0) || 'U'}
+                </div>
+                <div>
+                  <h4 className="text-2xl font-bold text-gray-800">
+                    {detailsUser.firstName} {detailsUser.lastName}
+                  </h4>
+                  <p className="text-sm text-gray-500">User ID: {detailsUser.id}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs uppercase text-gray-500 mb-1">Email</p>
+                  <p className="text-sm font-medium text-gray-800">{detailsUser.email || '—'}</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs uppercase text-gray-500 mb-1">Role</p>
+                  <p className="text-sm font-medium text-gray-800">{detailsUser.role || '—'}</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs uppercase text-gray-500 mb-1">Status</p>
+                  <p className="text-sm font-medium text-gray-800">{detailsUser.status || '—'}</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs uppercase text-gray-500 mb-1">Position</p>
+                  <p className="text-sm font-medium text-gray-800">{detailsUser.organizationPosition || '—'}</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs uppercase text-gray-500 mb-1">Job Title</p>
+                  <p className="text-sm font-medium text-gray-800">{detailsUser.jobTitle || '—'}</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs uppercase text-gray-500 mb-1">Department</p>
+                  <p className="text-sm font-medium text-gray-800">{detailsUser.department || '—'}</p>
+                </div>
+              </div>
+
+              {detailsUser.organizationUnitId && (
+                <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+                  <p className="text-xs uppercase text-indigo-500 mb-1">Organization Path</p>
+                  <p className="text-sm font-medium text-indigo-800">
+                    {getOrgUnitPath(detailsUser.organizationUnitId)?.join(' → ') || '—'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 px-6 py-4 border-t flex justify-end">
+              <button
+                onClick={() => setDetailsUser(null)}
+                className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -17,9 +17,23 @@ export default function SendToOrganizationModal({
 
   if (!show || !document) return null;
 
-  const userOrgUnit = currentUser.organizationUnitId;
+  const userOrgUnit = currentUser?.organizationUnitId;
+  
+  // Ensure organizationTree is an array
+  const treeToUse = Array.isArray(organizationTree) ? organizationTree : [];
+  
+  // Debug logging
+  console.log('SendToOrganizationModal Debug:');
+  console.log('currentUser:', currentUser);
+  console.log('userOrgUnit (organizationUnitId):', userOrgUnit);
+  console.log('organizationTree:', organizationTree);
+  console.log('organizationTree is array?', Array.isArray(organizationTree));
+  console.log('treeToUse:', treeToUse);
+  console.log('userList:', userList);
+  console.log('First user in userList:', userList[0]);
 
   const findUserOrgUnitWithPath = (nodes, targetId, path = []) => {
+    if (!Array.isArray(nodes)) return null;
     for (const node of nodes) {
       if (node.id === targetId) {
         return { unit: node, path: [...path, node] };
@@ -32,11 +46,12 @@ export default function SendToOrganizationModal({
     return null;
   };
 
-  const userOrgUnitResult = findUserOrgUnitWithPath(organizationTree, userOrgUnit);
+  const userOrgUnitResult = findUserOrgUnitWithPath(treeToUse, userOrgUnit);
   const userOrgUnitData = userOrgUnitResult?.unit;
   const userOrgPath = userOrgUnitResult?.path || [];
 
   const getAllUnitsInTree = (nodes) => {
+    if (!Array.isArray(nodes)) return [];
     let units = [];
     for (const node of nodes) {
       units.push(node);
@@ -47,14 +62,23 @@ export default function SendToOrganizationModal({
     return units;
   };
 
-  const allAccessibleUnits = getAllUnitsInTree(organizationTree);
+  const allAccessibleUnits = getAllUnitsInTree(treeToUse);
 
   const getUsersInUnit = (unitId, includeSubUnits = true, excludeUnitIds = []) => {
+    if (!Array.isArray(userList)) {
+      return [];
+    }
     if (excludeUnitIds.includes(unitId)) {
       return [];
     }
     
     const users = userList.filter(user => user.organizationUnitId === unitId);
+    console.log(`getUsersInUnit(${unitId}, includeSubUnits=${includeSubUnits}):`, {
+      unitId,
+      usersInThisUnit: users,
+      userListSample: userList.slice(0, 2),
+      filterCheck: userList.map(u => ({ id: u.id, orgId: u.organizationUnitId }))
+    });
     
     if (includeSubUnits) {
       const unit = allAccessibleUnits.find(u => u.id === unitId);
@@ -145,6 +169,9 @@ export default function SendToOrganizationModal({
   };
 
   const renderOrgTree = (nodes, level = 0) => {
+    if (!Array.isArray(nodes) || nodes.length === 0) {
+      return null;
+    }
     return nodes.map(node => {
       const hasChildren = node.children && node.children.length > 0;
       const isExpanded = expandedNodes[node.id];
@@ -382,9 +409,9 @@ export default function SendToOrganizationModal({
               </div>
 
               <div className="border border-gray-200 rounded-lg p-4 max-h-80 overflow-y-auto bg-gray-50">
-                {organizationTree.length > 0 ? (
+                {treeToUse.length > 0 ? (
                   <div className="space-y-2">
-                    {renderOrgTree(organizationTree)}
+                    {renderOrgTree(treeToUse)}
                   </div>
                 ) : (
                   <div className="text-center py-8">
@@ -423,7 +450,7 @@ export default function SendToOrganizationModal({
                 <div className="grid grid-cols-2 gap-2">
                   {recipients.slice(0, 10).map(user => (
                     <div key={user.id} className="text-xs bg-white px-2 py-1 rounded border border-green-200">
-                      {user.name}
+                      {user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username}
                     </div>
                   ))}
                 </div>

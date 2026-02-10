@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import LoginInterface from './LoginInterface';
 import MainFrame from './admin/Mainframe';
+import SystemAdminMainFrame from './system-admin/Mainframe';
 import UserMainFrame from './user/UserMainFrame';
+import { setAuthTokens, getAccessToken } from './services/api';
 
 const createDataStore = () => ({
   allDocuments: [],
@@ -327,23 +329,76 @@ const AppDataStore = createDataStore();
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Check for stored tokens on mount
+  useEffect(() => {
+    const accessToken = localStorage.getItem('access_token');
+    const refreshToken = localStorage.getItem('refresh_token');
+    const storedUser = localStorage.getItem('currentUser');
+    
+    if (accessToken && refreshToken && storedUser) {
+      // Restore tokens and user session
+      setAuthTokens(accessToken, refreshToken);
+      try {
+        const userData = JSON.parse(storedUser);
+        setCurrentUser(userData);
+        setIsLoggedIn(true);
+        console.log('Restored user session from localStorage:', userData);
+      } catch (error) {
+        console.error('Failed to restore user session:', error);
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('currentUser');
+      }
+    }
+    setIsLoading(false);
+  }, []);
 
   const handleLoginSuccess = (userData) => {
     setCurrentUser(userData);
     setIsLoggedIn(true);
+    // Store user data for session restoration
+    localStorage.setItem('currentUser', JSON.stringify(userData));
   };
 
   const handleLogout = () => {
+    // Clear JWT tokens from localStorage
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('currentUser');
     setIsLoggedIn(false);
     setCurrentUser(null);
   };
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      handleLogout();
+    };
+    window.addEventListener('auth:expired', handleAuthExpired);
+    return () => {
+      window.removeEventListener('auth:expired', handleAuthExpired);
+    };
+  }, []);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  }
 
   if (!isLoggedIn) {
     return <LoginInterface onLoginSuccess={handleLoginSuccess} dataStore={AppDataStore} />;
   }
 
-
-  if (currentUser.userType === 'admin') {
+  // Route based on user type
+  if (currentUser.userType === 'system-admin') {
+    return (
+      <SystemAdminMainFrame 
+        currentUser={currentUser} 
+        onLogout={handleLogout}
+        dataStore={AppDataStore}
+      />
+    );
+  } else if (currentUser.userType === 'admin') {
     return (
       <MainFrame 
         currentUser={currentUser} 

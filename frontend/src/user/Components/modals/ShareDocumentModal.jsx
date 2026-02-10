@@ -19,11 +19,17 @@ export default function ShareDocumentModal({
   // Filter users (exclude current user)
   const availableUsers = allUsers.filter(user => user.id !== currentUser.id);
   
-  // Filter based on search
-  const filteredUsers = availableUsers.filter(user => 
-    user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter based on search - use firstName, lastName, username, or email
+  const filteredUsers = availableUsers.filter(user => {
+    const displayName = `${user.firstName || ''} ${user.lastName || ''}`.toLowerCase().trim();
+    const username = (user.username || '').toLowerCase();
+    const email = (user.email || '').toLowerCase();
+    const searchLower = searchQuery.toLowerCase();
+    
+    return displayName.includes(searchLower) || 
+           username.includes(searchLower) || 
+           email.includes(searchLower);
+  });
 
   const handleToggleUser = (userId) => {
     setSelectedUsers(prev => 
@@ -179,11 +185,11 @@ export default function ShareDocumentModal({
                       />
                       <div className="flex items-center gap-3 flex-1">
                         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                          {user.name.charAt(0)}
+                          {(user.firstName || user.username || 'U').charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-gray-800">{user.name}</p>
-                          <p className="text-sm text-gray-500">{user.email || user.role}</p>
+                          <p className="font-medium text-gray-800">{user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username}</p>
+                          <p className="text-sm text-gray-500">{user.email || user.jobTitle || '-'}</p>
                         </div>
                       </div>
                       {selectedUsers.includes(user.id) && (

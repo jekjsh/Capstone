@@ -1,15 +1,35 @@
 import { FileText, Folder, LayoutDashboard, ClipboardList } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { sessionAPI } from '../../services/api';
 
 export default function AdminDashboard({ 
   userList, 
-  documentList,  
+  documentList,
+  auditLogs = [],
   dataStore,     
   setActiveSection 
 }) {
-  const auditLogs = dataStore ? dataStore.getAllAuditLogs() : [];
+  const [activeSessions, setActiveSessions] = useState(0);
   
-  const totalDocuments = dataStore ? dataStore.getAllDocuments().length : documentList.length;
+  const totalDocuments = documentList.length;
   const totalOrgShares = dataStore ? dataStore.getAllOrgShares().length : 0;
+  
+  useEffect(() => {
+    const fetchActiveSessions = async () => {
+      try {
+        const data = await sessionAPI.getActiveSessions();
+        setActiveSessions(data.active_sessions);
+      } catch (error) {
+        console.error('Failed to fetch active sessions:', error);
+      }
+    };
+    
+    fetchActiveSessions();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchActiveSessions, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
   
   return (
     <div className="space-y-6">
@@ -39,7 +59,7 @@ export default function AdminDashboard({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 text-sm">Active Sessions</p>
-              <p className="text-3xl font-bold text-gray-800">42</p>
+              <p className="text-3xl font-bold text-gray-800">{activeSessions}</p>
             </div>
             <LayoutDashboard className="w-12 h-12 text-purple-500 opacity-50" />
           </div>
@@ -70,7 +90,7 @@ export default function AdminDashboard({
                   )}
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-400">{activity.time}</p>
+                  <p className="text-xs text-gray-400">{activity.timestamp ? new Date(activity.timestamp).toLocaleString() : activity.time}</p>
                   <span className={`inline-block mt-1 px-2 py-1 text-xs rounded-full ${
                     activity.status === 'Success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                   }`}>

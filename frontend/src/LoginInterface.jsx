@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { setAuthTokens } from './services/api';
 
 export default function LoginInterface({ onLoginSuccess, dataStore }) {
   const [userId, setUserId] = useState('');
@@ -43,67 +44,78 @@ export default function LoginInterface({ onLoginSuccess, dataStore }) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const determineUserType = (id) => {
+  const determineUserType = (id, isSuperUser, isStaff) => {
+    // System admin has superuser status
+    if (isSuperUser) {
+      return 'system-admin';
+    }
+    // Organization admin has is_staff status
+    if (isStaff) {
+      return 'admin';
+    }
+    // Regular users
     if (id.includes('_')) {
       return 'admin';
     } else if (id.includes('-')) {
       return 'user';
     }
-    return null;
+    return 'user';
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (validateForm()) {
       setIsLoading(true);
-      setTimeout(() => {
+      try {
+        // Call the backend API to authenticate
+        const response = await fetch('http://localhost:8000/api/auth/login/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: userId,
+            password: password
+          })
+        });
+
+        if (!response.ok) {
+          setErrors({ password: 'Invalid User ID or Password' });
+          setIsLoading(false);
+          return;
+        }
+
+        const data = await response.json();
+        
+        console.log('Login Response Data:', data);
+        console.log('data.user:', data.user);
+        console.log('organizationUnitId:', data.user.organizationUnitId);
+        
+        // Store tokens using the API service
+        setAuthTokens(data.access, data.refresh);
+
+        // Determine user type based on backend flags and username format
+        const userType = determineUserType(userId, data.user.is_superuser, data.user.is_staff);
+
+        // Call onLoginSuccess with user data including profile
+        onLoginSuccess({
+          id: userId,
+          username: userId,
+          name: `${data.user.first_name} ${data.user.last_name}` || userId,
+          role: data.user.is_superuser ? 'System Admin' : (data.user.is_staff ? 'Admin' : 'User'),
+          userType: userType,
+          email: data.user.email,
+          organizationUnitId: data.user.organizationUnitId,
+          jobTitle: data.user.jobTitle,
+          department: data.user.department,
+          organizationPosition: data.user.organizationPosition,
+          status: data.user.status
+        });
+      } catch (error) {
+        console.error('Login error:', error);
+        setErrors({ password: 'Unable to connect to server' });
+      } finally {
         setIsLoading(false);
-        
-        const userType = determineUserType(userId);
-
-        if (!userType) {
-          setErrors({ password: 'Invalid User ID format' });
-          return;
-        }
-
-        if (dataStore) {
-          const verifiedUser = dataStore.verifyUser(userId, password);
-          
-          if (verifiedUser) {
-            onLoginSuccess({
-              ...verifiedUser,
-              userType: userType,
-              name: `${verifiedUser.firstName} ${verifiedUser.lastName}`
-            });
-            return;
-          }
-        }
-
-        if (userType === 'admin' && userId === 'TUPM_01_0001' && password === 'admin123') {
-          onLoginSuccess({
-            id: userId,
-            name: 'Administrator',
-            role: 'Admin',
-            userType: 'admin'
-          });
-          return;
-        }
-
-        if (userType === 'user' && userId === 'TUPM-01-0001' && password === 'User@123') {
-          onLoginSuccess({
-            id: userId,
-            name: 'John Demo User',
-            role: 'User',
-            jobTitle: 'Professor',
-            organizationUnitId: null,
-            organizationPosition: 'Faculty Member',
-            status: 'Active',
-            userType: 'user'
-          });
-          return;
-        }
-        
-        setErrors({ password: 'Invalid User ID or Password' });
-      }, 1500);
+      }
     }
   };
 

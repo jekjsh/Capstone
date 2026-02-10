@@ -1,4 +1,4 @@
-import { X, FileText, ScanText } from 'lucide-react';
+import { X, FileText, ScanText, Download } from 'lucide-react';
 
 export default function DocumentViewerModal({ show, document, onClose, onPrint, onDownload }) {
   if (!show || !document) return null;
@@ -51,6 +51,30 @@ export default function DocumentViewerModal({ show, document, onClose, onPrint, 
                   alt={document.title}
                   className="max-w-full max-h-full object-contain bg-white shadow-2xl"
                 />
+              </div>
+            ) : document.format === 'docx' && !document.content ? (
+              <div className="flex flex-col items-center justify-center h-full bg-white rounded-lg mx-auto max-w-2xl my-auto">
+                <FileText className="w-24 h-24 text-blue-400 mb-4" />
+                <h3 className="text-2xl font-bold text-gray-800 mb-2">Word Document</h3>
+                <p className="text-gray-600 mb-6 text-center">
+                  This is a Microsoft Word document (.docx). Full formatting and content preview requires opening in Word or compatible software.
+                </p>
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 w-full max-w-md mb-6">
+                  <p className="text-center text-gray-700 font-semibold mb-4">{document.title}</p>
+                  {document.description && (
+                    <p className="text-sm text-gray-600 text-center mb-4">{document.description}</p>
+                  )}
+                  <p className="text-xs text-gray-500 text-center">Created: {document.createdAt}</p>
+                </div>
+                {document.fileData && (
+                  <button 
+                    onClick={() => onDownload(document)}
+                    className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 font-medium"
+                  >
+                    <Download className="w-5 h-5" />
+                    Download Document
+                  </button>
+                )}
               </div>
             ) : (
               <div className="max-w-4xl mx-auto">
@@ -121,6 +145,20 @@ export default function DocumentViewerModal({ show, document, onClose, onPrint, 
                                 <span className="text-gray-900">{document.personalInfo.address}</span>
                               </div>
                             )}
+                          </div>
+                        </div>
+                      )}
+
+                      {document.customFieldValues && Object.keys(document.customFieldValues).length > 0 && (
+                        <div className="mb-8">
+                          <h2 className="text-xl font-bold text-gray-900 mb-4 pb-2 border-b border-gray-400">Tags</h2>
+                          <div className="space-y-3">
+                            {Object.entries(document.customFieldValues).map(([tagName, tagValue]) => (
+                              <div key={tagName} className="flex">
+                                <span className="font-semibold text-gray-700 w-48">{tagName}:</span>
+                                <span className="text-gray-900">{tagValue || 'N/A'}</span>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}

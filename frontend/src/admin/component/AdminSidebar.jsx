@@ -8,11 +8,12 @@ export default function AdminSidebar({
   activeSection, 
   setActiveSection, 
   currentUser,
+  customization: customizationProp,
   dataStore
 }) {
   const [customization, setCustomization] = useState({
-    sidebarGradientStart: '#4F46E5',
-    sidebarGradientEnd: '#7C3AED'
+    sidebarGradientStart: customizationProp?.sidebarGradientStart || '#4F46E5',
+    sidebarGradientEnd: customizationProp?.sidebarGradientEnd || '#7C3AED'
   });
 
  useEffect(() => {
