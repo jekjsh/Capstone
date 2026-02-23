@@ -486,68 +486,67 @@ const removeFileFromUpload = (index) => {
   }
 };
   
-  const handleUploadDocument = async () => {
-    if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
-      alert('Please select at least one file to upload');
-      return;
-    }
+ const handleUploadDocument = async (tags = []) => {  // ✅ ADD TAGS PARAMETER
+  if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
+    alert('Please select at least one file to upload');
+    return;
+  }
+  
+  const newDocuments = [];
+  let processedCount = 0;
+  
+  uploadedDocFiles.forEach((file) => {
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    let format = 'other';
+    if (fileExtension === 'pdf') format = 'pdf';
+    else if (fileExtension === 'docx' || fileExtension === 'doc') format = 'docx';
+    else if (fileExtension === 'xlsx' || fileExtension === 'xls') format = 'excel';
     
-    const newDocuments = [];
-    let processedCount = 0;
-    
-    uploadedDocFiles.forEach((file) => {
-      const fileExtension = file.name.split('.').pop().toLowerCase();
-      let format = 'other';
-      if (fileExtension === 'pdf') format = 'pdf';
-      else if (fileExtension === 'docx' || fileExtension === 'doc') format = 'docx';
-       else if (fileExtension === 'xlsx' || fileExtension === 'xls') format = 'excel';
-      
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const doc = {
-          id: Date.now().toString() + '-' + processedCount,
-          title: file.name,
-         description: format === 'excel' ? 'Excel Spreadsheet Document' : 'Uploaded document',
-
-          customFieldValues: {},
-          personalInfo: {},
-          format: format,
-          folderId: currentFolder,
-          fileName: file.name,
-          fileSize: (file.size / 1024).toFixed(2) + ' KB',
-          fileData: e.target.result,
-          mimeType: file.type,
-          createdAt: new Date().toLocaleString(),
-          createdBy: currentUser.id 
-        };
-        
-        
-        if (dataStore) {
-          dataStore.addDocument(doc);
-
-           addAuditLog(
-            'Document Uploaded',
-            `${doc.fileName} (${doc.fileSize}) - ${format.toUpperCase()}`,
-            'Success'
-          );
-        }
-        
-        newDocuments.push(doc);
-        processedCount++;
-        
-        if (processedCount === uploadedDocFiles.length) {
-
-          setShowUploadDocumentModal(false);
-          setUploadedDocFiles([]);
-          setUploadPreviews([]);
-          setCurrentPreviewIndex(0);
-          alert(`${newDocuments.length} document${newDocuments.length > 1 ? 's' : ''} uploaded successfully!`);
-        }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const doc = {
+        id: Date.now().toString() + '-' + processedCount,
+        title: file.name,
+        description: format === 'excel' ? 'Excel Spreadsheet Document' : 'Uploaded document',
+        customFieldValues: {},
+        personalInfo: {},
+        tags: tags,  // ✅ ADD TAGS HERE
+        format: format,
+        folderId: currentFolder,
+        fileName: file.name,
+        fileSize: (file.size / 1024).toFixed(2) + ' KB',
+        fileData: e.target.result,
+        mimeType: file.type,
+        createdAt: new Date().toLocaleString(),
+        createdBy: currentUser.id
       };
       
-      reader.readAsDataURL(file);
-    });
-  };
+      if (dataStore) {
+        dataStore.addDocument(doc);
+        addAuditLog(
+          'Document Uploaded',
+          `${doc.fileName} (${doc.fileSize}) - ${format.toUpperCase()}` + 
+          (tags.length > 0 ? ` - Tags: ${tags.join(', ')}` : ''),  // ✅ ADD TAGS TO AUDIT LOG
+          'Success'
+        );
+      }
+      
+      newDocuments.push(doc);
+      processedCount++;
+      
+      if (processedCount === uploadedDocFiles.length) {
+        setShowUploadDocumentModal(false);
+        setUploadedDocFiles([]);
+        setUploadPreviews([]);
+        setCurrentPreviewIndex(0);
+        alert(`${newDocuments.length} document${newDocuments.length > 1 ? 's' : ''} uploaded successfully!` +
+              (tags.length > 0 ? `\nTags applied: ${tags.join(', ')}` : ''));
+      }
+    };
+    
+    reader.readAsDataURL(file);
+  });
+};
 
   const getFilteredAndSortedDocuments = () => {
     let filtered = [...userDocuments];
@@ -775,6 +774,7 @@ const handleSaveToMyDocuments = (document, source) => {
 
 
   return (
+    
     <div className="flex h-screen bg-gray-100">
       <CreateFolderModal
         show={showCreateFolderModal}
@@ -811,22 +811,23 @@ const handleSaveToMyDocuments = (document, source) => {
         onDownload={handleDownloadDocument}
       />
 
-      <UploadDocumentModal
-        show={showUploadDocumentModal}
-        onClose={() => { 
-          setShowUploadDocumentModal(false); 
-          setUploadedDocFiles([]); 
-          setUploadPreviews([]); 
-          setCurrentPreviewIndex(0); 
-        }}
-        uploadedDocFiles={uploadedDocFiles}
-        uploadPreviews={uploadPreviews}
-        currentPreviewIndex={currentPreviewIndex}
-        setCurrentPreviewIndex={setCurrentPreviewIndex}
-        onFileUpload={handleDocumentFileUpload}
-        onRemoveFile={removeFileFromUpload}
-        onUpload={handleUploadDocument}
-      />
+     <UploadDocumentModal
+  show={showUploadDocumentModal}
+  onClose={() => { 
+    setShowUploadDocumentModal(false); 
+    setUploadedDocFiles([]); 
+    setUploadPreviews([]); 
+    setCurrentPreviewIndex(0); 
+  }}
+  uploadedDocFiles={uploadedDocFiles}
+  uploadPreviews={uploadPreviews}
+  currentPreviewIndex={currentPreviewIndex}
+  setCurrentPreviewIndex={setCurrentPreviewIndex}
+  onFileUpload={handleDocumentFileUpload}
+  onRemoveFile={removeFileFromUpload}
+  onUpload={handleUploadDocument}
+  dataStore={dataStore}  // ✅ ADD THIS
+/>
 
       <OCRModal
         show={showOCRModal}
@@ -923,6 +924,7 @@ const handleSaveToMyDocuments = (document, source) => {
               onMoveToFolder={openMoveToFolderModal}
               onShareDocument={openShareModal}
               onSendToOrganization={handleSendToOrganization}
+              dataStore={dataStore}
             />
           )}
           {activeSection === 'shared' && (
@@ -965,5 +967,3 @@ const handleSaveToMyDocuments = (document, source) => {
     </div>
   );
 }
-
-

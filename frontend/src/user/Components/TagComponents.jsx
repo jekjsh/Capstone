@@ -1,5 +1,5 @@
 import { X, Tag, Plus, Filter } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export function TagInput({ tags, setTags, availableTags, errors }) {
   const [inputValue, setInputValue] = useState('');
@@ -96,7 +96,7 @@ export function TagInput({ tags, setTags, availableTags, errors }) {
         </div>
       </div>
       <p className="mt-1 text-xs text-gray-500">
-        Press Enter or comma to add tags. Click Ã— to remove.
+        Press Enter or comma to add tags. Click × to remove.
       </p>
       {errors?.tags && <p className="mt-1 text-sm text-red-500">{errors.tags}</p>}
     </div>
@@ -200,78 +200,69 @@ export function TagManagement({ dataStore }) {
   const [editingTag, setEditingTag] = useState(null);
   const [editValue, setEditValue] = useState('');
 
- 
-  const getAllTags = () => {
-    const allDocs = dataStore.getAllDocuments();
-    const tagSet = new Set();
-    allDocs.forEach(doc => {
-      if (doc.tags && Array.isArray(doc.tags)) {
-        doc.tags.forEach(tag => tagSet.add(tag));
-      }
-    });
-    return Array.from(tagSet).sort();
-  };
-
-
+  // ✅ FIXED: Get count of documents using a specific tag
   const getTagCount = (tag) => {
     const allDocs = dataStore.getAllDocuments();
     return allDocs.filter(doc => doc.tags && doc.tags.includes(tag)).length;
   };
 
+  // ✅ FIXED: Load tags function - Use dataStore.getAllTags() which includes system tags
   const loadTags = () => {
-    setTags(getAllTags());
+    const allTags = dataStore.getAllTags();
+    setTags(allTags);
   };
 
-  useState(() => {
+  // ✅ FIXED: Use useEffect instead of useState - This was the bug!
+  useEffect(() => {
     loadTags();
-  }, []);
+    
+    // ✅ Subscribe to dataStore changes to reload tags when documents change
+    const unsubscribe = dataStore.subscribe(() => {
+      loadTags();
+    });
+    
+    return unsubscribe;
+  }, [dataStore]);
 
   const handleAddTag = () => {
     const trimmedTag = newTagName.trim().toLowerCase();
-    if (trimmedTag && !tags.includes(trimmedTag)) {
-
-      setTags([...tags, trimmedTag].sort());
-      setNewTagName('');
-      alert(`Tag "${trimmedTag}" created! It will appear on documents when you add it to them.`);
-    } else if (tags.includes(trimmedTag)) {
-      alert('This tag already exists!');
+    if (trimmedTag) {
+      // ✅ Use dataStore.addTag() which adds to systemTags
+      const added = dataStore.addTag(trimmedTag);
+      if (added) {
+        setNewTagName('');
+        loadTags(); // Reload tags to show the new one
+        alert(`Tag "${trimmedTag}" created! You can now use it when creating or uploading documents.`);
+      } else {
+        alert('This tag already exists!');
+      }
     }
   };
 
   const handleDeleteTag = (tag) => {
-    if (window.confirm(`Delete tag "${tag}"? This will remove it from all documents.`)) {
-      const allDocs = dataStore.getAllDocuments();
-      allDocs.forEach(doc => {
-        if (doc.tags && doc.tags.includes(tag)) {
-          const updatedTags = doc.tags.filter(t => t !== tag);
-          dataStore.updateDocument(doc.id, { tags: updatedTags });
-        }
-      });
-      loadTags();
-      alert(`Tag "${tag}" deleted successfully!`);
+    if (window.confirm(`Delete tag "${tag}"? This will remove it from all documents and the system.`)) {
+      // ✅ Use dataStore.removeTag() which removes from systemTags and all documents
+      const removed = dataStore.removeTag(tag);
+      if (removed) {
+        loadTags();
+        alert(`Tag "${tag}" deleted successfully!`);
+      }
     }
   };
 
   const handleRenameTag = (oldTag) => {
     const newTag = editValue.trim().toLowerCase();
     if (newTag && newTag !== oldTag) {
-      if (tags.includes(newTag)) {
-        alert('A tag with this name already exists!');
-        return;
+      // ✅ Use dataStore.renameTag() which renames in systemTags and all documents
+      const renamed = dataStore.renameTag(oldTag, newTag);
+      if (renamed) {
+        loadTags();
+        setEditingTag(null);
+        setEditValue('');
+        alert(`Tag renamed from "${oldTag}" to "${newTag}"!`);
+      } else {
+        alert('A tag with this name already exists or the operation failed!');
       }
-
-      const allDocs = dataStore.getAllDocuments();
-      allDocs.forEach(doc => {
-        if (doc.tags && doc.tags.includes(oldTag)) {
-          const updatedTags = doc.tags.map(t => t === oldTag ? newTag : t);
-          dataStore.updateDocument(doc.id, { tags: updatedTags });
-        }
-      });
-      
-      loadTags();
-      setEditingTag(null);
-      setEditValue('');
-      alert(`Tag renamed from "${oldTag}" to "${newTag}"!`);
     }
   };
 
@@ -425,7 +416,7 @@ export function TagManagement({ dataStore }) {
 
       <div className="border-l-4 border-blue-500 p-4 rounded bg-blue-50">
         <div className="flex items-start gap-2">
-          <span className="font-bold text-lg text-blue-600">ðŸ’¡</span>
+          <span className="font-bold text-lg text-blue-600">💡</span>
           <p className="text-sm font-medium text-blue-900">
             <strong>Tip:</strong> Tags help organize and categorize documents. You can filter documents by tags, 
             and each tag shows how many documents use it. Renaming or deleting a tag will update all associated documents.

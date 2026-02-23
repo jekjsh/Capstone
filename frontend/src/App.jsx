@@ -11,6 +11,7 @@ const createDataStore = () => ({
   users: [],
   organizationTree: [],
   deletedDocuments: [],
+   systemTags: [],
    customization: {  
     systemName: 'Record Keeping Management System',
     systemLogo: null,
@@ -43,7 +44,80 @@ const createDataStore = () => ({
     }
   },
   listeners: [],
+   addTag(tag) {
+    const trimmedTag = tag.trim().toLowerCase();
+    if (trimmedTag && !this.systemTags.includes(trimmedTag)) {
+      this.systemTags.push(trimmedTag);
+      this.systemTags.sort(); // Keep tags alphabetically sorted
+      this.notifyListeners();
+      return true;
+    }
+    return false;
+  },
   
+  removeTag(tag) {
+    const index = this.systemTags.indexOf(tag);
+    if (index > -1) {
+      this.systemTags.splice(index, 1);
+      
+      // Remove tag from all documents
+      this.allDocuments.forEach(doc => {
+        if (doc.tags && doc.tags.includes(tag)) {
+          doc.tags = doc.tags.filter(t => t !== tag);
+        }
+      });
+      
+      this.notifyListeners();
+      return true;
+    }
+    return false;
+  },
+  
+  renameTag(oldTag, newTag) {
+    const trimmedNewTag = newTag.trim().toLowerCase();
+    
+    if (!trimmedNewTag || oldTag === trimmedNewTag) {
+      return false;
+    }
+    
+    // Check if new tag already exists
+    if (this.systemTags.includes(trimmedNewTag)) {
+      return false;
+    }
+    
+    // Remove old tag and add new tag
+    const index = this.systemTags.indexOf(oldTag);
+    if (index > -1) {
+      this.systemTags.splice(index, 1);
+      this.systemTags.push(trimmedNewTag);
+      this.systemTags.sort();
+      
+      // Update tag in all documents
+      this.allDocuments.forEach(doc => {
+        if (doc.tags && doc.tags.includes(oldTag)) {
+          doc.tags = doc.tags.map(t => t === oldTag ? trimmedNewTag : t);
+        }
+      });
+      
+      this.notifyListeners();
+      return true;
+    }
+    return false;
+  },
+  
+  getAllTags() {
+    // Combine system tags with tags from documents
+    const documentTags = new Set();
+    this.allDocuments.forEach(doc => {
+      if (doc.tags && Array.isArray(doc.tags)) {
+        doc.tags.forEach(tag => documentTags.add(tag));
+      }
+    });
+    
+    // Merge system tags and document tags, remove duplicates
+    const allTags = new Set([...this.systemTags, ...Array.from(documentTags)]);
+    return Array.from(allTags).sort();
+  },
 
   addAuditLog(log) {
     this.auditLogs.unshift(log);
@@ -57,8 +131,21 @@ const createDataStore = () => ({
 
   addDocument(doc) {
     this.allDocuments.push(doc);
+    
+    // ✅ AUTO-ADD NEW TAGS FROM DOCUMENTS TO SYSTEM TAGS
+    if (doc.tags && Array.isArray(doc.tags)) {
+      doc.tags.forEach(tag => {
+        const trimmedTag = tag.trim().toLowerCase();
+        if (trimmedTag && !this.systemTags.includes(trimmedTag)) {
+          this.systemTags.push(trimmedTag);
+        }
+      });
+      this.systemTags.sort();
+    }
+    
     this.notifyListeners();
   },
+  
   
   getAllDocuments() {
     return this.allDocuments;
@@ -67,11 +154,23 @@ const createDataStore = () => ({
   getDocumentsByUser(userId) {
     return this.allDocuments.filter(doc => doc.createdBy === userId);
   },
-  updateDocument(docId, updates) {
-  this.allDocuments = this.allDocuments.map(doc => 
-    doc.id === docId ? { ...doc, ...updates } : doc
-  );
-  this.notifyListeners();
+   updateDocument(docId, updates) {
+    this.allDocuments = this.allDocuments.map(doc => 
+      doc.id === docId ? { ...doc, ...updates } : doc
+    );
+    
+  
+    if (updates.tags && Array.isArray(updates.tags)) {
+      updates.tags.forEach(tag => {
+        const trimmedTag = tag.trim().toLowerCase();
+        if (trimmedTag && !this.systemTags.includes(trimmedTag)) {
+          this.systemTags.push(trimmedTag);
+        }
+      });
+      this.systemTags.sort();
+    }
+    
+    this.notifyListeners();
   },
   deleteDocument(docId) {
     this.allDocuments = this.allDocuments.filter(doc => doc.id !== docId);
