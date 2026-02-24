@@ -1,4 +1,4 @@
-import { Plus, Upload, ScanText, FileText, Trash2, Folder, Share2, Building2 } from 'lucide-react';
+import { Upload, ScanText, FileText, Trash2, Folder, Share2, Building2 } from 'lucide-react';
 
 export default function Documents({
   currentFolder,
@@ -17,7 +17,6 @@ export default function Documents({
   setFilterByTag = () => {},
   setShowUploadDocumentModal,
   setShowOCRModal,
-  setShowAddDocumentModal,
   onOpenDocument,
   onDeleteDocument,
   onDownloadDocument,
@@ -50,10 +49,6 @@ export default function Documents({
           <button onClick={() => setShowOCRModal(true)} className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2">
             <ScanText className="w-4 h-4" />
             Use OCR
-          </button>
-          <button onClick={() => setShowAddDocumentModal(true)} className="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-colors flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Create Document
           </button>
         </div>
       </div>
@@ -159,12 +154,8 @@ export default function Documents({
       {userDocuments.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
           <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500 text-lg mb-2">No documents created yet</p>
-          <p className="text-gray-400 text-sm mb-4">Click "Create Document" to add your first document</p>
-          <button onClick={() => setShowAddDocumentModal(true)} className="bg-indigo-500 text-white px-6 py-2 rounded-lg hover:bg-indigo-600 transition-colors inline-flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Create Your First Document
-          </button>
+          <p className="text-gray-500 text-lg mb-2">No documents yet</p>
+          <p className="text-gray-400 text-sm">Upload a document or use OCR to get started</p>
         </div>
       ) : filteredDocuments.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">

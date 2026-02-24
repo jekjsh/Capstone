@@ -10,6 +10,7 @@ router.register(r'documents', views.DocumentViewSet, basename='document')
 router.register(r'folders', views.FolderViewSet, basename='folder')
 router.register(r'tags', views.TagViewSet, basename='tag')
 router.register(r'organization-shares', views.OrganizationShareViewSet, basename='organization-share')
+router.register(r'notifications', views.NotificationViewSet, basename='notification')
 router.register(r'system-settings', views.SystemSettingsViewSet, basename='system-settings')
 urlpatterns = [
     path("login/", views.login_view, name="login"),

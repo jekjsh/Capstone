@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import OrganizationUnit, UserProfile, AuditLog, Document, SystemSettings, Folder, Tag, OrganizationShare
+from .models import OrganizationUnit, UserProfile, AuditLog, Document, SystemSettings, Folder, Tag, OrganizationShare, Notification
 
 
 class OrganizationUnitSerializer(serializers.ModelSerializer):
@@ -296,3 +296,38 @@ class OrganizationShareSerializer(serializers.ModelSerializer):
         else:
             raise serializers.ValidationError("Authentication required to create organization share")
         return super().create(validated_data)
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """Serializer for user notifications"""
+    documentTitle = serializers.CharField(source='document.title', read_only=True, allow_null=True)
+    senderName = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+    isRead = serializers.BooleanField(source='is_read')
+    documentId = serializers.IntegerField(source='document.id', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = Notification
+        fields = [
+            'id',
+            'type',
+            'title',
+            'message',
+            'documentTitle',
+            'documentId',
+            'senderName',
+            'isRead',
+            'is_read',
+            'createdAt',
+            'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_senderName(self, obj):
+        """Get the sender's name based on notification type"""
+        if obj.type == 'organization_share' and obj.organization_share:
+            return f"{obj.organization_share.sent_by.first_name} {obj.organization_share.sent_by.last_name}".strip() or obj.organization_share.sent_by.username
+        elif obj.type == 'document_share' and obj.document:
+            # For document shares, check shared_with and find sender from document creator
+            return f"{obj.document.created_by.first_name} {obj.document.created_by.last_name}".strip() or obj.document.created_by.username
+        return None

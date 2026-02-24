@@ -6,7 +6,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import OrganizationUnit, UserProfile, AuditLog, Document, SystemSettings, Folder, Tag, OrganizationShare
+from .models import OrganizationUnit, UserProfile, AuditLog, Document, SystemSettings, Folder, Tag, OrganizationShare, Notification
 from .serializers import (
     OrganizationUnitSerializer, 
     OrganizationUnitCreateUpdateSerializer,
@@ -17,11 +17,14 @@ from .serializers import (
     SystemSettingsSerializer,
     FolderSerializer,
     TagSerializer,
-    OrganizationShareSerializer
+    OrganizationShareSerializer,
+    NotificationSerializer
 )
 import base64
 import io
 from docx import Document as DocxDocument
+from django.utils import timezone
+from datetime import timedelta
 
 
 def create_audit_log(user, action, resource, status_value='Success', request=None):
@@ -527,9 +530,37 @@ class DocumentViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         """Update a document"""
         instance = self.get_object()
+        
+        # Store old shared_with list to detect new shares
+        old_shared_with = instance.shared_with or []
+        
         serializer = DocumentSerializer(instance, data=request.data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
         document = serializer.save()
+        
+        # Detect new shares and create notifications
+        new_shared_with = document.shared_with or []
+        newly_shared_users = [u for u in new_shared_with if u not in old_shared_with]
+        
+        for username in newly_shared_users:
+            try:
+                recipient_user = User.objects.get(username=username)
+                # Check if notification already exists
+                if not Notification.objects.filter(
+                    user=recipient_user,
+                    type='document_share',
+                    document=document
+                ).exists():
+                    sender_name = f'{document.created_by.first_name} {document.created_by.last_name}' or document.created_by.username
+                    Notification.objects.create(
+                        user=recipient_user,
+                        type='document_share',
+                        title='New document shared with you',
+                        message=f'{sender_name} shared "{document.title}" with you.',
+                        document=document
+                    )
+            except User.DoesNotExist:
+                continue
         
         # Extract DOCX content if file was updated
         if document.format == 'docx' and document.file_data:
@@ -659,6 +690,31 @@ class OrganizationShareViewSet(viewsets.ModelViewSet):
         return queryset.filter(
             models.Q(sent_by=user) | models.Q(recipients__contains=[user.username])
         )
+
+    def perform_create(self, serializer):
+        """Create organization share and generate notifications for recipients"""
+        org_share = serializer.save()
+        
+        # Create notifications for all recipients
+        for recipient_username in org_share.recipients:
+            try:
+                recipient_user = User.objects.get(username=recipient_username)
+                # Check if notification already exists to avoid duplicates
+                if not Notification.objects.filter(
+                    user=recipient_user,
+                    type='organization_share',
+                    organization_share=org_share
+                ).exists():
+                    Notification.objects.create(
+                        user=recipient_user,
+                        type='organization_share',
+                        title=f'New document from {org_share.sent_from.name if org_share.sent_from else "Organization"}',
+                        message=f'{org_share.sent_by.first_name} {org_share.sent_by.last_name} shared "{org_share.document.title}" with your organization.',
+                        document=org_share.document,
+                        organization_share=org_share
+                    )
+            except User.DoesNotExist:
+                continue
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, context={'request': request})
@@ -804,3 +860,124 @@ class TagViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Create tag owned by current user"""
         serializer.save(owner=self.request.user)
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing user notifications"""
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return notifications for the current user"""
+        return Notification.objects.filter(user=self.request.user).select_related(
+            'document', 'organization_share', 'organization_share__sent_by'
+        )
+    
+    @action(detail=False, methods=['post'])
+    def generate_notifications(self, request):
+        """Generate notifications for document shares and deletion warnings"""
+        user = request.user
+        notifications_created = []
+        
+        # Check for organization shares
+        org_shares = OrganizationShare.objects.filter(
+            recipients__contains=[user.username]
+        ).select_related('document', 'sent_by', 'sent_from')
+        
+        for share in org_shares:
+            # Check if notification already exists
+            if not Notification.objects.filter(
+                user=user,
+                type='organization_share',
+                organization_share=share
+            ).exists():
+                notification = Notification.objects.create(
+                    user=user,
+                    type='organization_share',
+                    title=f'New document from {share.sent_from.name if share.sent_from else "Organization"}',
+                    message=f'{share.sent_by.first_name} {share.sent_by.last_name} shared "{share.document.title}" with your organization.',
+                    document=share.document,
+                    organization_share=share
+                )
+                notifications_created.append(notification)
+        
+        # Check for personal document shares
+        shared_docs = Document.objects.filter(
+            shared_with__contains=[user.username],
+            is_deleted=False
+        ).exclude(created_by=user)
+        
+        for doc in shared_docs:
+            # Check if notification already exists
+            if not Notification.objects.filter(
+                user=user,
+                type='document_share',
+                document=doc
+            ).exists():
+                sender_name = f'{doc.created_by.first_name} {doc.created_by.last_name}' or doc.created_by.username
+                notification = Notification.objects.create(
+                    user=user,
+                    type='document_share',
+                    title='New document shared with you',
+                    message=f'{sender_name} shared "{doc.title}" with you.',
+                    document=doc
+                )
+                notifications_created.append(notification)
+        
+        # Check for documents near 30-day deletion
+        threshold_date = timezone.now() - timedelta(days=23)  # Warn at day 23 (7 days before deletion)
+        deletion_warning_docs = Document.objects.filter(
+            created_by=user,
+            is_deleted=True,
+            deleted_at__lte=threshold_date,
+            deleted_at__gte=timezone.now() - timedelta(days=29)  # Within last 29 days
+        )
+        
+        for doc in deletion_warning_docs:
+            # Check if notification already exists
+            if not Notification.objects.filter(
+                user=user,
+                type='deletion_warning',
+                document=doc
+            ).exists():
+                days_until_deletion = 30 - (timezone.now() - doc.deleted_at).days
+                notification = Notification.objects.create(
+                    user=user,
+                    type='deletion_warning',
+                    title='Document will be permanently deleted soon',
+                    message=f'"{doc.title}" will be permanently deleted in {days_until_deletion} day(s). Restore it from Recycle Bin if needed.',
+                    document=doc
+                )
+                notifications_created.append(notification)
+        
+        serializer = self.get_serializer(notifications_created, many=True)
+        return Response({
+            'count': len(notifications_created),
+            'notifications': serializer.data
+        })
+    
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        """Mark all notifications as read for current user"""
+        updated = Notification.objects.filter(
+            user=request.user,
+            is_read=False
+        ).update(is_read=True)
+        return Response({'updated': updated})
+    
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        """Mark a specific notification as read"""
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response({'status': 'marked as read'})
+    
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """Get count of unread notifications"""
+        count = Notification.objects.filter(
+            user=request.user,
+            is_read=False
+        ).count()
+        return Response({'count': count})

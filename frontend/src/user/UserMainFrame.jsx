@@ -14,7 +14,6 @@ import MoveToFolderModal from './components/modals/MoveToFolderModal';
 import DocumentViewerModal from './components/modals/DocumentViewerModal';
 import UploadDocumentModal from './components/modals/UploadDocumentModal';
 import OCRModal from './components/modals/OCRModal';
-import AddDocumentModal from './components/modals/AddDocumentModal';
 import PersonalInfoFormModal from './components/modals/PersonalInfoFormModal';
 import SaveOptionsModal from './components/modals/SaveOptionsModal';
 import AddFieldModal from './components/modals/AddFieldModal';
@@ -183,7 +182,6 @@ export default function UserMainFrame({
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState('blue');
   const [customFields, setCustomFields] = useState([]);
-  const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showUploadDocumentModal, setShowUploadDocumentModal] = useState(false);
   const [showOCRModal, setShowOCRModal] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -219,11 +217,6 @@ export default function UserMainFrame({
     emergencyPhone: ''
   });
   
-  const [newDocument, setNewDocument] = useState({
-    title: '',
-    description: '',
-    customFieldValues: {}
-  });
 const [newField, setNewField] = useState({
   fieldName: '',
   fieldType: 'text',
@@ -549,20 +542,6 @@ const handleToggleFieldActive = async (fieldId) => {
     setShowMoveToFolderModal(true);
   };
 
-  const handleAddDocument = () => {
-    if (!newDocument.title.trim()) {
-      setErrors({ title: 'Document title is required' });
-      return;
-    }
-    setCurrentDocumentData({
-      title: newDocument.title,
-      description: newDocument.description,
-      customFieldValues: { ...newDocument.customFieldValues }
-    });
-    setShowAddDocumentModal(false);
-    setShowPersonalInfoForm(true);
-  };
-
   const handleSavePersonalInfo = () => {
     if (!personalInfo.fullName.trim() || !personalInfo.email.trim()) {
       setErrors({ personalInfo: 'Full Name and Email are required' });
@@ -675,7 +654,6 @@ Document ID: ${Date.now()}
       }
       
       setShowSaveOptionsModal(false);
-      setNewDocument({ title: '', description: '', customFieldValues: {} });
       setPersonalInfo({
         fullName: '',
         dateOfBirth: '',
@@ -1518,7 +1496,7 @@ const handleSaveToMyDocuments = (document, source) => {
         setPersonalInfo={setPersonalInfo}
         errors={errors}
         onSave={handleSavePersonalInfo}
-        onBack={() => { setShowPersonalInfoForm(false); setShowAddDocumentModal(true); }}
+        onBack={() => { setShowPersonalInfoForm(false); }}
       />
 
       <SaveOptionsModal
@@ -1539,20 +1517,6 @@ const handleSaveToMyDocuments = (document, source) => {
         setNewField={setNewField}
         errors={errors}
         onAddField={handleAddField}
-      />
-
-      <AddDocumentModal
-        show={showAddDocumentModal}
-        onClose={() => { 
-          setShowAddDocumentModal(false); 
-          setErrors({}); 
-          setNewDocument({ title: '', description: '', customFieldValues: {} }); 
-        }}
-        newDocument={newDocument}
-        setNewDocument={setNewDocument}
-        customFields={customFields}
-        errors={errors}
-        onAddDocument={handleAddDocument}
       />
 
       <ShareDocumentModal
@@ -1634,7 +1598,6 @@ const handleSaveToMyDocuments = (document, source) => {
               setFilterByTag={setFilterByTag}
               setShowUploadDocumentModal={setShowUploadDocumentModal}
               setShowOCRModal={setShowOCRModal}
-              setShowAddDocumentModal={setShowAddDocumentModal}
               onOpenDocument={handleOpenDocument}
               onDeleteDocument={handleDeleteDocument}
               onDownloadDocument={handleDownloadDocument}

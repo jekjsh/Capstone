@@ -266,3 +266,32 @@ class OrganizationShare(models.Model):
 
     def __str__(self):
         return f"Org share: {self.document.title} by {self.sent_by.username}"
+
+
+class Notification(models.Model):
+    """User notifications for document shares and deleted files"""
+    
+    TYPE_CHOICES = [
+        ('organization_share', 'Organization Share'),
+        ('document_share', 'Document Share'),
+        ('deletion_warning', 'Deletion Warning'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    organization_share = models.ForeignKey(OrganizationShare, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['user', 'is_read']),
+        ]
+    
+    def __str__(self):
+        return f"{self.type} for {self.user.username}: {self.title}"

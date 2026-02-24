@@ -1,4 +1,5 @@
 import { Bell, Settings, LogOut, Lock } from 'lucide-react';
+import Notifications from './Notifications';
 
 export default function Header({ activeSection, menuItems, currentUser, showSettingsMenu, setShowSettingsMenu, onLogout, onChangePassword }) {
   return (
@@ -7,10 +8,7 @@ export default function Header({ activeSection, menuItems, currentUser, showSett
         {menuItems.find(item => item.id === activeSection)?.label || 'Dashboard'}
       </h1>
       <div className="flex items-center gap-4">
-        <button className="relative p-2 hover:bg-gray-100 rounded-full transition-colors">
-          <Bell className="w-5 h-5 text-gray-600" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-        </button>
+        <Notifications currentUser={currentUser} />
         <div className="relative">
           <button 
             onClick={() => setShowSettingsMenu(!showSettingsMenu)}

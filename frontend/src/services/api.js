@@ -562,3 +562,69 @@ export const tagAPI = {
     return response.ok ? { success: true } : await response.json();
   },
 };
+
+// Notifications API
+export const notificationAPI = {
+  // Get all notifications for the current user
+  getAll: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch notifications');
+    }
+    return await response.json();
+  },
+
+  // Generate/sync notifications
+  generateNotifications: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/generate_notifications/`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to generate notifications');
+    }
+    return await response.json();
+  },
+
+  // Get unread notification count
+  getUnreadCount: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/unread_count/`);
+    if (!response.ok) {
+      throw new Error('Failed to get unread count');
+    }
+    return await response.json();
+  },
+
+  // Mark a notification as read
+  markRead: async (notificationId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/${notificationId}/mark_read/`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to mark notification as read');
+    }
+    return await response.json();
+  },
+
+  // Mark all notifications as read
+  markAllRead: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/mark_all_read/`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to mark all notifications as read');
+    }
+    return await response.json();
+  },
+
+  // Delete a notification
+  delete: async (notificationId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/${notificationId}/`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete notification');
+    }
+    return response.ok ? { success: true } : await response.json();
+  },
+};
