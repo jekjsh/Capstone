@@ -1,0 +1,40 @@
+/* frontend/src/components/LoginForm.css */
+
+.login-glass-effect {
+  /* Just in case you ever want the white box to be slightly transparent */
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(10px);
+}
+
+.input-focus-ring:focus-within {
+  /* Matches that exact purple/blue glow from your image */
+  border-color: #4F46E5;
+  box-shadow: 0 0 0 1px #4F46E5;
+}
+
+/* Error Popup Animations */
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes popOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+.alert-popup-in {
+  animation: popIn 0.3s ease-out;
+}
