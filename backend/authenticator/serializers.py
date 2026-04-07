@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Organization
+from .models import Organization, IdFormat
 
 User = get_user_model()
 
@@ -99,13 +99,13 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
 
 # 5. IdFormat Serializer
-class IdFormatSerializer(serializers.Serializer):
-    format_id = serializers.IntegerField(read_only=True)
-    org = serializers.IntegerField()
-    prefix = serializers.CharField(max_length=20)
-    admin_separator = serializers.CharField(max_length=5)
-    user_separator = serializers.CharField(max_length=5)
-    segment1_len = serializers.IntegerField()
-    segment2_len = serializers.IntegerField()
-    segment3_len = serializers.IntegerField(required=False, allow_null=True)
-    is_active = serializers.BooleanField(default=True)
+class IdFormatSerializer(serializers.ModelSerializer):
+    org = serializers.PrimaryKeyRelatedField(
+        queryset=Organization.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    
+    class Meta:
+        model = IdFormat
+        fields = ['format_id', 'org', 'prefix', 'admin_separator', 'user_separator', 'segment1_len', 'segment2_len', 'segment3_len', 'is_active']

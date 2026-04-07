@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { userAPI } from '../../services/api';
+import { userAPI, idFormatAPI } from '../../services/api';
+import { validateUserId, getFormatHint, generateSampleIds } from '../../utils/idFormatValidator';
 
 export default function SystemAdminAddUserModal({
   isOpen,
@@ -31,11 +32,31 @@ export default function SystemAdminAddUserModal({
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load user ID format from dataStore
+  // Load user ID format from backend API
   useEffect(() => {
-    if (isOpen && dataStore) {
-      const format = dataStore.getUserIdFormat ? dataStore.getUserIdFormat() : null;
-      setCurrentFormat(format);
+    const loadFormat = async () => {
+      try {
+        // Fetch all ID formats and use the first active one
+        // In a real scenario, you'd filter by organization
+        const formats = await idFormatAPI.getAll();
+        const data = Array.isArray(formats) ? formats : (formats.results || []);
+        const activeFormat = data.find(f => f.is_active) || data[0];
+        
+        if (activeFormat) {
+          setCurrentFormat(activeFormat);
+        }
+      } catch (error) {
+        console.error('Failed to load ID format:', error);
+        // Fallback to dataStore if API fails
+        if (dataStore) {
+          const format = dataStore.getUserIdFormat ? dataStore.getUserIdFormat() : null;
+          setCurrentFormat(format);
+        }
+      }
+    };
+
+    if (isOpen) {
+      loadFormat();
     }
   }, [isOpen, dataStore, formData.role]);
 
@@ -69,17 +90,42 @@ export default function SystemAdminAddUserModal({
     }
   }, [isOpen, isEditMode, editingUser]);
 
+  // Get format info for current role
   const getFormatByRole = () => {
-    switch(formData.role) {
-      case 'User':
-        return { separator: '-', pattern: 'TUPM-XX-XXXX', hint: 'TUPM with hyphens (User format)' };
-      case 'Admin':
-        return { separator: '_', pattern: 'TUPM_XX_XXXX', hint: 'TUPM with underscores (Admin format)' };
-      case 'System Admin':
-        return { separator: '*', pattern: 'TUPM*XX*XXXX', hint: 'TUPM with asterisks (System Admin format)' };
-      default:
-        return { separator: '-', pattern: 'TUPM-XX-XXXX', hint: 'TUPM with hyphens (User format)' };
+    if (!currentFormat) {
+      return {
+        separator: '-',
+        pattern: 'No format configured',
+        hint: 'Please configure ID format'
+      };
     }
+    return {
+      separator: formData.role === 'Admin' ? currentFormat.admin_separator : currentFormat.user_separator,
+      pattern: generateSampleIds(currentFormat, formData.role)?.admin || 'N/A',
+      hint: getFormatHint(currentFormat, formData.role)
+    };
+  };
+
+  const validateUserIdFormat = (userId) => {
+    if (!userId) {
+      setUserIdFormatValid(null);
+      return false;
+    }
+
+    if (!currentFormat) {
+      setUserIdFormatValid(false);
+      return false;
+    }
+
+    // Use the utility function to validate
+    const result = validateUserId(userId, currentFormat, formData.role);
+    setUserIdFormatValid(result.isValid);
+    return result.isValid;
+  };
+
+  const handleUserIdChange = (value) => {
+    setFormData({ ...formData, userId: value });
+    validateUserIdFormat(value);
   };
 
   // Auto-fill password with last name in uppercase
@@ -92,38 +138,6 @@ export default function SystemAdminAddUserModal({
       });
     }
   }, [step, formData.lastName, passwordData.password]);
-
-  const getPlaceholder = () => {
-    const format = getFormatByRole();
-    return `e.g., ${format.pattern}`;
-  };
-
-  const getFormatHint = () => {
-    const format = getFormatByRole();
-    return `🔹 Format: ${format.pattern} (${format.hint})`;
-  };
-
-  const validateUserIdFormat = (userId) => {
-    if (!userId) {
-      setUserIdFormatValid(null);
-      return false;
-    }
-
-    const format = getFormatByRole();
-    // Build pattern directly: TUPM[sep]XX[sep]XXXX where [sep] is role-specific
-    const sep = format.separator === '*' ? '\\*' : '\\' + format.separator;
-    const pattern = `^TUPM${sep}[0-9][0-9]${sep}[0-9][0-9][0-9][0-9]$`;
-    const regex = new RegExp(pattern);
-    const isValid = regex.test(userId);
-    
-    setUserIdFormatValid(isValid);
-    return isValid;
-  };
-
-  const handleUserIdChange = (value) => {
-    setFormData({ ...formData, userId: value });
-    validateUserIdFormat(value);
-  };
 
   const validateStep1 = () => {
     const newErrors = {};

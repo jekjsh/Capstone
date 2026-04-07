@@ -10,7 +10,7 @@ import OrganizationalStructure from './components/OrganizationalStructure';
 import ErrorBoundary from '../admin/component/ErrorBoundary';
 import SystemAdminAddUserModal from './components/SystemAdminAddUserModal';
 import AdminCustomizationModal from '../admin/component/AdminCustomizationModal';
-import UserIdFormatModal from '../admin/component/UserIdFormatModal';
+import SystemAdminIDFormatter from './components/SystemAdminIDFormatter';
 import DocumentViewerModal from '../user/Components/modals/DocumentViewerModal';
 import ChangePasswordModal from '../user/Components/modals/ChangePasswordModal';
 import { UserActionMenu, AdminVerificationModal, EditPasswordModal } from '../admin/component/AdminModals';
@@ -73,6 +73,7 @@ export default function SystemAdminMainFrame({
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userFilterRole, setUserFilterRole] = useState('All');
   const [userFilterStatus, setUserFilterStatus] = useState('All');
+  const [userFilterOrganization, setUserFilterOrganization] = useState('All');
   
   // Audit log filter states (system admin specific)
   const [sysAdminLogSearchQuery, setSysAdminLogSearchQuery] = useState('');
@@ -137,14 +138,12 @@ export default function SystemAdminMainFrame({
       try {
         setIsLoadingUsers(true);
         const data = await userAPI.getAll();
-        console.log('Users fetched from API:', data);
         const transformedUsers = transformUsers(data);
         setUserList(transformedUsers);
       } catch (error) {
         console.error('Failed to load users:', error);
         if (dataStore) {
           const fallbackData = dataStore.getAllUsers();
-          console.log('Using fallback users from dataStore:', fallbackData);
           setUserList(fallbackData);
         }
       } finally {
@@ -161,13 +160,11 @@ export default function SystemAdminMainFrame({
       try {
         setIsLoadingDocuments(true);
         const data = await documentAPI.getAll();
-        console.log('All documents fetched from API:', data);
         setDocumentList(data);
       } catch (error) {
         console.error('Failed to load documents:', error);
         if (dataStore) {
           const fallbackData = dataStore.getAllDocuments();
-          console.log('Using fallback documents from dataStore:', fallbackData);
           setDocumentList(fallbackData);
         }
       } finally {
@@ -205,14 +202,12 @@ export default function SystemAdminMainFrame({
   const transformAuditLogs = (apiData) => {
     try {
       if (!apiData) {
-        console.warn('No audit log data provided');
         return [];
       }
       
       const logsArray = Array.isArray(apiData) ? apiData : (apiData.results || apiData.data || []);
       
       if (!Array.isArray(logsArray)) {
-        console.warn('Audit logs data is not an array:', logsArray);
         return [];
       }
       
@@ -260,18 +255,13 @@ export default function SystemAdminMainFrame({
       setIsLoadingLogs(true);
       try {
         const data = await auditLogAPI.getAll();
-        console.log('Raw audit logs from API:', data);
-        console.log('Data type:', typeof data, 'Is array:', Array.isArray(data));
-        console.log('First log sample:', data[0] || 'No logs');
         
         const transformedLogs = transformAuditLogs(data);
-        console.log('Transformed audit logs:', transformedLogs);
         setAuditLogs(transformedLogs);
       } catch (error) {
         console.error('Failed to load audit logs:', error);
         if (dataStore) {
           const fallbackData = dataStore.getAllAuditLogs();
-          console.log('Using fallback audit logs from dataStore:', fallbackData);
           setAuditLogs(fallbackData);
         } else {
           setAuditLogs([]);
@@ -289,13 +279,11 @@ export default function SystemAdminMainFrame({
     const fetchOrganizationTree = async () => {
       try {
         const data = await organizationAPI.getAll();
-        console.log('Organization structure fetched:', data);
         setOrganizationTree(data);
       } catch (error) {
         console.error('Failed to load organization structure:', error);
         if (dataStore) {
           const fallbackData = dataStore.getOrganizationTree();
-          console.log('Using fallback organization structure from dataStore:', fallbackData);
           setOrganizationTree(fallbackData);
         }
       }
@@ -443,8 +431,9 @@ export default function SystemAdminMainFrame({
       
       const matchesRole = userFilterRole === 'All' || user.role === userFilterRole;
       const matchesStatus = userFilterStatus === 'All' || (user.isActive ? 'Active' : 'Inactive') === userFilterStatus;
+      const matchesOrganization = userFilterOrganization === 'All' || user.organizationUnitId === userFilterOrganization;
       
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesSearch && matchesRole && matchesStatus && matchesOrganization;
     });
   };
 
@@ -490,7 +479,6 @@ export default function SystemAdminMainFrame({
     // Refresh user list
     try {
       const data = await userAPI.getAll();
-      console.log('User list refreshed:', data);
       setUserList(data);
     } catch (error) {
       console.error('Failed to refresh user list:', error);
@@ -544,6 +532,9 @@ export default function SystemAdminMainFrame({
               setUserFilterRole={setUserFilterRole}
               userFilterStatus={userFilterStatus}
               setUserFilterStatus={setUserFilterStatus}
+              userFilterOrganization={userFilterOrganization}
+              setUserFilterOrganization={setUserFilterOrganization}
+              organizationTree={organizationTree}
               getFilteredUsers={getFilteredUsers}
               handleMenuClick={handleMenuClick}
               setShowAddUserModal={handleAddNewUser}
@@ -555,7 +546,6 @@ export default function SystemAdminMainFrame({
             <SystemAdminDocuments
               documentList={documentList}
               userList={userList}
-              onViewDocument={console.log}
               onDeleteDocument={handleDeleteDocument}
               setShowDocumentViewer={setShowDocumentViewer}
               setViewingDocument={setViewingDocument}
@@ -658,7 +648,7 @@ export default function SystemAdminMainFrame({
         onSave={() => setShowCustomizationModal(false)}
       />
 
-      <UserIdFormatModal
+      <SystemAdminIDFormatter
         show={showUserIdFormatModal}
         onClose={() => setShowUserIdFormatModal(false)}
         dataStore={dataStore}

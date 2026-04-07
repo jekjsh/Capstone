@@ -10,6 +10,7 @@ from authenticator.views import (
     UserProfileView,
     UserViewSet,
     OrganizationViewSet,
+    IdFormatViewSet,
     LogoutView
 )
 from documents.views import DocumentViewSet, DocumentShareViewSet, OcrDataViewSet
@@ -20,6 +21,7 @@ from system_config.views import SystemThemeViewSet
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'organizations', OrganizationViewSet, basename='organization')
+router.register(r'id-formats', IdFormatViewSet, basename='id-format')
 router.register(r'documents', DocumentViewSet, basename='document')
 router.register(r'document-shares', DocumentShareViewSet, basename='document-share')
 router.register(r'ocr-data', OcrDataViewSet, basename='ocr-data')

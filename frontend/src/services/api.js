@@ -8,14 +8,14 @@ let inactivityTimer = null;
 let warningCountdownTimer = null;
 let warningShownTime = null;
 
-// Refresh token every 30 minutes
-const REFRESH_TOKEN_INTERVAL = 30 * 60 * 1000; // 30 minutes in milliseconds
+// Refresh token every 7 minutes (before 10-minute access token expiration)
+const REFRESH_TOKEN_INTERVAL = 7 * 60 * 1000; // 7 minutes in milliseconds
 
-// Inactivity logout after 10 minutes
-const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes in milliseconds
+// Inactivity logout after 9 minutes (1 minute before token expiration at 10 minutes)
+const INACTIVITY_TIMEOUT = 9 * 60 * 1000; // 9 minutes in milliseconds
 
-// Show warning at 9 minutes (1 minute before logout)
-const WARNING_TIME = 9 * 60 * 1000; // 9 minutes in milliseconds
+// Show warning at 8 minutes (before logout at 9 minutes)
+const WARNING_TIME = 8 * 60 * 1000; // 8 minutes in milliseconds
 
 // Activity listeners
 const activityEvents = ['click', 'keydown', 'mousemove', 'mousedown', 'scroll', 'touchstart'];
@@ -236,7 +236,7 @@ const fetchWithAuth = async (url, options = {}) => {
 export const organizationAPI = {
   // Get all organization units (returns tree structure)
   getAll: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/organization-units/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/`);
     if (!response.ok) {
       throw new Error('Failed to fetch organization units');
     }
@@ -256,7 +256,7 @@ export const organizationAPI = {
   
   // Get single organization unit
   getById: async (id) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/organization-units/${id}/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/${id}/`);
     if (!response.ok) {
       throw new Error('Failed to fetch organization unit');
     }
@@ -265,7 +265,7 @@ export const organizationAPI = {
   
   // Create new organization unit
   create: async (data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/organization-units/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -278,7 +278,7 @@ export const organizationAPI = {
   
   // Update organization unit
   update: async (id, data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/organization-units/${id}/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/${id}/`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -291,7 +291,7 @@ export const organizationAPI = {
   
   // Delete organization unit
   delete: async (id) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/organization-units/${id}/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/${id}/`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -830,5 +830,76 @@ export const authAPI = {
       throw new Error('Failed to logout');
     }
     return await response.json();
+  },
+};
+
+// ID Format API - User ID format configuration
+export const idFormatAPI = {
+  // Get all ID formats
+  getAll: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch ID formats');
+    }
+    return await response.json();
+  },
+  
+  // Get ID format by organization
+  getByOrganization: async (orgId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/?org=${orgId}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch ID format for organization');
+    }
+    const data = await response.json();
+    // Handle paginated or array response
+    const results = Array.isArray(data) ? data : (data.results || []);
+    return results.length > 0 ? results[0] : null;
+  },
+  
+  // Get single ID format
+  getById: async (id) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/${id}/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch ID format');
+    }
+    return await response.json();
+  },
+  
+  // Create new ID format
+  create: async (data) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create ID format');
+    }
+    return await response.json();
+  },
+  
+  // Update ID format
+  update: async (id, data) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update ID format');
+    }
+    return await response.json();
+  },
+  
+  // Delete ID format
+  delete: async (id) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/${id}/`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete ID format');
+    }
+    return response.ok;
   },
 };

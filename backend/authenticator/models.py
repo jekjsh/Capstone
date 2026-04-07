@@ -17,7 +17,7 @@ class Organization(models.Model):
 
 class IdFormat(models.Model):
     format_id = models.AutoField(primary_key=True)
-    org = models.ForeignKey(Organization, on_delete=models.CASCADE)
+    org = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True)
     prefix = models.CharField(max_length=20)
     admin_separator = models.CharField(max_length=5)
     user_separator = models.CharField(max_length=5)

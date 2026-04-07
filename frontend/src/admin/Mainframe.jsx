@@ -326,18 +326,13 @@ const [viewingDocument, setViewingDocument] = useState(null);
       setIsLoadingLogs(true);
       try {
         const data = await auditLogAPI.getAll();
-        console.log('Raw audit logs from API:', data);
-        console.log('Data type:', typeof data, 'Is array:', Array.isArray(data));
-        console.log('First log sample:', data[0] || 'No logs');
         
         const transformedLogs = transformAuditLogs(data);
-        console.log('Transformed audit logs:', transformedLogs);
         setAuditLogs(transformedLogs);
       } catch (error) {
         console.error('Failed to load audit logs:', error);
         if (dataStore) {
           const fallbackData = dataStore.getAllAuditLogs();
-          console.log('Using fallback audit logs from dataStore:', fallbackData);
           setAuditLogs(fallbackData);
         } else {
           setAuditLogs([]);

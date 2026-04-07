@@ -18,6 +18,7 @@ import UserMainFrame from './user/UserMainFrame';
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(60);
 
@@ -30,6 +31,7 @@ export default function App() {
       fetchCurrentUser();
     } else {
       setIsLoadingUser(false);
+      setIsInitializing(false);
     }
 
     // Listen for auth expiration events
@@ -72,6 +74,13 @@ export default function App() {
     };
   }, []);
 
+  // Set isInitializing to false when user loading is complete
+  useEffect(() => {
+    if (!isLoadingUser) {
+      setIsInitializing(false);
+    }
+  }, [isLoadingUser]);
+
   const fetchCurrentUser = async () => {
     try {
       const userData = await authAPI.getCurrentProfile();
@@ -86,9 +95,15 @@ export default function App() {
       });
     } catch (error) {
       console.error('Failed to fetch current user profile:', error);
-      // If we can't fetch user profile, clear tokens and redirect to login
-      clearAuthTokens();
-      window.location.href = '/login';
+      // Only logout if it's a 401 (unauthorized), not for other network errors
+      if (error.status === 401) {
+        clearAuthTokens();
+        window.location.href = '/login';
+      } else {
+        // For other errors (network, server errors), just skip user fetch
+        // User is still logged in with valid tokens
+        console.warn('Could not fetch user profile, but tokens are still valid. Continuing...');
+      }
     } finally {
       setIsLoadingUser(false);
     }
@@ -121,7 +136,7 @@ export default function App() {
     document.dispatchEvent(event);
   };
 
-  if (isLoadingUser) {
+  if (isLoadingUser || isInitializing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">

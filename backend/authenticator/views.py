@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from rest_framework import generics
 from .serializers import UserSerializer
-from .models import CustomUser
+from .models import CustomUser, IdFormat
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
 
@@ -11,7 +11,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.contrib.auth import get_user_model
 
-from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer
+from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer, IdFormatSerializer
 from monitoring.models import AuditLog
 
 User = get_user_model()
@@ -285,6 +285,80 @@ class OrganizationViewSet(ModelViewSet):
                 user_index=request.user,
                 audit_action='Delete Organization',
                 audit_desc=f"Failed to delete organization: {str(e)}",
+                audit_status='Failed'
+            )
+            raise
+
+# 7. IdFormat ViewSet (Create, Read, Update, Delete)
+class IdFormatViewSet(ModelViewSet):
+    queryset = IdFormat.objects.all()
+    serializer_class = IdFormatSerializer
+    permission_classes = (IsAuthenticated,)  # Must be logged in
+    lookup_field = 'format_id'
+    
+    def create(self, request, *args, **kwargs):
+        """Create ID format and log the action"""
+        try:
+            response = super().create(request, *args, **kwargs)
+            # Log successful ID format creation
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Create ID Format',
+                audit_desc=f"Created ID format for organization",
+                audit_status='Success'
+            )
+            return response
+        except Exception as e:
+            # Log failed ID format creation
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Create ID Format',
+                audit_desc=f"Failed to create ID format: {str(e)}",
+                audit_status='Failed'
+            )
+            raise
+    
+    def update(self, request, *args, **kwargs):
+        """Update ID format and log the action"""
+        try:
+            response = super().update(request, *args, **kwargs)
+            # Log successful ID format update
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Update ID Format',
+                audit_desc=f"Updated ID format {self.kwargs.get('format_id', 'unknown')}",
+                audit_status='Success'
+            )
+            return response
+        except Exception as e:
+            # Log failed ID format update
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Update ID Format',
+                audit_desc=f"Failed to update ID format: {str(e)}",
+                audit_status='Failed'
+            )
+            raise
+    
+    def destroy(self, request, *args, **kwargs):
+        """Delete ID format and log the action"""
+        try:
+            format_id = self.kwargs.get('format_id', 'unknown')
+            response = super().destroy(request, *args, **kwargs)
+            # Log successful ID format deletion
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Delete ID Format',
+                audit_desc=f"Deleted ID format {format_id}",
+                audit_status='Success'
+            )
+            return response
+        except Exception as e:
+            # Log failed ID format deletion
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Delete ID Format',
+                audit_desc=f"Failed to delete ID format: {str(e)}",
                 audit_status='Failed'
             )
             raise

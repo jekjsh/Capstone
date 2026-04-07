@@ -12,10 +12,10 @@ export default function SystemAdminSidebar({
 }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'organization', label: 'Organization', icon: Building2 },
     { id: 'user-management', label: 'User Management', icon: Users },
     { id: 'all-documents', label: 'All Documents', icon: FileText },
-    { id: 'audit-logs', label: 'Audit Logs', icon: ClipboardList },
-    { id: 'organization', label: 'Organization', icon: Building2 }
+    { id: 'audit-logs', label: 'Audit Logs', icon: ClipboardList }
   ];
 
   const settingsItems = [
