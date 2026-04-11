@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category
+from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory
 from authenticator.serializers import UserSerializer
 
 
@@ -21,11 +21,24 @@ class DocumentSerializer(serializers.ModelSerializer):
     user_index = UserSerializer(read_only=True)
     folder_name = serializers.CharField(source='folder.folder_name', read_only=True, allow_null=True)
     doc_file_url = serializers.SerializerMethodField()
+    categories = serializers.SerializerMethodField()
     
     class Meta:
         model = Document
-        fields = ['doc_id', 'user_index', 'folder', 'folder_name', 'doc_name', 'doc_desc', 'doc_path', 'doc_file', 'doc_file_url', 'doc_uploaded', 'updated_at']
+        fields = ['doc_id', 'user_index', 'folder', 'folder_name', 'doc_name', 'doc_desc', 'doc_path', 'doc_file', 'doc_file_url', 'doc_uploaded', 'updated_at', 'categories']
         read_only_fields = ['doc_id', 'user_index', 'doc_uploaded', 'updated_at']
+    
+    def get_categories(self, obj):
+        """Return categories linked to this document"""
+        doc_categories = obj.categories.all()
+        return [
+            {
+                'category_id': dc.category.category_id,
+                'category_name': dc.category.category_name,
+                'doc_category_id': dc.doc_category_id
+            }
+            for dc in doc_categories
+        ]
     
     def get_doc_file_url(self, obj):
         """Return the URL for the uploaded file"""
@@ -93,3 +106,12 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = ['category_id', 'user_index', 'org', 'category_name', 'category_desc', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['category_id', 'user_index', 'created_at', 'updated_at']
+
+
+class DocumentCategorySerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.category_name', read_only=True)
+    
+    class Meta:
+        model = DocumentCategory
+        fields = ['doc_category_id', 'doc', 'category', 'category_name', 'added_at']
+        read_only_fields = ['doc_category_id', 'added_at']

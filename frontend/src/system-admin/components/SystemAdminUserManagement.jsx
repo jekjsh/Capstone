@@ -1,5 +1,7 @@
-import { Search, MoreVertical } from 'lucide-react';
+import { Search, MoreVertical, ChevronUp, ChevronDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { getRoleDisplayName } from '../../utils/roleMapper';
+import AdminPagination from '../../admin/component/AdminPagination';
 
 export default function SystemAdminUserManagement({ 
   userList, 
@@ -17,7 +19,82 @@ export default function SystemAdminUserManagement({
   setShowAddUserModal,
   openMenuUserId
 }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [sortField, setSortField] = useState('id');
+  const [sortDirection, setSortDirection] = useState('asc');
+  
   const filteredUsers = getFilteredUsers();
+  
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [userSearchQuery, userFilterRole, userFilterStatus, userFilterOrganization]);
+  
+  // Sorting function
+  const sortedAndPaginatedUsers = (() => {
+    let sorted = [...filteredUsers];
+    
+    // Sort based on field
+    sorted.sort((a, b) => {
+      let aValue, bValue;
+      
+      switch(sortField) {
+        case 'id':
+          aValue = a.id || '';
+          bValue = b.id || '';
+          break;
+        case 'name':
+          aValue = `${a.firstName} ${a.lastName}`.toLowerCase();
+          bValue = `${b.firstName} ${b.lastName}`.toLowerCase();
+          break;
+        case 'email':
+          aValue = a.email || '';
+          bValue = b.email || '';
+          break;
+        case 'role':
+          aValue = a.role || '';
+          bValue = b.role || '';
+          break;
+        case 'status':
+          aValue = a.isActive ? 'active' : 'inactive';
+          bValue = b.isActive ? 'active' : 'inactive';
+          break;
+        default:
+          aValue = '';
+          bValue = '';
+      }
+      
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    // Apply pagination
+    return sorted.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+  })();
+  
+  // Handle sort column click
+  const handleSort = (field) => {
+    if (sortField === field) {
+      // Toggle sort direction if clicking same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new sort field with ascending order
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    // Reset to first page when sorting
+    setCurrentPage(1);
+  };
+  
+  // Render sort indicator
+  const SortIndicator = ({ field }) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' 
+      ? <ChevronUp className="w-4 h-4 inline ml-1" />
+      : <ChevronDown className="w-4 h-4 inline ml-1" />;
+  };
   
   // Helper function to flatten organization tree
   const getAllOrganizationUnits = () => {
@@ -33,33 +110,33 @@ export default function SystemAdminUserManagement({
       // Handle different backend response formats
       // Backend returns: org_id, org_name, org_code, org_type, parent_org
       const orgId = org.org_id || org.id;
-      const orgName = org.org_name || org.name || org.org_code;
+      const orgCode = org.org_code || org.code || '';
       
-      if (orgId && orgName) {
+      if (orgId && orgCode) {
         units.push({ 
           id: orgId, 
-          name: orgName
+          code: orgCode
         });
       }
       
       // Handle nested children if they exist
       if (org.sub_offices && Array.isArray(org.sub_offices)) {
-        const processChildren = (children, parentName = '') => {
+        const processChildren = (children) => {
           children.forEach(child => {
             const childId = child.org_id || child.id;
-            const childName = child.org_name || child.name || child.org_code;
-            if (childId && childName) {
+            const childCode = child.org_code || child.code || '';
+            if (childId && childCode) {
               units.push({
                 id: childId,
-                name: parentName ? `${parentName} > ${childName}` : childName
+                code: childCode
               });
             }
             if (child.sub_offices && Array.isArray(child.sub_offices)) {
-              processChildren(child.sub_offices, childName);
+              processChildren(child.sub_offices);
             }
           });
         };
-        processChildren(org.sub_offices, orgName);
+        processChildren(org.sub_offices);
       }
     });
     
@@ -128,7 +205,7 @@ export default function SystemAdminUserManagement({
             >
               <option value="All">All Organizations</option>
               {organizationUnits.map(org => (
-                <option key={org.id} value={org.id}>{org.name}</option>
+                <option key={org.id} value={org.id}>{org.code}</option>
               ))}
             </select>
           </div>
@@ -158,18 +235,43 @@ export default function SystemAdminUserManagement({
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Name</th>
+                <th 
+                  onClick={() => handleSort('id')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors"
+                >
+                  User ID <SortIndicator field="id" />
+                </th>
+                <th 
+                  onClick={() => handleSort('name')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors"
+                >
+                  Full Name <SortIndicator field="name" />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Position</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                <th 
+                  onClick={() => handleSort('email')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors"
+                >
+                  Email <SortIndicator field="email" />
+                </th>
+                <th 
+                  onClick={() => handleSort('role')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors"
+                >
+                  Role <SortIndicator field="role" />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Organization</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th 
+                  onClick={() => handleSort('status')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors"
+                >
+                  Status <SortIndicator field="status" />
+                </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredUsers.length === 0 ? (
+              {sortedAndPaginatedUsers.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
                     {userList.length === 0 
@@ -178,10 +280,10 @@ export default function SystemAdminUserManagement({
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((user) => {
-                  // Find organization name
+                sortedAndPaginatedUsers.map((user) => {
+                  // Find organization code
                   const orgUnit = organizationUnits.find(org => org.id === user.organizationUnitId);
-                  const orgName = orgUnit ? orgUnit.name : 'Unassigned';
+                  const orgCode = orgUnit ? orgUnit.code : '';
                   
                   // Format full name with middle initial and suffix
                   const formatFullName = () => {
@@ -208,7 +310,7 @@ export default function SystemAdminUserManagement({
                       <td className="px-6 py-4 text-sm text-gray-900">{user.userPos || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{user.email}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{getRoleDisplayName(user.role)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{orgName}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{orgCode || 'Unassigned'}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           user.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -234,6 +336,27 @@ export default function SystemAdminUserManagement({
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {filteredUsers.length > 0 && (
+        <AdminPagination
+          currentPage={currentPage}
+          totalPages={Math.ceil(filteredUsers.length / rowsPerPage)}
+          startIndex={(currentPage - 1) * rowsPerPage}
+          endIndex={currentPage * rowsPerPage}
+          rowsPerPage={rowsPerPage}
+          totalRecords={filteredUsers.length}
+          onPageChange={setCurrentPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(Number(e.target.value));
+            setCurrentPage(1);
+          }}
+          onFirstPage={() => setCurrentPage(1)}
+          onLastPage={() => setCurrentPage(Math.ceil(filteredUsers.length / rowsPerPage))}
+          onPreviousPage={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+          onNextPage={() => setCurrentPage(prev => Math.min(Math.ceil(filteredUsers.length / rowsPerPage), prev + 1))}
+        />
+      )}
     </div>
   );
 }

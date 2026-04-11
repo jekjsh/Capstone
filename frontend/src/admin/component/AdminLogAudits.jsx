@@ -2,6 +2,12 @@ import { Search, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import AdminPagination from './AdminPagination';
 
+// Helper function to truncate text
+const truncateText = (text, maxLength = 50) => {
+  if (!text) return '-';
+  return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+};
+
 export default function AdminLogAudits({
   auditLogs = [],
   logSearchQuery = '',
@@ -164,14 +170,14 @@ export default function AdminLogAudits({
 
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Timestamp</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resource</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/6">Timestamp</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/6">User</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/6">Action</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-2/5">Resource</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/12">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -200,22 +206,22 @@ export default function AdminLogAudits({
                   }
 
                   return (
-                    <tr key={`${log?.logId || idx}-${idx}`} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-900">
+                    <tr key={`${log?.logId || idx}-${idx}`} className="hover:bg-gray-50 h-20">
+                      <td className="px-6 py-4 text-sm text-gray-900 align-middle truncate">
                         {formattedDate}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
+                      <td className="px-6 py-4 text-sm text-gray-900 align-middle">
                         <div>
-                          <p className="font-medium">{log?.userName || 'Unknown User'}</p>
-                          <p className="text-xs text-gray-500">{log?.userId || 'N/A'}</p>
+                          <p className="font-medium truncate">{log?.userName || 'Unknown User'}</p>
+                          <p className="text-xs text-gray-500 truncate">{log?.userId || 'N/A'}</p>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{log?.action || 'N/A'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate" title={log?.resource || ''}>
-                        {log?.resource || 'N/A'}
+                      <td className="px-6 py-4 text-sm text-gray-900 align-middle truncate">{log?.action || 'N/A'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700 align-middle" title={log?.resource || ''}>
+                        <div className="line-clamp-2">{truncateText(log?.resource, 50)}</div>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                      <td className="px-6 py-4 align-middle">
+                        <span className={`inline-block px-2 py-1 text-xs rounded-full font-medium ${
                           log?.status === 'Success' || log?.status === 'success' 
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-red-100 text-red-800'

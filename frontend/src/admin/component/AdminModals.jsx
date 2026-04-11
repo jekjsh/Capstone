@@ -1,5 +1,5 @@
 
-import { X, Edit, Trash2, Key } from 'lucide-react';
+import { X, Edit, Key, Lock, Unlock } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getRoleDisplayName } from '../../utils/roleMapper';
 
@@ -9,8 +9,11 @@ export function UserActionMenu({
   setOpenMenuUserId, 
   handleEditUser, 
   handleEditPassword, 
-  handleDeleteUser 
+  handleToggleUserStatus,
+  userList = []
 }) {
+  const currentUser = userList.find(u => u.id === openMenuUserId);
+  const isActive = currentUser?.isActive !== false;
   if (!openMenuUserId) return null;
 
   return (
@@ -40,15 +43,23 @@ export function UserActionMenu({
           className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors text-left"
         >
           <Key className="w-4 h-4 text-green-600" />
-          <span>Edit Password</span>
+          <span>Reset Password</span>
         </button>
         <div className="border-t border-gray-200 my-1"></div>
         <button
-          onClick={() => handleDeleteUser(openMenuUserId)}
-          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+          onClick={() => handleToggleUserStatus(openMenuUserId)}
+          className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left ${
+            isActive 
+              ? 'text-red-600 hover:bg-red-50' 
+              : 'text-blue-600 hover:bg-blue-50'
+          }`}
         >
-          <Trash2 className="w-4 h-4" />
-          <span>Delete User</span>
+          {isActive ? (
+            <Lock className="w-4 h-4" />
+          ) : (
+            <Unlock className="w-4 h-4" />
+          )}
+          <span>{isActive ? 'Deactivate User' : 'Activate User'}</span>
         </button>
       </div>
     </div>
@@ -552,22 +563,71 @@ export function EditPasswordModal({
   setPasswordData,
   errors,
   setErrors,
-  handleSaveUser
+  handleSaveUser,
+  resetPasswordSuccess = false,
+  setResetPasswordSuccess,
+  resetPasswordMessage
 }) {
   if (!showEditPasswordModal || showAdminVerificationModal) return null;
 
+  const handleClose = () => {
+    setShowEditPasswordModal(false);
+    setEditingUserId(null);
+    setPasswordData({ password: '', confirmPassword: '' });
+    setErrors({});
+    setResetPasswordSuccess(false);
+  };
+
+  // Show success state when password reset is successful
+  if (resetPasswordSuccess) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-800">Password Reset</h2>
+            <button 
+              onClick={handleClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            {/* Success Icon */}
+            <div className="flex justify-center">
+              <CheckCircle className="w-16 h-16 text-green-500" />
+            </div>
+
+            {/* Success Message */}
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800 whitespace-pre-line">
+                {resetPasswordMessage}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={handleClose}
+              className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show original form for other uses (if any)
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">Change Password</h2>
           <button 
-            onClick={() => {
-              setShowEditPasswordModal(false);
-              setEditingUserId(null);
-              setPasswordData({ password: '', confirmPassword: '' });
-              setErrors({});
-            }}
+            onClick={handleClose}
             className="text-gray-400 hover:text-gray-600"
           >
             <X className="w-6 h-6" />
@@ -616,12 +676,7 @@ export function EditPasswordModal({
 
         <div className="flex gap-3 mt-6">
           <button
-            onClick={() => {
-              setShowEditPasswordModal(false);
-              setEditingUserId(null);
-              setPasswordData({ password: '', confirmPassword: '' });
-              setErrors({});
-            }}
+            onClick={handleClose}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
             Cancel

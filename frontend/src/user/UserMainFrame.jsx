@@ -6,7 +6,7 @@ import Header from './Components/Header';
 import DocumentsManager from './Components/DocumentsManager';
 import Category from './component/Category';
 import Sidebar from './Components/Sidebar';
-import { documentAPI, organizationAPI, userAPI, auditLogAPI, folderAPI, tagAPI, organizationShareAPI, authAPI, documentShareAPI, folderShareAPI, getAccessToken } from '../services/api';
+import { documentAPI, organizationAPI, userAPI, auditLogAPI, folderAPI, tagAPI, organizationShareAPI, authAPI, documentShareAPI, folderShareAPI, getAccessToken, categoryAPI } from '../services/api';
 import mammoth from 'mammoth';
 import CreateFolderModal from './Components/modals/CreateFolderModal';
 import EditFolderModal from './Components/modals/EditFolderModal';
@@ -21,6 +21,7 @@ import ShareDocumentModal from './Components/modals/ShareDocumentModal';
 import ShareFolderModal from './Components/modals/ShareFolderModal';
 import RenameDocumentModal from './Components/modals/RenameDocumentModal';
 import ChangePasswordModal from './Components/modals/ChangePasswordModal';
+import AddDocumentCategoriesModal from './Components/modals/AddDocumentCategoriesModal';
 import SharedDocuments from './Components/SharedDocuments';
 import RecycleBin from './Components/RecycleBin';
 export default function UserMainFrame({ 
@@ -61,6 +62,7 @@ export default function UserMainFrame({
   // Wrapper function that updates state AND navigates to the URL
   const setActiveSection = (section) => {
     setActiveSectionState(section);
+    setCurrentFolder(null); // Reset to My Files when changing sections
     const path = sectionToPath[section] || '/user/documents';
     navigate(path, { replace: false });
   };
@@ -302,6 +304,9 @@ const [newField, setNewField] = useState({
   const [documentToRename, setDocumentToRename] = useState(null);
   const [showSendToOrgModal, setShowSendToOrgModal] = useState(false);
   const [selectedDocForOrgShare, setSelectedDocForOrgShare] = useState(null);
+  const [showAddCategoriesModal, setShowAddCategoriesModal] = useState(false);
+  const [documentForCategories, setDocumentForCategories] = useState(null);
+  const [userCategories, setUserCategories] = useState([]);
 
   // Fetch shared documents from backend
   useEffect(() => {
@@ -424,6 +429,23 @@ const [newField, setNewField] = useState({
     };
 
     fetchTags();
+  }, []);
+
+  // Fetch categories from backend
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const categories = await categoryAPI.getAll();
+        setUserCategories(categories);
+        console.log('Categories fetched from API:', categories);
+      } catch (error) {
+        console.error('Failed to fetch categories:', error);
+        // Fallback to empty array
+        setUserCategories([]);
+      }
+    };
+
+    fetchCategories();
   }, []);
   
  const menuItems = [
@@ -1581,6 +1603,11 @@ const handleEmptyRecycleBin = async () => {
     setShowRenameModal(true);
   };
 
+  const openAddCategoriesModal = (doc) => {
+    setDocumentForCategories(doc);
+    setShowAddCategoriesModal(true);
+  };
+
   const handleRenameDocument = async (renameData) => {
     try {
       const document = userDocuments.find(doc => doc.doc_id === renameData.documentId || doc.id === renameData.documentId);
@@ -1918,7 +1945,20 @@ const handleSaveToMyDocuments = (document, source) => {
       <ChangePasswordModal
         isOpen={showChangePasswordModal}
         onClose={() => setShowChangePasswordModal(false)}
-        currentUsername={currentUser.username || currentUser.id}
+        currentUsername={loggedInUser.user_id}
+      />
+
+      <AddDocumentCategoriesModal
+        show={showAddCategoriesModal}
+        onClose={() => {
+          setShowAddCategoriesModal(false);
+          setDocumentForCategories(null);
+        }}
+        document={documentForCategories}
+        categories={userCategories}
+        onCategoriesUpdated={() => {
+          // Optional: refresh documents or categories list
+        }}
       />
 
       {/* SendToOrganizationModal removed - consolidated into Share To modal */}
@@ -1973,6 +2013,7 @@ const handleSaveToMyDocuments = (document, source) => {
               onMoveToFolder={openMoveToFolderModal}
               onShareDocument={openShareModal}
               onRenameDocument={openRenameModal}
+              onAddCategories={openAddCategoriesModal}
               onDeleteFolder={handleDeleteFolder}
               onShareFolder={(folder) => openShareFolderModal(folder)}
               onRenameFolder={handleRenameFolder}

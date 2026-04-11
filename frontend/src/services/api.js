@@ -162,18 +162,18 @@ const fetchWithAuth = async (url, options = {}) => {
 
 // Organization Unit API
 export const organizationAPI = {
-  // Get all organization units (returns tree structure)
+  // Get all organization units (returns tree structure) - PUBLIC
   getAll: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/`);
+    const response = await fetch(`${API_BASE_URL}/api/organizations/`);
     if (!response.ok) {
       throw new Error('Failed to fetch organization units');
     }
     return await response.json();
   },
   
-  // Get all organizations (actual organizations, not units)
+  // Get all organizations (actual organizations, not units) - PUBLIC
   getAllOrganizations: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/`);
+    const response = await fetch(`${API_BASE_URL}/api/organizations/`);
     if (!response.ok) {
       throw new Error('Failed to fetch organizations');
     }
@@ -182,16 +182,16 @@ export const organizationAPI = {
     return Array.isArray(data) ? data : (data.results || data.data || []);
   },
   
-  // Get single organization unit
+  // Get single organization unit - PUBLIC
   getById: async (id) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/${id}/`);
+    const response = await fetch(`${API_BASE_URL}/api/organizations/${id}/`);
     if (!response.ok) {
       throw new Error('Failed to fetch organization unit');
     }
     return await response.json();
   },
   
-  // Create new organization unit
+  // Create new organization unit - PROTECTED
   create: async (data) => {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/`, {
       method: 'POST',
@@ -204,7 +204,7 @@ export const organizationAPI = {
     return await response.json();
   },
   
-  // Update organization unit
+  // Update organization unit - PROTECTED
   update: async (id, data) => {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/${id}/`, {
       method: 'PUT',
@@ -217,7 +217,7 @@ export const organizationAPI = {
     return await response.json();
   },
   
-  // Delete organization unit
+  // Delete organization unit - PROTECTED
   delete: async (id) => {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/organizations/${id}/`, {
       method: 'DELETE',
@@ -280,7 +280,7 @@ export const userAPI = {
   // Update user
   update: async (id, data) => {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/users/${id}/`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
     if (!response.ok) {
@@ -318,8 +318,8 @@ export const userAPI = {
   },
   
   // Change password with current password verification
-  changePassword: async (username, passwordData) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/users/${username}/change_password/`, {
+  changePassword: async (userId, passwordData) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/users/${userId}/change_password/`, {
       method: 'POST',
       body: JSON.stringify(passwordData),
     });
@@ -386,14 +386,28 @@ export const sessionAPI = {
 
   // Verify current user's password
   verifyPassword: async (password) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/verify-password/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/auth/verify-password/`, {
       method: 'POST',
       body: JSON.stringify({ password }),
     });
-    if (!response.ok) {
-      throw new Error('Failed to verify password');
+    
+    // Handle both 200 and 400 responses - parse JSON regardless
+    const data = await response.json();
+    
+    // Log the response for debugging
+    console.log('Password verification response:', data);
+    
+    // If response has a 'valid' field, trust that (handles both 200 and 400 responses)
+    if (data.hasOwnProperty('valid')) {
+      return data;
     }
-    return await response.json();
+    
+    // Fallback error handling
+    if (!response.ok) {
+      throw new Error(data.detail || data.message || 'Failed to verify password');
+    }
+    
+    return data;
   },
 };
 
@@ -549,6 +563,32 @@ export const documentAPI = {
     });
     if (!response.ok) {
       throw new Error('Failed to empty trash');
+    }
+    return await response.json();
+  },
+
+  // Add category to document
+  addCategory: async (docId, categoryId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${docId}/add_category/`, {
+      method: 'POST',
+      body: JSON.stringify({ category_id: categoryId }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || error.error || 'Failed to add category');
+    }
+    return await response.json();
+  },
+
+  // Remove category from document
+  removeCategory: async (docId, docCategoryId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${docId}/remove_category/`, {
+      method: 'POST',
+      body: JSON.stringify({ doc_category_id: docCategoryId }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || error.error || 'Failed to remove category');
     }
     return await response.json();
   },
@@ -886,7 +926,7 @@ export const categoryAPI = {
 export const notificationAPI = {
   // Get all notifications for the current user
   getAll: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/notifications/`);
     if (!response.ok) {
       throw new Error('Failed to fetch notifications');
     }
@@ -895,7 +935,7 @@ export const notificationAPI = {
 
   // Generate/sync notifications
   generateNotifications: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/generate_notifications/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/notifications/generate_notifications/`, {
       method: 'POST',
     });
     if (!response.ok) {
@@ -906,7 +946,7 @@ export const notificationAPI = {
 
   // Get unread notification count
   getUnreadCount: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/unread_count/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/notifications/unread_count/`);
     if (!response.ok) {
       throw new Error('Failed to get unread count');
     }
@@ -915,7 +955,7 @@ export const notificationAPI = {
 
   // Mark a notification as read
   markRead: async (notificationId) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/${notificationId}/mark_read/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/notifications/${notificationId}/mark_as_read/`, {
       method: 'POST',
     });
     if (!response.ok) {
@@ -926,7 +966,7 @@ export const notificationAPI = {
 
   // Mark all notifications as read
   markAllRead: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/mark_all_read/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/notifications/mark_all_as_read/`, {
       method: 'POST',
     });
     if (!response.ok) {
@@ -937,7 +977,7 @@ export const notificationAPI = {
 
   // Delete a notification
   delete: async (notificationId) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/notifications/${notificationId}/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/notifications/${notificationId}/`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -1186,4 +1226,84 @@ export const systemThemeAPI = {
     }
     return await response.json();
   }
+};
+
+// User Creation Request API
+export const userCreationRequestAPI = {
+  // Get all user creation requests (public - no auth required)
+  getAll: async () => {
+    const response = await fetch(`${API_BASE_URL}/api/user-creation-requests/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch user creation requests');
+    }
+    const data = await response.json();
+    // Handle paginated or array response
+    return Array.isArray(data) ? data : (data.results || []);
+  },
+
+  // Get single user creation request (public - no auth required)
+  getById: async (requestId) => {
+    const response = await fetch(`${API_BASE_URL}/api/user-creation-requests/${requestId}/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch user creation request');
+    }
+    return await response.json();
+  },
+
+  // Claim a user creation request (first-come-first-serve lock)
+  claim: async (requestId, adminName) => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/user-creation-requests/${requestId}/claim/`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ admin_name: adminName }),
+      }
+    );
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to claim request');
+    }
+    return await response.json();
+  },
+
+  // Approve a user creation request (public - no auth required)
+  approve: async (requestId, assignedUserId) => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/user-creation-requests/${requestId}/approve/`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ assigned_user_id: assignedUserId }),
+      }
+    );
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to approve request');
+    }
+    return await response.json();
+  },
+
+  // Deny a user creation request (public - no auth required)
+  deny: async (requestId, denialReason) => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/user-creation-requests/${requestId}/deny/`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ denial_reason: denialReason }),
+      }
+    );
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to deny request');
+    }
+    return await response.json();
+  },
 };

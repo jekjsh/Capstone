@@ -10,10 +10,13 @@ from authenticator.views import (
     CustomTokenRefreshView,
     RegisterView, 
     UserProfileView,
+    VerifyPasswordView,
     UserViewSet,
     OrganizationViewSet,
     IdFormatViewSet,
-    LogoutView
+    LogoutView,
+    UserCreationRequestViewSet,
+    UserRegistrationRequestView
 )
 from documents.views import DocumentViewSet, DocumentShareViewSet, OcrDataViewSet, FolderViewSet, FolderShareViewSet, CategoryViewSet
 from monitoring.views import AuditLogViewSet, NotificationViewSet
@@ -24,6 +27,7 @@ router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'organizations', OrganizationViewSet, basename='organization')
 router.register(r'id-formats', IdFormatViewSet, basename='id-format')
+router.register(r'user-creation-requests', UserCreationRequestViewSet, basename='user-creation-request')
 router.register(r'folders', FolderViewSet, basename='folder')
 router.register(r'folder-shares', FolderShareViewSet, basename='folder-share')
 router.register(r'documents', DocumentViewSet, basename='document')
@@ -42,7 +46,9 @@ urlpatterns = [
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
     path('auth/register/', RegisterView.as_view(), name='register'),
+    path('auth/register-request/', UserRegistrationRequestView.as_view(), name='register_request'),
     path('auth/profile/', UserProfileView.as_view(), name='user_profile'),
+    path('auth/verify-password/', VerifyPasswordView.as_view(), name='verify_password'),
     
     # API routes (organizations, documents, etc.)
     path('api/', include(router.urls)),

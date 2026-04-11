@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { userAPI, idFormatAPI } from '../../services/api';
-import { validateUserId, getFormatHint, generateSampleIds } from '../../utils/idFormatValidator';
+import { validateUserId, getFormatHint, generateSampleIds, buildIdFormatPattern } from '../../utils/idFormatValidator';
 import { getRoleDisplayName } from '../../utils/roleMapper';
 
 export default function SystemAdminAddUserModal({
@@ -14,9 +14,10 @@ export default function SystemAdminAddUserModal({
   editingUser = null,
   isEditMode = false
 }) {
-  const [step, setStep] = useState(1); // Step 1: User Info, Step 2: Password
+  const [step, setStep] = useState(1); // Single step form
   const [currentFormat, setCurrentFormat] = useState(null);
   const [userIdFormatValid, setUserIdFormatValid] = useState(null);
+  const [userIdExists, setUserIdExists] = useState(false);
   const [formData, setFormData] = useState({
     userId: '',
     firstName: '',
@@ -113,6 +114,15 @@ export default function SystemAdminAddUserModal({
     };
   };
 
+  // Get placeholder for user ID input
+  const getPlaceholder = () => {
+    if (!currentFormat) {
+      return 'e.g., TUPM-01-0001';
+    }
+    const formatInfo = buildIdFormatPattern(currentFormat, formData.role);
+    return formatInfo?.pattern || 'e.g., TUPM-01-0001';
+  };
+
   const validateUserIdFormat = (userId) => {
     if (!userId) {
       setUserIdFormatValid(null);
@@ -133,18 +143,21 @@ export default function SystemAdminAddUserModal({
   const handleUserIdChange = (value) => {
     setFormData({ ...formData, userId: value });
     validateUserIdFormat(value);
+    // Check if user ID already exists
+    const exists = userList?.some(u => (u.userId || u.id) === value);
+    setUserIdExists(exists);
   };
 
-  // Auto-fill password with last name in uppercase
-  useEffect(() => {
-    if (step === 2 && formData.lastName && !passwordData.password) {
-      const defaultPassword = formData.lastName.toUpperCase();
-      setPasswordData({
-        password: defaultPassword,
-        confirmPassword: defaultPassword
-      });
-    }
-  }, [step, formData.lastName, passwordData.password]);
+  // Generate password from last name
+  const generatePassword = (lastName) => {
+    return (lastName || 'USER').toUpperCase() + '123!';
+  };
+
+  // Normalize role type to lowercase format expected by backend
+  const normalizeRole = (role) => {
+    if (!role) return 'user';
+    return role.toLowerCase().replace(/\s+/g, '_');
+  };
 
   const validateStep1 = () => {
     const newErrors = {};
@@ -178,33 +191,76 @@ export default function SystemAdminAddUserModal({
     return Object.keys(newErrors).length === 0;
   };
 
-  const validateStep2 = () => {
-    const newErrors = {};
-
-    if (!passwordData.password) {
-      newErrors.password = 'Password is required';
-    } else if (passwordData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
-    }
-
-    if (passwordData.password !== passwordData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleNextStep = () => {
     if (validateStep1()) {
       if (isEditMode) {
         // For edit mode, submit directly after step 1 (no password required)
         handleSubmitEdit();
       } else {
-        // For add mode, go to step 2 for password
-        setStep(2);
-        setErrors({});
+        // For add mode, create user with auto-generated password
+        handleCreate();
       }
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!validateStep1()) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Generate password from last name
+      const password = generatePassword(formData.lastName);
+
+      const newUser = await userAPI.create({
+        user_id: formData.userId,
+        first_name: formData.firstName,
+        middle_name: formData.middleName,
+        last_name: formData.lastName,
+        suffix: formData.suffix,
+        email_add: formData.email,
+        password: password,
+        role_type: normalizeRole(formData.role),
+        org: formData.organizationUnitId || null,
+        user_pos: formData.organizationPosition
+      });
+
+      console.log('User created successfully:', newUser);
+      
+      // Reset form
+      setFormData({
+        userId: '',
+        firstName: '',
+        middleName: '',
+        lastName: '',
+        suffix: '',
+        email: '',
+        role: 'User',
+        organizationUnitId: '',
+        organizationPosition: ''
+      });
+      setPasswordData({
+        password: '',
+        confirmPassword: ''
+      });
+      setErrors({});
+      setStep(1);
+      setUserIdFormatValid(null);
+      
+      // Notify parent
+      onUserAdded();
+      alert(`User created successfully!\\nDefault password: ${password}\\nRemind them to change password ASAP!`);
+      onClose();
+      // Refresh page to show new user in list
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to create user:', error);
+      setErrors({
+        submit: error.message || 'Failed to create user. Please try again.'
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -213,17 +269,13 @@ export default function SystemAdminAddUserModal({
     try {
       await userAPI.update(formData.userId, {
         first_name: formData.firstName,
-        firstName: formData.firstName,
         middle_name: formData.middleName,
-        middleName: formData.middleName,
         last_name: formData.lastName,
-        lastName: formData.lastName,
         suffix: formData.suffix,
-        email: formData.email,
-        role: formData.role,
-        organizationUnitId: formData.organizationUnitId || null,
-        user_pos: formData.organizationPosition,
-        organizationPosition: formData.organizationPosition || null
+        email_add: formData.email,
+        role_type: normalizeRole(formData.role),
+        org: formData.organizationUnitId || null,
+        user_pos: formData.organizationPosition
       });
 
       console.log('User updated successfully');
@@ -268,15 +320,15 @@ export default function SystemAdminAddUserModal({
     setIsLoading(true);
     try {
       const newUser = await userAPI.create({
-        username: formData.userId,
+        user_id: formData.userId,
         first_name: formData.firstName,
         middle_name: formData.middleName,
         last_name: formData.lastName,
         suffix: formData.suffix,
-        email: formData.email,
+        email_add: formData.email,
         password: passwordData.password,
-        role: formData.role,
-        organizationUnitId: formData.organizationUnitId || null,
+        role_type: formData.role,
+        org: formData.organizationUnitId || null,
         user_pos: formData.organizationPosition
       });
 
@@ -315,15 +367,22 @@ export default function SystemAdminAddUserModal({
     }
   };
 
-  const renderOrgUnitOptions = (units, depth = 0) => {
-    return units.flatMap(unit => [
-      <option key={unit.id} value={unit.id}>
-        {'—'.repeat(depth)} {unit.name}
-      </option>,
-      ...(unit.children && unit.children.length > 0 
-        ? renderOrgUnitOptions(unit.children, depth + 1) 
-        : [])
-    ]);
+  const renderOrgUnitOptions = (units, depth = 0, parentPath = '', index = 0) => {
+    return units.flatMap((unit, idx) => {
+      // Handle both org_id (backend field) and id (frontend field)
+      const unitId = unit.org_id || unit.id || `fallback-${index}-${idx}`;
+      const uniqueKey = `${parentPath}${unitId}`;
+      const nextIndex = index + idx;
+      
+      return [
+        <option key={uniqueKey} value={unitId}>
+          {'—'.repeat(depth)} {unit.org_name || unit.name || 'Unknown'}
+        </option>,
+        ...(unit.sub_offices && unit.sub_offices.length > 0 
+          ? renderOrgUnitOptions(unit.sub_offices, depth + 1, `${uniqueKey}-`, nextIndex + 1) 
+          : [])
+      ];
+    });
   };
 
   if (!isOpen) return null;
@@ -336,7 +395,6 @@ export default function SystemAdminAddUserModal({
             <h2 className="text-2xl font-bold text-gray-800">
               {isEditMode ? 'Edit User Information' : 'Add New User'}
             </h2>
-            {!isEditMode && <p className="text-sm text-gray-500">Step {step} of 2</p>}
           </div>
           <button 
             onClick={() => {
@@ -344,6 +402,7 @@ export default function SystemAdminAddUserModal({
               setStep(1);
               setErrors({});
               setUserIdFormatValid(null);
+              setUserIdExists(false);
               setFormData({
                 userId: '',
                 firstName: '',
@@ -363,9 +422,8 @@ export default function SystemAdminAddUserModal({
           </button>
         </div>
 
-        {step === 1 ? (
-          // Step 1: User Information
-          <div className="space-y-4">
+        <div className="space-y-4">
+          {/* User Information Form (for both Add and Edit) */}
             {errors.submit && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
                 {errors.submit}
@@ -385,6 +443,7 @@ export default function SystemAdminAddUserModal({
                   disabled={isEditMode}
                   className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                     isEditMode ? 'bg-gray-100 cursor-not-allowed' :
+                    userIdExists ? 'border-red-500 focus:ring-red-500' :
                     errors.userId ? 'border-red-500 focus:ring-red-500' : 
                     userIdFormatValid === true ? 'border-green-500 focus:ring-green-500' :
                     userIdFormatValid === false ? 'border-red-500 focus:ring-red-500' :
@@ -392,19 +451,17 @@ export default function SystemAdminAddUserModal({
                   }`} 
                   placeholder={getPlaceholder()}
                 />
-                {!isEditMode && userIdFormatValid === true && (
-                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-green-500 font-bold">✓</span>
-                )}
-                {!isEditMode && userIdFormatValid === false && (
-                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 font-bold">✗</span>
-                )}
+
               </div>
-              {!isEditMode && errors.userId && <p className="mt-1 text-sm text-red-500">{errors.userId}</p>}
-              {!isEditMode && userIdFormatValid === false && !errors.userId && (
-                <p className="mt-1 text-sm text-red-500">⚠️ Invalid format! Expected: {getPlaceholder()}</p>
+              {!isEditMode && userIdExists && (
+                <p className="mt-1 text-sm text-red-500">User ID already exists!</p>
               )}
-              {!isEditMode && userIdFormatValid === true && (
-                <p className="mt-1 text-sm text-green-600">✓ Format is correct!</p>
+              {!isEditMode && !userIdExists && errors.userId && <p className="mt-1 text-sm text-red-500">{errors.userId}</p>}
+              {!isEditMode && !userIdExists && userIdFormatValid === false && !errors.userId && (
+                <p className="mt-1 text-sm text-red-500">Invalid format! Expected: {getPlaceholder()}</p>
+              )}
+              {!isEditMode && !userIdExists && userIdFormatValid === true && (
+                <p className="mt-1 text-sm text-green-600">Format is correct!</p>
               )}
               {!isEditMode && <p className="mt-1 text-xs text-gray-500">{getFormatHint()}</p>}
             </div>
@@ -485,6 +542,7 @@ export default function SystemAdminAddUserModal({
                   onChange={(e) => {
                     setFormData({ ...formData, role: e.target.value, userId: '' });
                     setUserIdFormatValid(null);
+                    setUserIdExists(false);
                   }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -533,6 +591,7 @@ export default function SystemAdminAddUserModal({
                   setStep(1);
                   setErrors({});
                   setUserIdFormatValid(null);
+                  setUserIdExists(false);
                   setFormData({
                     userId: '',
                     firstName: '',
@@ -552,85 +611,13 @@ export default function SystemAdminAddUserModal({
               </button>
               <button
                 onClick={handleNextStep}
-                disabled={isEditMode ? false : userIdFormatValid !== true}
+                disabled={isEditMode ? false : (userIdFormatValid !== true || userIdExists)}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isEditMode ? 'Save Changes' : 'Next: Set Password'}
+                {isEditMode ? 'Save Changes' : 'Create'}
               </button>
             </div>
           </div>
-        ) : (
-          // Step 2: Password
-          <div className="space-y-4">
-            {errors.submit && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
-                {errors.submit}
-              </div>
-            )}
-
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm font-semibold text-blue-900 mb-2">Creating account for:</p>
-              <p className="text-sm text-blue-800">{formData.firstName} {formData.lastName}</p>
-              <p className="text-xs text-blue-700 mt-1">{formData.userId}</p>
-              <p className="text-xs text-blue-700">{formData.email}</p>
-              <p className="text-xs text-blue-700 mt-2">Role: {getRoleDisplayName(formData.role)}</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
-              <input
-                type="password"
-                value={passwordData.password}
-                onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.password ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                }`}
-                placeholder="Enter password"
-              />
-              {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
-              <p className="mt-2 text-xs text-gray-600 font-semibold">Password requirements:</p>
-              <ul className="mt-1 list-disc list-inside text-xs text-gray-600">
-                <li className={passwordData.password.length >= 6 ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 6 characters
-                </li>
-              </ul>
-              <p className="text-xs text-gray-500 mt-2 italic">Default: User's last name in CAPITALS</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password *</label>
-              <input
-                type="password"
-                value={passwordData.confirmPassword}
-                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                  errors.confirmPassword ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                }`}
-                placeholder="Confirm password"
-              />
-              {errors.confirmPassword && <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>}
-            </div>
-
-            <div className="flex gap-3 mt-6 border-t pt-4">
-              <button
-                onClick={() => {
-                  setStep(1);
-                  setErrors({});
-                }}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={isLoading}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLoading ? 'Creating User...' : 'Create User'}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

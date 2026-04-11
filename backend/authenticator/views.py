@@ -1,9 +1,10 @@
 from django.shortcuts import render
 from rest_framework import generics
+from rest_framework.decorators import action
 from .serializers import UserSerializer
-from .models import CustomUser, IdFormat
+from .models import CustomUser, IdFormat, UserCreationRequest
 from rest_framework.permissions import IsAuthenticated, AllowAny
-
+from rest_framework.viewsets import ModelViewSet
 
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -11,7 +12,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.contrib.auth import get_user_model
 
-from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer, IdFormatSerializer
+from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer, IdFormatSerializer, UserCreationRequestSerializer, UserCreationRequestCreateSerializer
 from monitoring.models import AuditLog
 
 User = get_user_model()
@@ -134,6 +135,36 @@ class UserProfileView(generics.RetrieveAPIView):
         # Automatically returns the data of the user attached to the token
         return self.request.user
 
+# 4b. Verify Password View (Protected)
+class VerifyPasswordView(generics.GenericAPIView):
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request, *args, **kwargs):
+        """Verify the current user's password"""
+        password = request.data.get('password')
+        
+        if not password:
+            return Response(
+                {'valid': False, 'detail': 'Password is required.'}, 
+                status=status.HTTP_200_OK
+            )
+        
+        # Debug: Log who we think is logged in
+        print(f"DEBUG: Checking password for user_id={request.user.user_id}, user_index={request.user.pk}")
+        print(f"DEBUG: Is authenticated: {request.user.is_authenticated}")
+        
+        # Check if the provided password matches the user's current password
+        if request.user.check_password(password):
+            return Response(
+                {'valid': True, 'message': 'Password is correct.', 'logged_in_user': request.user.user_id},
+                status=status.HTTP_200_OK
+            )
+        else:
+            return Response(
+                {'valid': False, 'detail': 'Password is incorrect.', 'logged_in_user': request.user.user_id},
+                status=status.HTTP_200_OK
+            )
+
 # 5. User ViewSet (Create, Read, Update, Delete)
 from rest_framework.viewsets import ModelViewSet
 from .models import Organization
@@ -216,13 +247,77 @@ class UserViewSet(ModelViewSet):
                 audit_status='Failed'
             )
             raise
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def change_password(self, request, *args, **kwargs):
+        """Change user password"""
+        user = self.get_object()
+        
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        confirm_password = request.data.get('confirm_password')
+        
+        if not current_password or not new_password or not confirm_password:
+            return Response(
+                {'detail': 'All fields are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if new_password != confirm_password:
+            return Response(
+                {'detail': 'New passwords do not match.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not user.check_password(current_password):
+            return Response(
+                {'detail': 'Current password is incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user.set_password(new_password)
+            user.save()
+            
+            # Log password change
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Change Password',
+                audit_desc=f"Changed password for user {user.user_id}",
+                audit_status='Success'
+            )
+            
+            return Response(
+                {'detail': 'Password changed successfully.'},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Change Password',
+                audit_desc=f"Failed to change password for user {user.user_id}: {str(e)}",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': f'Failed to change password: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 # 6. Organization ViewSet (Create, Read, Update, Delete)
 class OrganizationViewSet(ModelViewSet):
     queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
-    permission_classes = (IsAuthenticated,)  # Must be logged in
     lookup_field = 'org_id'
+    
+    def get_permissions(self):
+        """Allow public read access, but require authentication for modifications"""
+        if self.action in ['list', 'retrieve']:
+            # Allow anyone to read organizations (needed for registration)
+            permission_classes = [AllowAny]
+        else:
+            # Require authentication for create, update, delete
+            permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]
     
     def create(self, request, *args, **kwargs):
         """Create organization and log the action"""
@@ -364,3 +459,328 @@ class IdFormatViewSet(ModelViewSet):
                 audit_status='Failed'
             )
             raise
+
+
+# 8. User Creation Request ViewSet
+class UserCreationRequestViewSet(ModelViewSet):
+    queryset = UserCreationRequest.objects.all()
+    serializer_class = UserCreationRequestSerializer
+    permission_classes = (AllowAny,)  # Public access - no JWT required
+    lookup_field = 'request_id'
+    
+    def get_queryset(self):
+        """Return all pending requests for system admins"""
+        return UserCreationRequest.objects.all()
+    
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    def claim(self, request, request_id=None):
+        """Claim a request for reviewing (first-come-first-serve)"""
+        from django.db import transaction
+        from django.utils import timezone
+        
+        try:
+            user_creation_request = self.get_object()
+            
+            # Check if request is still pending
+            if user_creation_request.status != 'pending':
+                return Response(
+                    {'detail': f'Request is already {user_creation_request.status}.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if already claimed
+            if user_creation_request.claimed_by is not None:
+                return Response(
+                    {
+                        'detail': 'This request is already being reviewed.',
+                        'claimed_by': user_creation_request.claimed_by.user_id,
+                        'claimed_by_name': f"{user_creation_request.claimed_by.first_name} {user_creation_request.claimed_by.last_name}",
+                        'claimed_at': user_creation_request.claimed_at
+                    },
+                    status=status.HTTP_409_CONFLICT
+                )
+            
+            # Get the admin name from request data
+            admin_name = request.data.get('admin_name', 'System Admin')
+            try:
+                claiming_admin = User.objects.get(user_id=admin_name)
+            except User.DoesNotExist:
+                return Response(
+                    {'detail': f'Admin user {admin_name} not found.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Use atomic transaction to ensure only one claim succeeds
+            with transaction.atomic():
+                # Select for update to lock the row
+                locked_request = UserCreationRequest.objects.select_for_update().get(request_id=request_id)
+                
+                # Double-check claim status hasn't changed
+                if locked_request.claimed_by is not None:
+                    return Response(
+                        {
+                            'detail': 'This request was just claimed by another admin.',
+                            'claimed_by': locked_request.claimed_by.user_id,
+                            'claimed_by_name': f"{locked_request.claimed_by.first_name} {locked_request.claimed_by.last_name}",
+                        },
+                        status=status.HTTP_409_CONFLICT
+                    )
+                
+                # Set claim
+                locked_request.claimed_by = claiming_admin
+                locked_request.claimed_at = timezone.now()
+                locked_request.save()
+            
+            # Log the claim
+            AuditLog.objects.create(
+                user_index=claiming_admin,
+                audit_action='Claim User Creation Request',
+                audit_desc=f"Claimed user creation request {request_id} for {user_creation_request.email_add}",
+                audit_status='Success'
+            )
+            
+            serializer = self.get_serializer(locked_request)
+            return Response(
+                {
+                    'detail': 'Request claimed successfully. You have this request locked.',
+                    'request': serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {'detail': f'Error claiming request: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    def approve(self, request, request_id=None):
+        """Approve a user creation request"""
+        user_creation_request = self.get_object()
+        
+        # Check if request is still pending
+        if user_creation_request.status != 'pending':
+            return Response(
+                {'detail': f'Request is already {user_creation_request.status}.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if claimed by someone (anyone can approve if claimed, but we track who)
+        if user_creation_request.claimed_by is None:
+            return Response(
+                {'detail': 'Request must be claimed before approval.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify organization exists
+        if not user_creation_request.org:
+            return Response(
+                {'detail': 'Organization not found.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the assigned user ID from request data
+            assigned_user_id = request.data.get('assigned_user_id')
+            if not assigned_user_id:
+                return Response(
+                    {'detail': 'assigned_user_id is required.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if user ID already exists
+            if User.objects.filter(user_id=assigned_user_id).exists():
+                return Response(
+                    {'detail': f'User ID {assigned_user_id} already exists.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create the new user from the request data
+            new_user = User.objects.create_user(
+                user_id=assigned_user_id,
+                email_add=user_creation_request.email_add,
+                password='TEMP_PASSWORD_12!',  # Temporary password, user should reset
+                first_name=user_creation_request.first_name,
+                middle_name=user_creation_request.middle_name,
+                last_name=user_creation_request.last_name,
+                suffix=user_creation_request.suffix,
+                user_pos=user_creation_request.user_pos,
+                org=user_creation_request.org,
+                role_type='user',
+                is_active=True
+            )
+            
+            # Update the request status
+            from django.utils import timezone
+            user_creation_request.status = 'approved'
+            user_creation_request.reviewed_by = user_creation_request.claimed_by  # Use whoever claimed it
+            user_creation_request.reviewed_at = timezone.now()
+            user_creation_request.assigned_user_id = assigned_user_id
+            user_creation_request.claimed_by = None  # Clear claim
+            user_creation_request.claimed_at = None
+            user_creation_request.save()
+            
+            # Log the approval in audit log
+            AuditLog.objects.create(
+                user_index=user_creation_request.reviewed_by,
+                audit_action='Approve User Creation Request',
+                audit_desc=f"Approved user creation request {request_id} for {user_creation_request.email_add}. Assigned User ID: {assigned_user_id}",
+                audit_status='Success'
+            )
+            
+            serializer = self.get_serializer(user_creation_request)
+            return Response(
+                {
+                    'detail': f'User creation request approved. New user ID: {assigned_user_id}',
+                    'request': serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            # Log the failed approval
+            AuditLog.objects.create(
+                user_index=user_creation_request.claimed_by,
+                audit_action='Approve User Creation Request',
+                audit_desc=f"Failed to approve user creation request {request_id}: {str(e)}",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': f'Error approving request: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    def deny(self, request, request_id=None):
+        """Deny a user creation request"""
+        user_creation_request = self.get_object()
+        
+        # Check if request is still pending
+        if user_creation_request.status != 'pending':
+            return Response(
+                {'detail': f'Request is already {user_creation_request.status}.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if claimed by someone
+        if user_creation_request.claimed_by is None:
+            return Response(
+                {'detail': 'Request must be claimed before denial.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the denial reason from request data
+            denial_reason = request.data.get('denial_reason', '')
+            
+            # Update the request status
+            from django.utils import timezone
+            user_creation_request.status = 'denied'
+            user_creation_request.reviewed_by = user_creation_request.claimed_by  # Use whoever claimed it
+            user_creation_request.reviewed_at = timezone.now()
+            user_creation_request.denial_reason = denial_reason
+            user_creation_request.claimed_by = None  # Clear claim
+            user_creation_request.claimed_at = None
+            user_creation_request.save()
+            
+            # Log the denial in audit log
+            AuditLog.objects.create(
+                user_index=user_creation_request.reviewed_by,
+                audit_action='Deny User Creation Request',
+                audit_desc=f"Denied user creation request {request_id} for {user_creation_request.email_add}. Reason: {denial_reason}",
+                audit_status='Success'
+            )
+            
+            serializer = self.get_serializer(user_creation_request)
+            return Response(
+                {
+                    'detail': 'User creation request denied.',
+                    'request': serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            # Log the failed denial
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Deny User Creation Request',
+                audit_desc=f"Failed to deny user creation request {request_id}: {str(e)}",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': f'Error denying request: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+# 9. User Registration Request View (for public registration)
+class UserRegistrationRequestView(generics.CreateAPIView):
+    """Create a user creation request (public registration)"""
+    queryset = UserCreationRequest.objects.all()
+    serializer_class = UserCreationRequestCreateSerializer
+    permission_classes = (AllowAny,)
+    
+    def create(self, request, *args, **kwargs):
+        """Create user creation request and log the action"""
+        try:
+            # Validate organization
+            org_id = request.data.get('org')
+            from .models import Organization
+            try:
+                organization = Organization.objects.get(org_id=org_id)
+            except Organization.DoesNotExist:
+                return Response(
+                    {'detail': 'Organization not found.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if email already registered or has pending request
+            email = request.data.get('email_add')
+            if User.objects.filter(email_add=email).exists():
+                return Response(
+                    {'detail': 'This email is already registered.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if UserCreationRequest.objects.filter(email_add=email, status='pending').exists():
+                return Response(
+                    {'detail': 'A registration request with this email is already pending.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create a mutable copy of request data with created_by field
+            data = dict(request.data)
+            data['created_by'] = data.get('email_add')
+            
+            # Create the serializer with the modified data
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            
+            # Log successful registration request
+            AuditLog.objects.create(
+                user_index=None,
+                audit_action='Create User Registration Request',
+                audit_desc=f"User registration request created for {email}",
+                audit_status='Success'
+            )
+            
+            return Response(
+                {
+                    'detail': 'Registration request submitted successfully. Please coordinate with the IS Manager for activation.',
+                    'request_id': serializer.data.get('request_id')
+                },
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+        except Exception as e:
+            # Log failed registration request
+            AuditLog.objects.create(
+                user_index=None,
+                audit_action='Create User Registration Request',
+                audit_desc=f"Failed to create registration request: {str(e)}",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': f'Error creating registration request: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )

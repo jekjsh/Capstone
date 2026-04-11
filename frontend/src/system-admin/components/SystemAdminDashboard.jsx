@@ -1,10 +1,11 @@
-import { FileText, Users, ClipboardList } from 'lucide-react';
+import { UserPlus, Users, ClipboardList } from 'lucide-react';
 
 export default function SystemAdminDashboard({ 
   userList, 
   documentList,
   auditLogs = [],
-  dataStore     
+  dataStore,
+  pendingRequestsCount = 0
 }) {
   const totalDocuments = documentList.length;
   const totalUsers = userList.length;
@@ -22,13 +23,13 @@ export default function SystemAdminDashboard({
             <Users className="w-12 h-12 text-blue-500 opacity-50" />
           </div>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500">
+        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-red-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm">Documents</p>
-              <p className="text-3xl font-bold text-gray-800">{totalDocuments}</p>
+              <p className="text-gray-600 text-sm">Requests</p>
+              <p className="text-3xl font-bold text-gray-800">{pendingRequestsCount}</p>
             </div>
-            <FileText className="w-12 h-12 text-green-500 opacity-50" />
+            <UserPlus className="w-12 h-12 text-red-500 opacity-50" />
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-orange-500">

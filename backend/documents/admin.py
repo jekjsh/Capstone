@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category
+from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory
 
 
 class FolderAdmin(admin.ModelAdmin):
@@ -26,19 +26,42 @@ class FolderShareAdmin(admin.ModelAdmin):
     ordering = ['-created_at']
 
 
+class DocumentCategoryInline(admin.TabularInline):
+    model = DocumentCategory
+    extra = 1
+    fields = ['category', 'added_at']
+    readonly_fields = ['added_at']
+
+
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = ['doc_id', 'doc_name', 'user_index', 'folder', 'doc_uploaded']
-    search_fields = ['doc_name', 'user_index__user_id']
-    list_filter = ['doc_uploaded', 'folder']
+    list_display = ['doc_id', 'doc_name', 'user_index', 'folder', 'category_count', 'doc_uploaded', 'updated_at']
+    search_fields = ['doc_name', 'doc_desc', 'user_index__user_id', 'user_index__first_name', 'user_index__last_name']
+    list_filter = ['doc_uploaded', 'updated_at', 'folder__org']
     ordering = ['-doc_uploaded']
+    inlines = [DocumentCategoryInline]
+    readonly_fields = ['doc_uploaded', 'updated_at', 'display_categories']
     fieldsets = (
         ('Document Information', {
             'fields': ('doc_name', 'doc_desc', 'user_index', 'folder')
         }),
         ('File Details', {
-            'fields': ('doc_path', 'doc_uploaded')
+            'fields': ('doc_path', 'doc_file', 'doc_uploaded', 'updated_at')
+        }),
+        ('Categories & Organization', {
+            'fields': ('display_categories',)
         }),
     )
+    
+    def category_count(self, obj):
+        return obj.categories.count()
+    category_count.short_description = 'Categories'
+    
+    def display_categories(self, obj):
+        categories = obj.categories.all()
+        if categories:
+            return ', '.join([cat.category.category_name for cat in categories])
+        return 'No categories assigned'
+    display_categories.short_description = 'Assigned Categories'
 
 
 class DocumentShareAdmin(admin.ModelAdmin):
@@ -53,10 +76,10 @@ class OcrDataAdmin(admin.ModelAdmin):
 
 
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ['category_id', 'category_name', 'user_index', 'org', 'is_active', 'created_at']
-    search_fields = ['category_name', 'user_index__user_id']
-    list_filter = ['is_active', 'created_at']
-    readonly_fields = ['created_at', 'updated_at']
+    list_display = ['category_id', 'category_name', 'user_index', 'document_count', 'is_active', 'created_at']
+    search_fields = ['category_name', 'user_index__user_id', 'category_desc']
+    list_filter = ['is_active', 'created_at', 'org']
+    readonly_fields = ['created_at', 'updated_at', 'display_documents']
     ordering = ['-created_at']
     fieldsets = (
         ('Category Information', {
@@ -65,10 +88,34 @@ class CategoryAdmin(admin.ModelAdmin):
         ('Status', {
             'fields': ('is_active',)
         }),
+        ('Documents in this Category', {
+            'fields': ('display_documents',)
+        }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at')
         }),
     )
+    
+    def document_count(self, obj):
+        return obj.documents.count()
+    document_count.short_description = 'Documents'
+    
+    def display_documents(self, obj):
+        docs = obj.documents.all()
+        if docs:
+            doc_links = '<br>'.join([f"• {doc.doc.doc_name} (ID: {doc.doc_id})" for doc in docs])
+            return doc_links
+        return 'No documents in this category'
+    display_documents.short_description = 'Assigned Documents'
+    display_documents.allow_tags = True
+
+
+class DocumentCategoryAdmin(admin.ModelAdmin):
+    list_display = ['doc_category_id', 'doc', 'category', 'added_at']
+    search_fields = ['doc__doc_name', 'category__category_name']
+    list_filter = ['added_at', 'category__org']
+    readonly_fields = ['added_at']
+    ordering = ['-added_at']
 
 
 admin.site.register(Folder, FolderAdmin)
@@ -77,3 +124,4 @@ admin.site.register(Document, DocumentAdmin)
 admin.site.register(DocumentShare, DocumentShareAdmin)
 admin.site.register(OcrData, OcrDataAdmin)
 admin.site.register(Category, CategoryAdmin)
+admin.site.register(DocumentCategory, DocumentCategoryAdmin)

@@ -14,6 +14,8 @@ import OrgUnitUsersView from './component/OrgUnitUsersView';
 import AdminCustomizationModal from './component/AdminCustomizationModal';
 import  UserIdFormatModal from './component/UserIdFormatModal';
 import DocumentViewerModal from '../user/Components/modals/DocumentViewerModal';
+import ChangePasswordModal from '../user/Components/modals/ChangePasswordModal';
+import EditProfileModal from '../system-admin/components/EditProfileModal';
 import { 
   UserActionMenu, 
   AdminVerificationModal, 
@@ -82,6 +84,8 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showEditPasswordModal, setShowEditPasswordModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [showAdminVerificationModal, setShowAdminVerificationModal] = useState(false);
   const [adminVerificationPassword, setAdminVerificationPassword] = useState('');
   const [editingUserId, setEditingUserId] = useState(null);
@@ -233,13 +237,11 @@ const [viewingDocument, setViewingDocument] = useState(null);
       setIsLoadingOrg(true);
       try {
         const data = await organizationAPI.getAll();
-        console.log('Organization structure fetched from API:', data);
         setOrganizationTree(data);
       } catch (error) {
         console.error('Failed to load organization structure:', error);
         if (dataStore) {
           const fallbackData = dataStore.getOrganizationTree();
-          console.log('Using fallback organization structure from dataStore:', fallbackData);
           setOrganizationTree(fallbackData);
         }
       } finally {
@@ -254,7 +256,6 @@ const [viewingDocument, setViewingDocument] = useState(null);
     const fetchOrganizations = async () => {
       try {
         const data = await organizationAPI.getAllOrganizations();
-        console.log('Organizations fetched from API:', data);
         setOrganizations(data);
       } catch (error) {
         console.error('Failed to load organizations:', error);
@@ -269,14 +270,12 @@ const [viewingDocument, setViewingDocument] = useState(null);
       setIsLoadingDocuments(true);
       try {
         const data = await documentAPI.getAll();
-        console.log('Documents fetched from API:', data);
         setDocuments(data);
         setDocumentList(data);
       } catch (error) {
         console.error('Failed to load documents:', error);
         if (dataStore) {
           const fallbackData = dataStore.getAllDocuments();
-          console.log('Using fallback documents from dataStore:', fallbackData);
           setDocuments(fallbackData);
           setDocumentList(fallbackData);
         }
@@ -369,13 +368,11 @@ const [viewingDocument, setViewingDocument] = useState(null);
     const fetchOrgShares = async () => {
       try {
         const data = await organizationShareAPI.getAll();
-        console.log('Organization shares fetched from API:', data);
         setOrgShares(data);
       } catch (error) {
         console.error('Failed to load organization shares:', error);
         if (dataStore) {
           const fallbackData = dataStore.getAllOrgShares();
-          console.log('Using fallback org shares from dataStore:', fallbackData);
           setOrgShares(fallbackData);
         }
       }
@@ -519,16 +516,24 @@ const [viewingDocument, setViewingDocument] = useState(null);
     { id: 'logs', label: 'Audit Logs', icon: ClipboardList }
   ];
 
-  const renderOrgUnitOptions = (nodes, level = 0) => {
+  const renderOrgUnitOptions = (nodes, level = 0, parentPath = '', index = 0) => {
     const options = [];
-    for (const node of nodes) {
+    for (let idx = 0; idx < nodes.length; idx++) {
+      const node = nodes[idx];
+      // Handle missing IDs with fallback
+      const nodeId = node.org_id || node.id || `fallback-${index}-${idx}`;
+      const uniqueKey = `${parentPath}${nodeId}`;
+      const nextIndex = index + idx;
+      
       options.push(
-        <option key={node.id} value={node.id}>
-          {'  '.repeat(level) + '└ ' + node.name + ' (' + node.type + ')'}
+        <option key={uniqueKey} value={nodeId}>
+          {'  '.repeat(level) + '└ ' + (node.org_name || node.name || 'Unknown') + ' (' + (node.org_type || node.type || '') + ')'}
         </option>
       );
-      if (node.children && node.children.length > 0) {
-        options.push(...renderOrgUnitOptions(node.children, level + 1));
+      if (node.sub_offices && node.sub_offices.length > 0) {
+        options.push(...renderOrgUnitOptions(node.sub_offices, level + 1, `${uniqueKey}-`, nextIndex + 1));
+      } else if (node.children && node.children.length > 0) {
+        options.push(...renderOrgUnitOptions(node.children, level + 1, `${uniqueKey}-`, nextIndex + 1));
       }
     }
     return options;
@@ -1308,6 +1313,20 @@ const handlePrintDocument = (doc) => {
         handleSaveUser={handleSaveUser}
       />
 
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+        currentUser={loggedInUser}
+        userId={loggedInUser?.id || loggedInUser?.user_id}
+      />
+
+      <EditProfileModal
+        isOpen={showEditProfileModal}
+        onClose={() => setShowEditProfileModal(false)}
+        currentUser={loggedInUser}
+        userId={loggedInUser?.id || loggedInUser?.user_id}
+      />
+
       <OrgUnitModal
         show={showOrgUnitModal}
         onClose={() => {
@@ -1342,6 +1361,8 @@ const handlePrintDocument = (doc) => {
           activeSection={activeSection}
           currentUser={loggedInUser}
           onLogout={onLogout}
+          onChangePassword={() => setShowChangePasswordModal(true)}
+          onEditProfile={() => setShowEditProfileModal(true)}
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
         />
@@ -1354,6 +1375,9 @@ const handlePrintDocument = (doc) => {
               auditLogs={auditLogs}
               dataStore={dataStore}
               setActiveSection={setActiveSection}
+              currentUser={loggedInUser}
+              organizationTree={organizationTree}
+              organizations={organizations}
             />
           )}
           {activeSection === 'org-users' && (

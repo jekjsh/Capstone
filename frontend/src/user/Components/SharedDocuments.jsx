@@ -54,8 +54,8 @@ export default function SharedDocuments({
   };
 
   const getUserName = (userId) => {
-    const user = allUsers.find(u => u.id === userId);
-    return user ? (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username) : 'Unknown User';
+    const user = allUsers.find(u => u.user_index === userId || u.id === userId);
+    return user ? (user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id || user.username) : 'Unknown User';
   };
 
   const getOrgUnitName = (unitId) => {
@@ -394,6 +394,29 @@ export default function SharedDocuments({
         </>
       )}
 
+      <div className="pt-6 border-t border-gray-200">
+        <div className="flex items-center gap-3 mb-4">
+          <Share2 className="w-5 h-5 text-green-600" />
+          <h3 className="text-lg font-semibold text-gray-800">My Shares</h3>
+          <div className="flex items-center justify-center w-7 h-7 bg-green-500 text-white rounded-full text-sm font-bold">
+            {sharedByMe.length + foldersSharedByMe.length}
+          </div>
+        </div>
+
+        {sharedByMe.length === 0 && foldersSharedByMe.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-md p-12 text-center border border-gray-200">
+            <Share2 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg mb-2">You haven't shared any items yet</p>
+            <p className="text-gray-400 text-sm">Share documents and folders from your library to collaborate with others</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {sharedByMe.map(share => renderShareCard(share, true))}
+            {foldersSharedByMe.map(share => renderFolderCard(share, true))}
+          </div>
+        )}
+      </div>
+
       <div className="border-t pt-6">
         <div className="flex items-center gap-3 mb-4">
           <Share2 className="w-5 h-5 text-blue-600" />
@@ -413,29 +436,6 @@ export default function SharedDocuments({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {sharedWithMe.map(share => renderShareCard(share, false))}
             {foldersSharedWithMe.map(share => renderFolderCard(share, false))}
-          </div>
-        )}
-      </div>
-
-      <div className="pt-6 border-t border-gray-200">
-        <div className="flex items-center gap-3 mb-4">
-          <Share2 className="w-5 h-5 text-green-600" />
-          <h3 className="text-lg font-semibold text-gray-800">Directly Shared By Me</h3>
-          <div className="flex items-center justify-center w-7 h-7 bg-green-500 text-white rounded-full text-sm font-bold">
-            {sharedByMe.length + foldersSharedByMe.length}
-          </div>
-        </div>
-
-        {sharedByMe.length === 0 && foldersSharedByMe.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-md p-12 text-center border border-gray-200">
-            <Share2 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg mb-2">You haven't shared any items yet</p>
-            <p className="text-gray-400 text-sm">Share documents and folders from your library to collaborate with others</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {sharedByMe.map(share => renderShareCard(share, true))}
-            {foldersSharedByMe.map(share => renderFolderCard(share, true))}
           </div>
         )}
       </div>

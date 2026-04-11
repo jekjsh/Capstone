@@ -4,13 +4,64 @@ import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { setAuthTokens, authAPI } from "./services/api";
 import './LoginForm.css';
 
-export default function LoginForm({ themeData }) {
+export default function LoginForm({ themeData, onShowRegistration }) {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showError, setShowError] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    try {
+      // Connects to your Django URL!
+      const response = await fetch('http://localhost:8000/auth/login/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, password }) 
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Use setAuthTokens to store tokens and start refresh timer
+        setAuthTokens(data.access, data.refresh);
+        
+        // Fetch user profile to determine which dashboard to redirect to
+        try {
+          const userData = await authAPI.getCurrentProfile();
+          const roleType = userData.role_type;
+          
+          // Redirect based on role
+          if (roleType === 'admin') {
+            window.location.href = '/admin/dashboard';
+          } else if (roleType === 'system_admin') {
+            window.location.href = '/system-admin/dashboard';
+          } else {
+            // Default to user dashboard
+            window.location.href = '/user/documents';
+          }
+        } catch (error) {
+          console.error('Failed to fetch user profile, redirecting to documents:', error);
+          // Fallback to user documents if profile fetch fails
+          window.location.href = '/user/documents';
+        }
+      } else {
+        setPassword('');
+        setErrorMessage('Invalid credentials. Please try again.');
+        setShowError(true);
+      }
+    } catch (error) {
+      console.error("Login Error:", error);
+      setPassword('');
+      setErrorMessage('An error occurred. Please try again.');
+      setShowError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <>
@@ -116,13 +167,14 @@ export default function LoginForm({ themeData }) {
             </button>
           </div>
           
-          {/* Forgot Password Link (Right Aligned) */}
+          {/* No Account / Request Here Link (Right Aligned) */}
           <div className="flex justify-end mt-2">
             <button 
-              type="button" 
+              type="button"
+              onClick={() => onShowRegistration && onShowRegistration()}
               className="text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
             >
-              Forgot password?
+              No Account? Request Here
             </button>
           </div>
         </div>
@@ -139,59 +191,4 @@ export default function LoginForm({ themeData }) {
     </div>
     </>
   );
-
-  // =====================
-  // FUNCTIONS & HANDLERS
-  // =====================
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setIsLoading(true);
-    
-    try {
-      // Connects to your Django URL!
-      const response = await fetch('http://localhost:8000/auth/login/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, password }) 
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Use setAuthTokens to store tokens and start refresh timer
-        setAuthTokens(data.access, data.refresh);
-        
-        // Fetch user profile to determine which dashboard to redirect to
-        try {
-          const userData = await authAPI.getCurrentProfile();
-          const roleType = userData.role_type;
-          
-          // Redirect based on role
-          if (roleType === 'admin') {
-            window.location.href = '/admin/dashboard';
-          } else if (roleType === 'system_admin') {
-            window.location.href = '/system-admin/dashboard';
-          } else {
-            // Default to user dashboard
-            window.location.href = '/user/documents';
-          }
-        } catch (error) {
-          console.error('Failed to fetch user profile, redirecting to documents:', error);
-          // Fallback to user documents if profile fetch fails
-          window.location.href = '/user/documents';
-        }
-      } else {
-        setPassword('');
-        setErrorMessage('Invalid credentials. Please try again.');
-        setShowError(true);
-      }
-    } catch (error) {
-      console.error("Login Error:", error);
-      setPassword('');
-      setErrorMessage('An error occurred. Please try again.');
-      setShowError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }
 }

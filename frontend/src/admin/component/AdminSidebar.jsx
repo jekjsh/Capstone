@@ -55,18 +55,9 @@ export default function AdminSidebar({
     >
       {/* Profile Section at Top */}
       <div className="p-4 border-b border-white border-opacity-20">
-        <div className={`flex items-center gap-3 ${!sidebarOpen && 'justify-center'}`}>
-          <div 
-            className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold flex-shrink-0"
-            style={{ color: getSidebarColor() }}
-          >
-            {currentUser?.name?.charAt(0) || 'A'}
-          </div>
+        <div className="flex items-center justify-center h-10">
           {sidebarOpen && (
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm truncate">{currentUser?.name || 'Admin'}</p>
-              <p className="text-xs opacity-75 truncate">{getRoleDisplayName(currentUser?.role) || 'Organization Head'}</p>
-            </div>
+            <p className="text-xs opacity-75 truncate">{getRoleDisplayName(currentUser?.role) || 'Organization Head'}</p>
           )}
         </div>
       </div>
@@ -117,11 +108,10 @@ export default function AdminSidebar({
                       <button
                         key={child.id}
                         onClick={() => setActiveSection(child.id)}
-                        className={`w-full flex items-center gap-3 pl-12 pr-4 py-3 hover:bg-white hover:bg-opacity-20 transition-colors ${
-                          activeSection === child.id ? 'bg-white bg-opacity-20 border-l-4 border-white' : ''
+                        className={`w-full flex items-center gap-3 px-8 py-3 hover:bg-white hover:bg-opacity-20 transition-colors ${
+                          activeSection === child.id ? 'bg-white bg-opacity-20 border-l-4 border-white' : 'border-l-4 border-transparent'
                         }`}
                       >
-                        {ChildIcon && <ChildIcon className="w-4 h-4 flex-shrink-0" />}
                         {sidebarOpen && <span>{child.label}</span>}
                       </button>
                     );

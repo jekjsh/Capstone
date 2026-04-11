@@ -60,7 +60,6 @@ export const SystemThemeProvider = ({ children, initialTheme = null }) => {
       // Sidebar color is always a hex value now
       const sidebarColorHex = activeTheme.sidebar_color;
       document.documentElement.style.setProperty('--sidebar-color', sidebarColorHex);
-      console.log('Theme updated: --sidebar-color =', sidebarColorHex);
     }
   };
 

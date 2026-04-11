@@ -75,3 +75,13 @@ class Category(models.Model):
 
     def __str__(self):
         return self.category_name
+
+class DocumentCategory(models.Model):
+    doc_category_id = models.AutoField(primary_key=True)
+    doc = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='categories')
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='documents')
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'document_categories'
+        unique_together = ('doc', 'category')

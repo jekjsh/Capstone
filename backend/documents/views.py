@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category
+from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory
 from .serializers import DocumentSerializer, DocumentShareSerializer, OcrDataSerializer, FolderSerializer, FolderShareSerializer, CategorySerializer
 from monitoring.models import AuditLog
 
@@ -294,6 +294,71 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         except OcrData.DoesNotExist:
             return Response({'error': 'OCR data not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def add_category(self, request, pk=None):
+        """Add a category to a document"""
+        document = self.get_object()
+        category_id = request.data.get('category_id')
+        
+        if not category_id:
+            return Response({'error': 'category_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            category = Category.objects.get(category_id=category_id, user_index=request.user)
+        except Category.DoesNotExist:
+            return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Create DocumentCategory if it doesn't already exist
+        doc_category, created = DocumentCategory.objects.get_or_create(
+            doc=document,
+            category=category
+        )
+        
+        if created:
+            # Log the action
+            try:
+                AuditLog.objects.create(
+                    user_index=request.user,
+                    audit_action='Add Category to Document',
+                    audit_desc=f"Added category '{category.category_name}' to document '{document.doc_name}'",
+                    audit_status='Success'
+                )
+            except:
+                pass
+            return Response({'message': 'Category added to document'}, status=status.HTTP_201_CREATED)
+        else:
+            return Response({'message': 'Category already added to this document'}, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def remove_category(self, request, pk=None):
+        """Remove a category from a document"""
+        document = self.get_object()
+        doc_category_id = request.data.get('doc_category_id')
+        
+        if not doc_category_id:
+            return Response({'error': 'doc_category_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            doc_category = DocumentCategory.objects.get(doc_category_id=doc_category_id, doc=document)
+        except DocumentCategory.DoesNotExist:
+            return Response({'error': 'DocumentCategory not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        category_name = doc_category.category.category_name
+        doc_category.delete()
+        
+        # Log the action
+        try:
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Remove Category from Document',
+                audit_desc=f"Removed category '{category_name}' from document '{document.doc_name}'",
+                audit_status='Success'
+            )
+        except:
+            pass
+        
+        return Response({'message': 'Category removed from document'}, status=status.HTTP_200_OK)
 
 
 class DocumentShareViewSet(viewsets.ModelViewSet):

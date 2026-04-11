@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Organization, IdFormat
+from .models import Organization, IdFormat, UserCreationRequest
 
 User = get_user_model()
 
@@ -115,3 +115,59 @@ class IdFormatSerializer(serializers.ModelSerializer):
     class Meta:
         model = IdFormat
         fields = ['format_id', 'org', 'prefix', 'admin_separator', 'user_separator', 'segment1_len', 'segment2_len', 'segment3_len', 'is_active']
+
+
+# 6. User Creation Request Serializer
+class UserCreationRequestSerializer(serializers.ModelSerializer):
+    org_code = serializers.CharField(source='org.org_code', read_only=True)
+    org_name = serializers.CharField(source='org.org_name', read_only=True)
+    reviewed_by_name = serializers.SerializerMethodField()
+    claimed_by_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = UserCreationRequest
+        fields = [
+            'request_id', 'first_name', 'middle_name', 'last_name', 'suffix',
+            'email_add', 'user_pos', 'org', 'org_code', 'org_name',
+            'status', 'created_at', 'created_by',
+            'claimed_by', 'claimed_by_name', 'claimed_at',
+            'reviewed_by', 'reviewed_by_name', 'reviewed_at',
+            'assigned_user_id', 'denial_reason'
+        ]
+        read_only_fields = ['request_id', 'created_at', 'reviewed_at', 'org_code', 'org_name', 'reviewed_by_name', 'claimed_by_name', 'claimed_at']
+    
+    def get_reviewed_by_name(self, obj):
+        if obj.reviewed_by:
+            return f"{obj.reviewed_by.first_name} {obj.reviewed_by.last_name}".strip()
+        return None
+    
+    def get_claimed_by_name(self, obj):
+        if obj.claimed_by:
+            return f"{obj.claimed_by.first_name} {obj.claimed_by.last_name}".strip()
+        return None
+
+
+# 7. User Creation Request Create Serializer (for registration)
+class UserCreationRequestCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserCreationRequest
+        fields = ['first_name', 'middle_name', 'last_name', 'suffix', 'email_add', 'user_pos', 'org', 'created_by']
+    
+    def create(self, validated_data):
+        import uuid
+        # Generate a unique request ID
+        request_id = f"REQ-{uuid.uuid4().hex[:12].upper()}"
+        
+        user_creation_request = UserCreationRequest.objects.create(
+            request_id=request_id,
+            first_name=validated_data['first_name'],
+            middle_name=validated_data.get('middle_name', ''),
+            last_name=validated_data['last_name'],
+            suffix=validated_data.get('suffix', ''),
+            email_add=validated_data['email_add'],
+            user_pos=validated_data['user_pos'],
+            org=validated_data['org'],
+            created_by=validated_data['created_by'],
+            status='pending'
+        )
+        return user_creation_request

@@ -2,6 +2,12 @@ import { Search, Filter, Download, X } from 'lucide-react';
 import { useState } from 'react';
 import SystemAdminPagination from './SystemAdminPagination';
 
+// Helper function to truncate text
+const truncateText = (text, maxLength = 50) => {
+  if (!text) return '-';
+  return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+};
+
 export default function SystemAdminAuditLogs({ 
   auditLogs = [],
   logSearchQuery = '',
@@ -266,31 +272,33 @@ export default function SystemAdminAuditLogs({
         )}
 
         <div className="overflow-x-auto w-full">
-          <table className="w-full min-w-full">
+          <table className="w-full table-fixed">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">User</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Action</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Resource</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Timestamp</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 w-1/5">User</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 w-1/6">Action</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 w-2/5">Resource</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 w-1/6">Timestamp</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 w-1/12">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {paginatedLogs.map((log, idx) => (
-                <tr key={idx} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm text-gray-900">
+                <tr key={idx} className="hover:bg-gray-50 h-20">
+                  <td className="px-6 py-4 text-sm text-gray-900 align-middle">
                     <div>
-                      <p className="font-medium">{log?.userName || 'Unknown User'}</p>
-                      <p className="text-xs text-gray-500">{log?.userId || 'N/A'}</p>
+                      <p className="font-medium truncate">{log?.userName || 'Unknown User'}</p>
+                      <p className="text-xs text-gray-500 truncate">{log?.userId || 'N/A'}</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{log?.action || 'N/A'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{log?.resource || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
+                  <td className="px-6 py-4 text-sm text-gray-600 align-middle truncate">{log?.action || 'N/A'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600 align-middle" title={log?.resource || '-'}>
+                    <div className="line-clamp-2">{truncateText(log?.resource, 50)}</div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 align-middle truncate">
                     {log?.timestamp ? new Date(log.timestamp).toLocaleString() : log?.time || '-'}
                   </td>
-                  <td className="px-6 py-4 text-sm">
+                  <td className="px-6 py-4 text-sm align-middle">
                     <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
                       log?.status === 'Success'
                         ? 'bg-green-100 text-green-800'

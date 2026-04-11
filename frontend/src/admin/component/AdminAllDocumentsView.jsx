@@ -1,4 +1,4 @@
-import { FileText, Search } from 'lucide-react';
+import { FileText, Search, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { documentAPI, authAPI } from '../../services/api';
 import AdminPagination from './AdminPagination';
@@ -59,6 +59,47 @@ export default function AdminAllDocumentsView({
     return fullName || 'Unknown';
   };
 
+  const exportToCSV = () => {
+    if (filteredDocuments.length === 0) {
+      alert('No documents to export');
+      return;
+    }
+
+    // Prepare CSV headers
+    const headers = ['Owner', 'User ID', 'Document Name', 'Description', 'Categories', 'Folder', 'Uploaded', 'Updated'];
+
+    // Prepare CSV rows
+    const rows = filteredDocuments.map(doc => [
+      getUserFullName(doc.user_index),
+      doc.user_index?.user_id || '-',
+      doc.doc_name,
+      doc.doc_desc || '-',
+      doc.categories ? doc.categories.map(cat => cat.category_name).join('; ') : '-',
+      doc.folder_name || '-',
+      new Date(doc.doc_uploaded).toLocaleDateString(),
+      new Date(doc.updated_at).toLocaleDateString()
+    ]);
+
+    // Create CSV content
+    const csvContent = [
+      headers.map(h => `"${h}"`).join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const timestamp = new Date().toISOString().split('T')[0];
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `documents-export-${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -66,8 +107,16 @@ export default function AdminAllDocumentsView({
           <h2 className="text-2xl font-bold text-gray-800">All User Documents</h2>
           <p className="text-sm text-gray-600 mt-1">View and monitor all documents created by users in your organization</p>
         </div>
-        <div className="text-sm text-gray-600 bg-white px-4 py-2 rounded-lg shadow">
-          <span className="font-semibold">{allDocuments.length}</span> total documents
+        <div className="flex items-center gap-4">
+          <button
+            onClick={exportToCSV}
+            disabled={allDocuments.length === 0}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Export visible documents to CSV"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
         </div>
       </div>
 
@@ -130,11 +179,14 @@ export default function AdminAllDocumentsView({
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Folder</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Uploaded</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Owner</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">User ID</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Document Name</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Description</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Categories</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Folder</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Uploaded</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Updated</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -142,20 +194,39 @@ export default function AdminAllDocumentsView({
                   .slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage)
                   .map((doc) => (
                     <tr key={doc.doc_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900 text-center">
                         {getUserFullName(doc.user_index)}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
+                      <td className="px-6 py-4 text-sm text-gray-600 text-center">
+                        {doc.user_index?.user_id || '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium text-center">
                         {doc.doc_name}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate text-center">
                         {doc.doc_desc || '-'}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {doc.folder ? doc.folder.folder_name : '-'}
+                      <td className="px-6 py-4 text-sm text-center">
+                        {doc.categories && doc.categories.length > 0 ? (
+                          <div className="flex flex-wrap gap-2 justify-center">
+                            {doc.categories.map((cat, idx) => (
+                              <span key={idx}>
+                                {cat.category_name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
+                      <td className="px-6 py-4 text-sm text-gray-600 text-center">
+                        {doc.folder_name || '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 text-center">
                         {new Date(doc.doc_uploaded).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 text-center">
+                        {new Date(doc.updated_at).toLocaleDateString()}
                       </td>
                     </tr>
                   ))}

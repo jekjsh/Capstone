@@ -28,6 +28,7 @@ export default function DocumentsManager({
   onMoveToFolder,
   onShareDocument,
   onRenameDocument,
+  onAddCategories,
   onDeleteFolder,
   onShareFolder,
   onRenameFolder,
@@ -39,23 +40,21 @@ export default function DocumentsManager({
 
   // Build breadcrumbs when folder changes
   useEffect(() => {
-    if (!currentFolder) {
-      setBreadcrumbs([]);
-      return;
-    }
+    const crumbs = [{ id: null, name: 'My Files' }];
+    
+    if (currentFolder) {
+      let folderId = currentFolder;
+      const visited = new Set();
 
-    const crumbs = [{ id: null, name: 'Documents' }];
-    let folderId = currentFolder;
-    const visited = new Set();
-
-    while (folderId && !visited.has(folderId)) {
-      visited.add(folderId);
-      const folder = folders.find(f => f.folder_id === folderId);
-      if (folder) {
-        crumbs.splice(1, 0, { id: folder.folder_id, name: folder.folder_name });
-        folderId = folder.parent_folder;
-      } else {
-        break;
+      while (folderId && !visited.has(folderId)) {
+        visited.add(folderId);
+        const folder = folders.find(f => f.folder_id === folderId);
+        if (folder) {
+          crumbs.splice(1, 0, { id: folder.folder_id, name: folder.folder_name });
+          folderId = folder.parent_folder;
+        } else {
+          break;
+        }
       }
     }
 
@@ -139,24 +138,24 @@ export default function DocumentsManager({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with Breadcrumb as Main Navigation */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">{pageTitle}</h2>
+        {/* Breadcrumb Navigation - Always visible as title */}
+        <div className="flex items-center gap-2 text-2xl font-bold text-black mb-4">
+          {breadcrumbs.map((crumb, index) => (
+            <div key={crumb.id} className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentFolder(crumb.id)}
+                className="text-black hover:bg-gray-200 rounded px-2 py-1 transition-colors"
+              >
+                {crumb.name}
+              </button>
+              {index < breadcrumbs.length - 1 && <ChevronRight className="w-6 h-6 text-gray-400" />}
+            </div>
+          ))}
+        </div>
         
-        {/* Back Navigation */}
-        {currentFolder && (
-          <button
-            onClick={() => {
-              const parentFolder = currentFolderData?.parent_folder;
-              setCurrentFolder(parentFolder || null);
-            }}
-            className="text-sm text-indigo-600 hover:text-indigo-800 mb-4 flex items-center gap-1"
-          >
-            ← Back to parent folder
-          </button>
-        )}
-        
-        {/* New Menu Button - Below Title */}
+        {/* New Menu Button - Below Breadcrumb */}
         <div className="relative w-fit" data-new-menu>
           <button 
             onClick={() => setShowNewMenu(!showNewMenu)}
@@ -202,23 +201,6 @@ export default function DocumentsManager({
           )}
         </div>
       </div>
-
-      {/* Breadcrumb Navigation */}
-      {breadcrumbs.length > 0 && (
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          {breadcrumbs.map((crumb, index) => (
-            <div key={crumb.id} className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentFolder(crumb.id)}
-                className="text-indigo-600 hover:text-indigo-800 hover:underline"
-              >
-                {crumb.name}
-              </button>
-              {index < breadcrumbs.length - 1 && <ChevronRight className="w-4 h-4" />}
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* View Mode Toggle */}
       <div className="flex justify-end">
@@ -347,7 +329,7 @@ export default function DocumentsManager({
                         onShare={onShareDocument}
                         onRename={onRenameDocument}
                         onDelete={() => onDeleteDocument(doc.doc_id)}
-                        onAddCategories={() => console.log('Add categories')}
+                        onAddCategories={() => onAddCategories(doc)}
                         onPermissions={() => console.log('Permissions')}
                       />
                     </div>
@@ -375,7 +357,7 @@ export default function DocumentsManager({
                         onShare={onShareDocument}
                         onRename={onRenameDocument}
                         onDelete={() => onDeleteDocument(doc.doc_id)}
-                        onAddCategories={() => console.log('Add categories')}
+                        onAddCategories={() => onAddCategories(doc)}
                         onPermissions={() => console.log('Permissions')}
                         onMoveToFolder={() => onMoveToFolder(doc.doc_id)}
                       />

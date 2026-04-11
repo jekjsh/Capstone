@@ -68,3 +68,48 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         db_table = 'users'
+
+
+class UserCreationRequest(models.Model):
+    REQUEST_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('denied', 'Denied'),
+    ]
+    
+    request_id = models.CharField(max_length=50, unique=True, primary_key=True)
+    
+    # Registration data from user
+    first_name = models.CharField(max_length=100)
+    middle_name = models.CharField(max_length=100, blank=True, null=True)
+    last_name = models.CharField(max_length=100)
+    suffix = models.CharField(max_length=50, blank=True, null=True)
+    email_add = models.EmailField(unique=True)
+    user_pos = models.CharField(max_length=255)
+    org = models.ForeignKey(Organization, on_delete=models.PROTECT)
+    
+    # Request metadata
+    status = models.CharField(max_length=20, choices=REQUEST_STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.EmailField()  # Email from registration form
+    
+    # Admin review data
+    reviewed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_requests')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Claim/lock mechanism - first-come-first-serve
+    claimed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='claimed_requests')
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    
+    # For approval
+    assigned_user_id = models.CharField(max_length=50, null=True, blank=True)
+    
+    # For denial
+    denial_reason = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        db_table = 'user_creation_requests'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.request_id} - {self.email_add} ({self.status})"

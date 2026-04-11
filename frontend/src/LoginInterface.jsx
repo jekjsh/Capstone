@@ -1,6 +1,7 @@
 // frontend/src/pages/LoginInterface.jsx
 import { useState, useEffect } from 'react';
 import LoginForm from './LoginForm';
+import RegistrationForm from './RegistrationForm';
 import fallbackLogo from './assets/images/sra.svg';
 import fallbackBg from './assets/images/fallback.avif';
 import { systemThemeAPI } from './services/api';
@@ -12,6 +13,7 @@ export default function LoginInterface() {
     sys_logo: fallbackLogo,
     sys_backg: fallbackBg
   });
+  const [showRegistration, setShowRegistration] = useState(false);
 
   useEffect(() => {
     const fetchTheme = async () => {
@@ -50,8 +52,19 @@ export default function LoginInterface() {
       {/* Dark Overlay (Ensures the white box is always readable) */}
       <div className="absolute inset-0 bg-black bg-opacity-50" />
 
-      {/* The Actual Login Box Component */}
-      <LoginForm themeData={themeData} />
+      {/* Conditional Rendering: Login or Registration Form */}
+      {!showRegistration ? (
+        <LoginForm 
+          themeData={themeData}
+          onShowRegistration={() => setShowRegistration(true)}
+        />
+      ) : (
+        <RegistrationForm 
+          themeData={themeData}
+          onBackToLogin={() => setShowRegistration(false)}
+          onRegistrationSuccess={() => setShowRegistration(false)}
+        />
+      )}
       
     </div>
   );

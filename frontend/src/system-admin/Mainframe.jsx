@@ -7,13 +7,17 @@ import SystemAdminUserManagement from './components/SystemAdminUserManagement';
 import SystemAdminAuditLogs from './components/SystemAdminAuditLogs';
 import OrganizationalStructure from './components/OrganizationalStructure';
 import OrgUnitUsersView from './components/OrgUnitUsersView';
+import SystemAdminRequests from './components/SystemAdminRequests';
 import ErrorBoundary from '../admin/component/ErrorBoundary';
 import SystemAdminAddUserModal from './components/SystemAdminAddUserModal';
 import AdminCustomizationModal from '../admin/component/AdminCustomizationModal';
 import SystemAdminIDFormatter from './components/SystemAdminIDFormatter';
 import DocumentViewerModal from '../user/Components/modals/DocumentViewerModal';
 import ChangePasswordModal from '../user/Components/modals/ChangePasswordModal';
-import { UserActionMenu, AdminVerificationModal, EditPasswordModal } from '../admin/component/AdminModals';
+import EditProfileModal from './components/EditProfileModal';
+import RequestApprovalModal from './components/RequestApprovalModal';
+import { UserActionMenu, EditPasswordModal } from '../admin/component/AdminModals';
+import SystemAdminVerificationModal from './components/SystemAdminVerificationModal';
 import { userAPI, documentAPI, auditLogAPI, organizationAPI, sessionAPI, authAPI } from '../services/api';
 
 export default function SystemAdminMainFrame({ 
@@ -31,7 +35,8 @@ export default function SystemAdminMainFrame({
     'user-management': '/system-admin/user-management',
     'org-users': '/system-admin/users-by-organization',
     'audit-logs': '/system-admin/audit-logs',
-    'organization': '/system-admin/organization'
+    'organization': '/system-admin/organization',
+    'requests': '/system-admin/requests'
   };
 
   const pathToSection = Object.fromEntries(
@@ -62,11 +67,15 @@ export default function SystemAdminMainFrame({
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
   const [viewingDocument, setViewingDocument] = useState(null);
   const [showCustomizationModal, setShowCustomizationModal] = useState(false);
   const [showUserIdFormatModal, setShowUserIdFormatModal] = useState(false);
+  const [showRequestApprovalModal, setShowRequestApprovalModal] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [requestAction, setRequestAction] = useState(null); // 'preview', 'approve', 'reject'
   const [, forceUpdate] = useState(0);
   
   // User management states
@@ -86,6 +95,8 @@ export default function SystemAdminMainFrame({
   const [showAdminVerificationModal, setShowAdminVerificationModal] = useState(false);
   const [adminVerificationPassword, setAdminVerificationPassword] = useState('');
   const [editingUserId, setEditingUserId] = useState(null);
+  const [resetPasswordSuccess, setResetPasswordSuccess] = useState(false);
+  const [resetPasswordMessage, setResetPasswordMessage] = useState('');
   const [editingUser, setEditingUser] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [errors, setErrors] = useState({});
@@ -93,6 +104,7 @@ export default function SystemAdminMainFrame({
     password: '',
     confirmPassword: ''
   });
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   // Data states
   const [userList, setUserList] = useState([]);
@@ -122,6 +134,11 @@ export default function SystemAdminMainFrame({
           name: userData.first_name ? `${userData.first_name} ${userData.last_name}` : userData.user_id,
           role: userData.role_type || 'System Admin',
           user_id: userData.user_id,
+          first_name: userData.first_name || '',
+          middle_name: userData.middle_name || '',
+          last_name: userData.last_name || '',
+          suffix: userData.suffix || '',
+          email_add: userData.email_add || '',
           full_data: userData
         });
       } catch (error) {
@@ -130,6 +147,27 @@ export default function SystemAdminMainFrame({
       }
     };
     fetchCurrentUser();
+  }, []);
+
+  // Fetch pending requests count
+  useEffect(() => {
+    const fetchPendingRequestsCount = async () => {
+      try {
+        const { userCreationRequestAPI } = await import('../services/api');
+        const requests = await userCreationRequestAPI.getAll();
+        const pendingCount = requests.filter(req => req.status === 'pending').length;
+        setPendingRequestsCount(pendingCount);
+      } catch (error) {
+        console.error('Failed to fetch requests count:', error);
+      }
+    };
+    
+    // Fetch immediately
+    fetchPendingRequestsCount();
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchPendingRequestsCount, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // Fetch users from backend
@@ -178,30 +216,31 @@ export default function SystemAdminMainFrame({
   // Helper function to transform API user data from snake_case to camelCase
   const transformUsers = (apiData) => {
     const userArray = Array.isArray(apiData) ? apiData : (apiData.results || apiData.data || []);
-    return userArray.map(user => ({
-      id: user.user_id,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      middleName: user.middle_name || '',
-      suffix: user.suffix || '',
-      userPos: user.user_pos || '',
-      email: user.email_add,
-      role: user.role_type,
-      isActive: user.is_active,
-      joinedAt: user.joined_at,
-      organizationUnitId: user.org || '',
-      user_id: user.user_id,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      middle_name: user.middle_name || '',
-      suffix: user.suffix || '',
-      user_pos: user.user_pos || '',
-      email_add: user.email_add,
-      role_type: user.role_type,
-      is_active: user.is_active,
-      joined_at: user.joined_at,
-      org: user.org
-    }));
+    return userArray
+      .filter(user => user && user.user_id) // Filter out users without user_id
+      .map(user => ({
+        id: user.user_id,
+        firstName: user.first_name || '',
+        lastName: user.last_name || '',
+        middleName: user.middle_name || '',
+        suffix: user.suffix || '',
+        userPos: user.user_pos || '',
+        email: user.email_add || '',
+        role: user.role_type || 'User',
+        isActive: user.is_active !== false,
+        joinedAt: user.joined_at,
+        organizationUnitId: user.org || '',
+        user_id: user.user_id,
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
+        middle_name: user.middle_name || '',
+        user_pos: user.user_pos || '',
+        email_add: user.email_add || '',
+        role_type: user.role_type || 'User',
+        is_active: user.is_active !== false,
+        joined_at: user.joined_at,
+        org: user.org
+      }));
   };
 
   // Helper function to transform API audit log data
@@ -309,16 +348,24 @@ export default function SystemAdminMainFrame({
     fetchOrganizationTree();
   }, [dataStore]);
 
-  const handleDeleteUser = async (userId) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
+  const handleToggleUserStatus = async (userId) => {
+    const user = userList.find(u => u.id === userId);
+    const isCurrentlyActive = user?.isActive;
+    const confirmMsg = isCurrentlyActive 
+      ? 'Are you sure you want to deactivate this user? They will not be able to access the system.'
+      : 'Are you sure you want to activate this user?';
+    
+    if (window.confirm(confirmMsg)) {
       try {
-        await userAPI.delete(userId);
-        setUserList(userList.filter(u => u.id !== userId));
+        await userAPI.update(userId, { is_active: !isCurrentlyActive });
+        // Update the user in the list
+        setUserList(userList.map(u => u.id === userId ? { ...u, isActive: !isCurrentlyActive } : u));
         setOpenMenuUserId(null);
-        alert('User deleted successfully!');
+        const statusMsg = isCurrentlyActive ? 'deactivated' : 'activated';
+        alert(`User ${statusMsg} successfully!`);
       } catch (error) {
-        console.error('Failed to delete user:', error);
-        alert('Failed to delete user');
+        console.error('Failed to toggle user status:', error);
+        alert('Failed to toggle user status');
       }
     }
   };
@@ -332,9 +379,10 @@ export default function SystemAdminMainFrame({
 
   const handleEditPassword = (userId) => {
     setEditingUserId(userId);
-    setShowEditPasswordModal(true);
+    setShowEditPasswordModal(true); // Mark this as a password reset action
     setShowAdminVerificationModal(true);
     setAdminVerificationPassword('');
+    setErrors({});
     setOpenMenuUserId(null);
   };
 
@@ -345,10 +393,37 @@ export default function SystemAdminMainFrame({
       
       if (result.valid) {
         setShowAdminVerificationModal(false);
-        if (showEditPasswordModal) {
-          setPasswordData({ password: '', confirmPassword: '' });
-        } else {
-          // Open the Add User modal in edit mode
+        
+        // If this is for password reset, generate and set new password
+        if (showEditPasswordModal === true) {
+          const user = userList.find(u => u.id === editingUserId || u.user_index === editingUserId);
+          if (user) {
+            // Generate new password: lastName.toUpperCase() + "123!"
+            const newPassword = (user.last_name || user.lastName || 'USER').toUpperCase() + '123!';
+            
+            try {
+              // Update user password
+              await userAPI.update(user.user_id || user.id, {
+                password: newPassword
+              });
+              
+              // Refresh user list
+              const users = await userAPI.getAll();
+              setUserList(users);
+              
+              // Show success message in modal instead of alert
+              setResetPasswordMessage(`Reset password success!\nPassword format is SURNAME123!\n\nRemind them to change password ASAP!`);
+              setResetPasswordSuccess(true);
+              setAdminVerificationPassword('');
+              setPasswordData({ password: '', confirmPassword: '' });
+              setErrors({});
+            } catch (error) {
+              console.error('Failed to reset password:', error);
+              setErrors({ submit: 'Failed to reset password: ' + (error.message || 'Unknown error') });
+            }
+          }
+        } else if (editingUserId) {
+          // This is for editing user info - open the Add User modal in edit mode
           const user = userList.find(u => u.id === editingUserId);
           if (user) {
             setEditingUser(user);
@@ -440,11 +515,14 @@ export default function SystemAdminMainFrame({
 
   const getFilteredUsers = () => {
     return userList.filter(user => {
+      // Defensive checks for required fields
+      if (!user || !user.id) return false;
+      
       const matchesSearch = 
-        user.id.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-        user.firstName?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
-        user.lastName?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
-        user.email?.toLowerCase().includes(userSearchQuery.toLowerCase());
+        (user.id || '').toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+        (user.firstName || '').toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
+        (user.lastName || '').toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
+        (user.email || '').toLowerCase().includes(userSearchQuery.toLowerCase());
       
       const matchesRole = userFilterRole === 'All' || user.role === userFilterRole;
       const matchesStatus = userFilterStatus === 'All' || (user.isActive ? 'Active' : 'Inactive') === userFilterStatus;
@@ -509,6 +587,41 @@ export default function SystemAdminMainFrame({
     setShowAddUserModal(true);
   };
 
+  const handleOpenRequestModal = (request, action) => {
+    // request is now the full request object from SystemAdminRequests
+    setSelectedRequest(request);
+    setRequestAction(action);
+    setShowRequestApprovalModal(true);
+  };
+
+  const handleApproveRequest = async (requestId) => {
+    try {
+      // Success - the API call is handled in RequestApprovalModal
+      console.log('Request approved successfully:', requestId);
+      setShowRequestApprovalModal(false);
+      // Decrement pending requests count
+      setPendingRequestsCount(prev => Math.max(0, prev - 1));
+      // Refresh requests list when modal is closed
+      // This will be handled by SystemAdminRequests component with refresh button
+    } catch (error) {
+      console.error('Error approving request:', error);
+    }
+  };
+
+  const handleRejectRequest = async (requestId, reason) => {
+    try {
+      // Success - the API call is handled in RequestApprovalModal
+      console.log('Request rejected successfully:', requestId, 'Reason:', reason);
+      setShowRequestApprovalModal(false);
+      // Decrement pending requests count
+      setPendingRequestsCount(prev => Math.max(0, prev - 1));
+      // Refresh requests list when modal is closed
+      // This will be handled by SystemAdminRequests component with refresh button
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-100">
       <SystemAdminSidebar
@@ -519,6 +632,7 @@ export default function SystemAdminMainFrame({
         currentUser={loggedInUser}
         onCustomize={() => setShowCustomizationModal(true)}
         onConfigureUserId={() => setShowUserIdFormatModal(true)}
+        pendingRequestsCount={pendingRequestsCount}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -526,8 +640,10 @@ export default function SystemAdminMainFrame({
           currentUser={loggedInUser}
           onLogout={onLogout}
           onChangePassword={() => setShowChangePasswordModal(true)}
+          onEditProfile={() => setShowEditProfileModal(true)}
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
+          onRequestsUpdate={() => setActiveSection('requests')}
         />
 
         <div className="flex-1 overflow-auto p-6">
@@ -537,6 +653,7 @@ export default function SystemAdminMainFrame({
               documentList={documentList}
               auditLogs={auditLogs}
               dataStore={dataStore}
+              pendingRequestsCount={pendingRequestsCount}
             />
           )}
 
@@ -587,6 +704,10 @@ export default function SystemAdminMainFrame({
           {activeSection === 'organization' && (
             <OrganizationalStructure />
           )}
+
+          {activeSection === 'requests' && (
+            <SystemAdminRequests onOpenRequestModal={handleOpenRequestModal} />
+          )}
         </div>
       </div>
 
@@ -603,7 +724,35 @@ export default function SystemAdminMainFrame({
       <ChangePasswordModal
         isOpen={showChangePasswordModal}
         onClose={() => setShowChangePasswordModal(false)}
-        currentUsername={currentUser.username}
+        currentUsername={loggedInUser.user_id}
+      />
+
+      <EditProfileModal
+        isOpen={showEditProfileModal}
+        onClose={() => setShowEditProfileModal(false)}
+        currentUser={loggedInUser}
+        onProfileUpdated={() => {
+          // Refresh current user profile
+          const fetchCurrentUser = async () => {
+            try {
+              const userData = await authAPI.getCurrentProfile();
+              setLoggedInUser({
+                name: userData.first_name ? `${userData.first_name} ${userData.last_name}` : userData.user_id,
+                role: userData.role_type || 'System Admin',
+                user_id: userData.user_id,
+                first_name: userData.first_name || '',
+                middle_name: userData.middle_name || '',
+                last_name: userData.last_name || '',
+                suffix: userData.suffix || '',
+                email_add: userData.email_add || '',
+                full_data: userData
+              });
+            } catch (error) {
+              console.error('Failed to refresh current user profile:', error);
+            }
+          };
+          fetchCurrentUser();
+        }}
       />
 
       <SystemAdminAddUserModal
@@ -628,10 +777,11 @@ export default function SystemAdminMainFrame({
         setOpenMenuUserId={setOpenMenuUserId}
         handleEditUser={handleEditUser}
         handleEditPassword={handleEditPassword}
-        handleDeleteUser={handleDeleteUser}
+        handleToggleUserStatus={handleToggleUserStatus}
+        userList={userList}
       />
 
-      <AdminVerificationModal
+      <SystemAdminVerificationModal
         showAdminVerificationModal={showAdminVerificationModal}
         setShowAdminVerificationModal={setShowAdminVerificationModal}
         setShowEditPasswordModal={setShowEditPasswordModal}
@@ -655,6 +805,9 @@ export default function SystemAdminMainFrame({
         errors={errors}
         setErrors={setErrors}
         handleSaveUser={handleSavePassword}
+        resetPasswordSuccess={resetPasswordSuccess}
+        setResetPasswordSuccess={setResetPasswordSuccess}
+        resetPasswordMessage={resetPasswordMessage}
       />
 
       <AdminCustomizationModal
@@ -669,6 +822,20 @@ export default function SystemAdminMainFrame({
         onClose={() => setShowUserIdFormatModal(false)}
         dataStore={dataStore}
         onSave={() => setShowUserIdFormatModal(false)}
+      />
+
+      <RequestApprovalModal
+        isOpen={showRequestApprovalModal}
+        onClose={() => {
+          setShowRequestApprovalModal(false);
+          setSelectedRequest(null);
+          setRequestAction(null);
+        }}
+        request={selectedRequest}
+        action={requestAction}
+        currentUser={loggedInUser}
+        onApprove={handleApproveRequest}
+        onReject={handleRejectRequest}
       />
     </div>
   );

@@ -218,14 +218,14 @@ export default function SystemCustomization({ onClose }) {
     >
       <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-indigo-600 text-white px-6 py-4 flex items-center justify-between">
+        <div className="text-gray-800 px-6 py-4 flex items-center justify-between border-b border-gray-200">
           <div className="flex items-center gap-3">
             <Settings2 className="w-6 h-6" />
             <h2 className="text-xl font-semibold">System Customization</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-white hover:bg-indigo-700 p-1 rounded"
+            className="text-gray-500 hover:text-gray-700 p-1 rounded"
           >
             ✕
           </button>
