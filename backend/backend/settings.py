@@ -39,11 +39,16 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.MultiPartParser",
+        "rest_framework.parsers.FormParser",
+        "rest_framework.parsers.JSONParser",
+    ],
 }
 
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=10),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     'USER_ID_FIELD': 'user_id',
 }
@@ -152,6 +157,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Media files (User uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -159,6 +168,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow embedding in iframes for file preview (development - ALLOWALL)
+# In production, use SAMEORIGIN or a whitelist
+X_FRAME_OPTIONS = 'ALLOWALL'
 
 # Authentication backends
 AUTHENTICATION_BACKENDS = [

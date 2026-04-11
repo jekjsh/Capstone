@@ -59,9 +59,12 @@ export default function LoginForm({ themeData }) {
         )}
         
         {/* Dynamic System Name from your database */}
-        <h1 className="text-3xl font-bold text-gray-900 mb-3 leading-tight">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2 leading-tight">
           {themeData.sys_name || 'Record Keeping Management System'}
         </h1>
+        <p className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wide">
+          Record Keeping Management System
+        </p>
         <p className="text-sm text-gray-500">Please sign in to your account</p>
       </div>
 
@@ -170,12 +173,12 @@ export default function LoginForm({ themeData }) {
             window.location.href = '/system-admin/dashboard';
           } else {
             // Default to user dashboard
-            window.location.href = '/dashboard';
+            window.location.href = '/user/documents';
           }
         } catch (error) {
-          console.error('Failed to fetch user profile, redirecting to dashboard:', error);
-          // Fallback to dashboard if profile fetch fails
-          window.location.href = '/dashboard';
+          console.error('Failed to fetch user profile, redirecting to documents:', error);
+          // Fallback to user documents if profile fetch fails
+          window.location.href = '/user/documents';
         }
       } else {
         setPassword('');

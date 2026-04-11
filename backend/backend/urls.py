@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -13,7 +15,7 @@ from authenticator.views import (
     IdFormatViewSet,
     LogoutView
 )
-from documents.views import DocumentViewSet, DocumentShareViewSet, OcrDataViewSet
+from documents.views import DocumentViewSet, DocumentShareViewSet, OcrDataViewSet, FolderViewSet, FolderShareViewSet, CategoryViewSet
 from monitoring.views import AuditLogViewSet, NotificationViewSet
 from system_config.views import SystemThemeViewSet
 
@@ -22,8 +24,11 @@ router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'organizations', OrganizationViewSet, basename='organization')
 router.register(r'id-formats', IdFormatViewSet, basename='id-format')
+router.register(r'folders', FolderViewSet, basename='folder')
+router.register(r'folder-shares', FolderShareViewSet, basename='folder-share')
 router.register(r'documents', DocumentViewSet, basename='document')
 router.register(r'document-shares', DocumentShareViewSet, basename='document-share')
+router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'ocr-data', OcrDataViewSet, basename='ocr-data')
 router.register(r'audit-logs', AuditLogViewSet, basename='audit-log')
 router.register(r'notifications', NotificationViewSet, basename='notification')
@@ -42,4 +47,8 @@ urlpatterns = [
     # API routes (organizations, documents, etc.)
     path('api/', include(router.urls)),
 ]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

@@ -1,6 +1,7 @@
 
 import { X, Edit, Trash2, Key } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { getRoleDisplayName } from '../../utils/roleMapper';
 
 export function UserActionMenu({ 
   openMenuUserId, 
@@ -471,7 +472,7 @@ export function PasswordModal({
           </p>
           <p className="text-xs text-gray-600">{tempUserData?.userId}</p>
           <p className="text-xs text-gray-600 mt-1">{tempUserData?.email}</p>
-          <p className="text-xs text-gray-600 mt-2">Role: {tempUserData?.role}</p>
+          <p className="text-xs text-gray-600 mt-2">Role: {getRoleDisplayName(tempUserData?.role)}</p>
         </div>
         
         <div className="space-y-4">

@@ -3,70 +3,33 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 // Store the access token
 let accessToken = null;
 let refreshToken = null;
-let refreshTokenTimer = null;
 let inactivityTimer = null;
-let warningCountdownTimer = null;
-let warningShownTime = null;
 
-// Refresh token every 7 minutes (before 10-minute access token expiration)
-const REFRESH_TOKEN_INTERVAL = 7 * 60 * 1000; // 7 minutes in milliseconds
+// Inactivity logout after 30 minutes
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 
-// Inactivity logout after 9 minutes (1 minute before token expiration at 10 minutes)
-const INACTIVITY_TIMEOUT = 9 * 60 * 1000; // 9 minutes in milliseconds
+// Activity listeners - only real user intent actions
+const activityEvents = ['click', 'keydown', 'mousedown', 'scroll', 'touchstart'];
 
-// Show warning at 8 minutes (before logout at 9 minutes)
-const WARNING_TIME = 8 * 60 * 1000; // 8 minutes in milliseconds
-
-// Activity listeners
-const activityEvents = ['click', 'keydown', 'mousemove', 'mousedown', 'scroll', 'touchstart'];
-
-// Stop the countdown warning timer
-const stopWarningCountdown = () => {
-  if (warningCountdownTimer) {
-    clearInterval(warningCountdownTimer);
-    warningCountdownTimer = null;
+// Stop the inactivity timer
+const stopInactivityTimer = () => {
+  if (inactivityTimer) {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = null;
   }
-  warningShownTime = null;
-};
-
-// Start warning countdown (updates UI every second)
-const startWarningCountdown = () => {
-  stopWarningCountdown();
-  warningShownTime = Date.now();
-  warningCountdownTimer = setInterval(() => {
-    const elapsed = Math.floor((Date.now() - warningShownTime) / 1000);
-    const secondsRemaining = Math.max(0, 60 - elapsed);
-    window.dispatchEvent(new CustomEvent('inactivity:countdown', { detail: { seconds: secondsRemaining } }));
-    
-    if (secondsRemaining === 0) {
-      stopWarningCountdown();
-    }
-  }, 1000);
 };
 
 // Reset inactivity timer on user activity
 const resetInactivityTimer = () => {
   stopInactivityTimer();
-  stopWarningCountdown();
   window.dispatchEvent(new CustomEvent('inactivity:hide-warning'));
   
   if (getRefreshToken()) {
     inactivityTimer = setTimeout(() => {
-      // Show warning at 9 minutes
-      window.dispatchEvent(new CustomEvent('inactivity:show-warning'));
-      startWarningCountdown();
-      
-      // Actually logout at 10 minutes
-      const logoutTimeout = setTimeout(() => {
-        console.log('User inactive for 10 minutes, logging out...');
-        stopWarningCountdown();
-        clearAuthTokens();
-        window.dispatchEvent(new CustomEvent('auth:expired'));
-      }, INACTIVITY_TIMEOUT - WARNING_TIME);
-      
-      // Store the logout timeout so we can clear it if user interacts
-      inactivityTimer = logoutTimeout;
-    }, WARNING_TIME);
+      console.log('User inactive for 30 minutes, logging out...');
+      clearAuthTokens();
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+    }, INACTIVITY_TIMEOUT);
   }
 };
 
@@ -85,15 +48,6 @@ export const removeActivityListeners = () => {
     document.removeEventListener(event, resetInactivityTimer, true);
   });
   stopInactivityTimer();
-  stopWarningCountdown();
-};
-
-// Stop the inactivity timer
-const stopInactivityTimer = () => {
-  if (inactivityTimer) {
-    clearTimeout(inactivityTimer);
-    inactivityTimer = null;
-  }
 };
 
 export const setAuthTokens = (access, refresh) => {
@@ -105,8 +59,7 @@ export const setAuthTokens = (access, refresh) => {
   if (refresh) {
     localStorage.setItem('refresh_token', refresh);
   }
-  // Start refresh token timer and activity listeners when tokens are set
-  startRefreshTokenTimer();
+  // Start activity listeners when tokens are set
   setupActivityListeners();
 };
 
@@ -129,7 +82,6 @@ export const clearAuthTokens = () => {
   refreshToken = null;
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
-  stopRefreshTokenTimer();
   removeActivityListeners();
 };
 
@@ -141,14 +93,10 @@ export const refreshAccessToken = async () => {
       throw new Error('No refresh token available');
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/auth/token/refresh/`, {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh/`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        refresh: currentRefreshToken,
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: currentRefreshToken }),
     });
 
     if (!response.ok) {
@@ -161,8 +109,6 @@ export const refreshAccessToken = async () => {
     if (data.access) {
       accessToken = data.access;
       localStorage.setItem('access_token', data.access);
-      // Restart the refresh timer and reset inactivity timer
-      startRefreshTokenTimer();
       resetInactivityTimer();
       return data.access;
     }
@@ -170,24 +116,6 @@ export const refreshAccessToken = async () => {
     console.error('Token refresh failed:', error);
     clearAuthTokens();
     window.dispatchEvent(new CustomEvent('auth:expired'));
-  }
-};
-
-// Start the token refresh timer
-export const startRefreshTokenTimer = () => {
-  stopRefreshTokenTimer(); // Clear any existing timer
-  if (getRefreshToken()) {
-    refreshTokenTimer = setInterval(() => {
-      refreshAccessToken();
-    }, REFRESH_TOKEN_INTERVAL);
-  }
-};
-
-// Stop the token refresh timer
-export const stopRefreshTokenTimer = () => {
-  if (refreshTokenTimer) {
-    clearInterval(refreshTokenTimer);
-    refreshTokenTimer = null;
   }
 };
 
@@ -425,13 +353,22 @@ export const auditLogAPI = {
   
   // Create new audit log
   create: async (data) => {
+    // Map frontend field names to backend field names
+    const mappedData = {
+      audit_action: data.action,
+      audit_desc: data.resource,
+      audit_status: data.status
+      // user_index is set automatically by the backend from the authenticated user
+    };
+
     const response = await fetchWithAuth(`${API_BASE_URL}/api/audit-logs/`, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(mappedData),
     });
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to create audit log');
+      const error = await response.text();
+      console.error('Audit log error response:', error);
+      throw new Error('Failed to create audit log');
     }
     return await response.json();
   },
@@ -464,7 +401,7 @@ export const sessionAPI = {
 export const documentAPI = {
   // Get all documents
   getAll: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/`);
     if (!response.ok) {
       throw new Error('Failed to fetch documents');
     }
@@ -473,16 +410,16 @@ export const documentAPI = {
   
   // Get single document
   getById: async (id) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/${id}/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}/`);
     if (!response.ok) {
       throw new Error('Failed to fetch document');
     }
     return await response.json();
   },
   
-  // Create new document
+  // Create new document (with file upload)
   create: async (data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -494,9 +431,49 @@ export const documentAPI = {
     return await response.json();
   },
   
+  // Upload files (multipart form data)
+  uploadFiles: async (files, docName, docDesc, folderId, onProgress) => {
+    const formData = new FormData();
+    
+    // Add the first file as doc_file (one document = one file)
+    if (files && files.length > 0) {
+      formData.append('doc_file', files[0]);
+    }
+    
+    formData.append('doc_name', docName || (files && files[0] ? files[0].name : 'Untitled'));
+    if (docDesc) {
+      formData.append('doc_desc', docDesc);
+    }
+    if (folderId) {
+      formData.append('folder', folderId);
+    }
+    
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/documents/`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      let errorMsg = 'Failed to upload file';
+      try {
+        const error = await response.json();
+        errorMsg = error.detail || error.doc_file?.[0] || errorMsg;
+      } catch (e) {
+        // Response was not JSON
+        errorMsg = `Upload failed (${response.status}: ${response.statusText})`;
+      }
+      throw new Error(errorMsg);
+    }
+    return await response.json();
+  },
+  
   // Update document
   update: async (id, data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/${id}/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}/`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -509,7 +486,7 @@ export const documentAPI = {
   
   // Delete document (soft delete)
   delete: async (id) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/${id}/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}/`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -519,7 +496,7 @@ export const documentAPI = {
   
   // Restore document
   restore: async (id) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/${id}/restore/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}/restore/`, {
       method: 'POST',
     });
     if (!response.ok) {
@@ -601,6 +578,77 @@ export const organizationShareAPI = {
     return await response.json();
   },
 };
+
+// Document Share API
+export const documentShareAPI = {
+  // Get all document shares
+  getAll: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-shares/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch document shares');
+    }
+    return await response.json();
+  },
+
+  // Create a new document share
+  create: async (data) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-shares/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to share document');
+    }
+    return await response.json();
+  },
+
+  // Delete a document share
+  delete: async (shareId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-shares/${shareId}/`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete document share');
+    }
+  },
+};
+
+// Folder Share API
+export const folderShareAPI = {
+  // Get all folder shares
+  getAll: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folder-shares/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch folder shares');
+    }
+    return await response.json();
+  },
+
+  // Create a new folder share
+  create: async (data) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folder-shares/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to share folder');
+    }
+    return await response.json();
+  },
+
+  // Delete a folder share
+  delete: async (shareId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folder-shares/${shareId}/`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete folder share');
+    }
+  },
+};
+
 // System Settings API
 export const systemSettingsAPI = {
   // Get user ID format configuration
@@ -648,16 +696,34 @@ export const systemSettingsAPI = {
 export const folderAPI = {
   // Get all folders for the current user
   getAll: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/folders/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/`);
     if (!response.ok) {
       throw new Error('Failed to fetch folders');
     }
     return await response.json();
   },
 
+  // Get root folders only (no parent)
+  getRootFolders: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/root_folders/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch root folders');
+    }
+    return await response.json();
+  },
+
+  // Get documents in a specific folder
+  getDocuments: async (folderId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/documents/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch folder documents');
+    }
+    return await response.json();
+  },
+
   // Create a new folder
   create: async (data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/folders/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -670,7 +736,7 @@ export const folderAPI = {
 
   // Update a folder
   update: async (folderId, data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/folders/${folderId}/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -683,7 +749,7 @@ export const folderAPI = {
 
   // Delete a folder
   delete: async (folderId) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/folders/${folderId}/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -691,6 +757,28 @@ export const folderAPI = {
       throw new Error(error.detail || 'Failed to delete folder');
     }
     return response.ok ? { success: true } : await response.json();
+  },
+
+  // Share a folder
+  share: async (folderId, data) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folder-shares/`, {
+      method: 'POST',
+      body: JSON.stringify({ folder: folderId, ...data }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to share folder');
+    }
+    return await response.json();
+  },
+
+  // Get folder shares
+  getShares: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folder-shares/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch folder shares');
+    }
+    return await response.json();
   },
 };
 
@@ -739,6 +827,56 @@ export const tagAPI = {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to delete tag');
+    }
+    return response.ok ? { success: true } : await response.json();
+  },
+};
+
+// Categories API
+export const categoryAPI = {
+  // Get all categories for the current user
+  getAll: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/categories/`);
+    if (!response.ok) throw new Error('Failed to fetch categories');
+    return response.json();
+  },
+
+  // Create a new category
+  create: async (categoryData) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/categories/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(categoryData),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create category');
+    }
+    return response.json();
+  },
+
+  // Update a category
+  update: async (categoryId, data) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/categories/${categoryId}/`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update category');
+    }
+    return response.json();
+  },
+
+  // Delete a category
+  delete: async (categoryId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/categories/${categoryId}/`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete category');
     }
     return response.ok ? { success: true } : await response.json();
   },
@@ -902,4 +1040,150 @@ export const idFormatAPI = {
     }
     return response.ok;
   },
+};
+
+// System Theme API
+export const systemThemeAPI = {
+  // Get active system theme (public endpoint, no auth required)
+  getActive: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/system-themes/active_theme/`, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        // Return default theme if no active theme found or endpoint not accessible
+        return {
+          sys_name: 'Record Keeping Management System',
+          sys_abbr: 'RKMS',
+          sys_logo: null,
+          sys_backg: null,
+          sidebar_color: 'blue',
+        };
+      }
+      return await response.json();
+    } catch (err) {
+      console.warn('Failed to fetch active theme:', err);
+      // Return default theme on error
+      return {
+        sys_name: 'Record Keeping Management System',
+        sys_abbr: 'RKMS',
+        sys_logo: null,
+        sys_backg: null,
+        sidebar_color: 'blue',
+      };
+    }
+  },
+
+  // Get all system themes (admin only - requires auth)
+  getAll: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/system-themes/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch system themes');
+    }
+    return await response.json();
+  },
+
+  // Update system theme (admin only - requires auth)
+  update: async (id, data) => {
+    const token = getAccessToken();
+    const headers = {};
+    let body = data;
+    
+    // Clean data: only send File objects for images, not string paths
+    // Convert string file paths to null (don't send them) to keep existing files
+    const cleanedData = {};
+    Object.keys(data).forEach(key => {
+      const value = data[key];
+      // Skip string values for image fields (they're existing file paths)
+      if ((key === 'sys_logo' || key === 'sys_backg') && typeof value === 'string') {
+        // Don't include existing file paths - backend will keep them
+        return;
+      }
+      // Include File objects, non-null values
+      if (value !== null && value !== undefined) {
+        cleanedData[key] = value;
+      }
+    });
+    
+    // Check if we have files to upload
+    const hasFiles = (cleanedData.sys_logo instanceof File) || (cleanedData.sys_backg instanceof File);
+    
+    if (hasFiles) {
+      // Use FormData for multipart upload
+      const formData = new FormData();
+      Object.keys(cleanedData).forEach(key => {
+        if (cleanedData[key] !== null && cleanedData[key] !== undefined) {
+          formData.append(key, cleanedData[key]);
+        }
+      });
+      body = formData;
+      // Don't set Content-Type header for FormData - browser will set it with boundary
+    } else {
+      // Use JSON for text-only data
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(cleanedData);
+    }
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/system-themes/${id}/`, {
+      method: 'PUT',
+      headers,
+      body,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('Update theme error response:', error);
+      throw new Error(error.detail || JSON.stringify(error) || 'Failed to update system theme');
+    }
+    return await response.json();
+  },
+
+  // Create new theme (admin only - requires auth)
+  create: async (data) => {
+    const token = getAccessToken();
+    const headers = {};
+    let body = data;
+    
+    // Check if we have files to upload
+    const hasFiles = (data.sys_logo instanceof File) || (data.sys_backg instanceof File) || (data instanceof FormData);
+    
+    if (hasFiles) {
+      // Use FormData for multipart upload
+      const formData = new FormData();
+      Object.keys(data).forEach(key => {
+        if (data[key] !== null && data[key] !== undefined) {
+          formData.append(key, data[key]);
+        }
+      });
+      body = formData;
+      // Don't set Content-Type header for FormData - browser will set it with boundary
+    } else {
+      // Use JSON for text-only data
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(data);
+    }
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/system-themes/`, {
+      method: 'POST',
+      headers,
+      body,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('Create theme error response:', error);
+      throw new Error(error.detail || JSON.stringify(error) || 'Failed to create system theme');
+    }
+    return await response.json();
+  }
 };

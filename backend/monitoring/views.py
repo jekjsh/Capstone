@@ -26,7 +26,7 @@ class AuditLogViewSet(viewsets.ModelViewSet):
         """Create a new audit log entry"""
         # Automatically set the user to the current user
         data = request.data.copy()
-        data['user_index'] = request.user.id
+        data['user_index'] = request.user.pk  # Use pk to get the primary key (user_index)
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)

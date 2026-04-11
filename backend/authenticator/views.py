@@ -61,30 +61,32 @@ class CustomTokenRefreshView(TokenRefreshView):
 # Logout View
 class LogoutView(generics.GenericAPIView):
     """Handle user logout and log the action"""
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (AllowAny,)
     
     def post(self, request, *args, **kwargs):
         """Log logout action and return success response"""
         try:
-            # Log successful logout
-            AuditLog.objects.create(
-                user_index=request.user,
-                audit_action='Logout',
-                audit_desc=f"User logged out",
-                audit_status='Success'
-            )
+            # Log successful logout only if user is authenticated
+            if request.user and request.user.is_authenticated:
+                AuditLog.objects.create(
+                    user_index=request.user,
+                    audit_action='Logout',
+                    audit_desc=f"User logged out",
+                    audit_status='Success'
+                )
             return Response(
                 {'detail': 'Successfully logged out.'}, 
                 status=status.HTTP_200_OK
             )
         except Exception as e:
-            # Log failed logout attempt
-            AuditLog.objects.create(
-                user_index=request.user,
-                audit_action='Logout',
-                audit_desc=f"Failed logout: {str(e)}",
-                audit_status='Failed'
-            )
+            # Log failed logout attempt only if user is authenticated
+            if request.user and request.user.is_authenticated:
+                AuditLog.objects.create(
+                    user_index=request.user,
+                    audit_action='Logout',
+                    audit_desc=f"Failed logout: {str(e)}",
+                    audit_status='Failed'
+                )
             return Response(
                 {'detail': 'Logout failed.'}, 
                 status=status.HTTP_400_BAD_REQUEST

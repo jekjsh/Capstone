@@ -1,16 +1,15 @@
 
 import { useState ,useEffect} from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, Folder, Share2, Trash2 } from 'lucide-react';
+import { FileText, Settings, LogOut, Menu, X, Bell, Folder, Share2, Trash2 } from 'lucide-react';
 import Header from './Components/Header';
-import Dashboard from './Components/Dashboard';
-import Documents from './Components/Documents';
-import Folders from './Components/Folders';
-import Tags from './Components/Tags';
+import DocumentsManager from './Components/DocumentsManager';
+import Category from './component/Category';
 import Sidebar from './Components/Sidebar';
-import { documentAPI, organizationAPI, userAPI, auditLogAPI, folderAPI, tagAPI, organizationShareAPI, authAPI } from '../services/api';
+import { documentAPI, organizationAPI, userAPI, auditLogAPI, folderAPI, tagAPI, organizationShareAPI, authAPI, documentShareAPI, folderShareAPI, getAccessToken } from '../services/api';
 import mammoth from 'mammoth';
 import CreateFolderModal from './Components/modals/CreateFolderModal';
+import EditFolderModal from './Components/modals/EditFolderModal';
 import MoveToFolderModal from './Components/modals/MoveToFolderModal';
 import DocumentViewerModal from './Components/modals/DocumentViewerModal';
 import UploadDocumentModal from './Components/modals/UploadDocumentModal';
@@ -19,8 +18,9 @@ import PersonalInfoFormModal from './Components/modals/PersonalInfoFormModal';
 import SaveOptionsModal from './Components/modals/SaveOptionsModal';
 import AddFieldModal from './Components/modals/AddFieldModal';
 import ShareDocumentModal from './Components/modals/ShareDocumentModal';
+import ShareFolderModal from './Components/modals/ShareFolderModal';
+import RenameDocumentModal from './Components/modals/RenameDocumentModal';
 import ChangePasswordModal from './Components/modals/ChangePasswordModal';
-import SendToOrganizationModal from "../admin/component/SendToOrganizationModal";
 import SharedDocuments from './Components/SharedDocuments';
 import RecycleBin from './Components/RecycleBin';
 export default function UserMainFrame({ 
@@ -35,35 +35,40 @@ export default function UserMainFrame({
 
   // Mapping between section IDs and URL paths
   const sectionToPath = {
-    'dashboard': '/dashboard',
-    'documents': '/dashboard/my-documents',
-    'shared': '/dashboard/shared-documents',
-    'folders': '/dashboard/folders',
-    'fields': '/dashboard/tags',
-    'recycle-bin': '/dashboard/recycle-bin'
+    'documents': '/user/documents',
+    'shared': '/user/shared-documents',
+    'folders': '/user/documents',  // Redirect folders to documents (unified view)
+    'fields': '/user/categories',
+    'recycle-bin': '/user/recycle-bin'
   };
 
-  const pathToSection = Object.fromEntries(
-    Object.entries(sectionToPath).map(([section, path]) => [path, section])
-  );
+  const pathToSection = {
+    '/user': 'documents',
+    '/user/documents': 'documents',
+    '/user/my-documents': 'documents',  // Support old URL
+    '/user/shared-documents': 'shared',
+    '/user/folders': 'documents',  // Redirect folders to documents
+    '/user/categories': 'fields',
+    '/user/recycle-bin': 'recycle-bin'
+  };
 
   const [activeSection, setActiveSectionState] = useState(() => {
     // Initialize based on current URL
     const path = location.pathname;
-    return pathToSection[path] || 'dashboard';
+    return pathToSection[path] || 'documents';
   });
 
   // Wrapper function that updates state AND navigates to the URL
   const setActiveSection = (section) => {
     setActiveSectionState(section);
-    const path = sectionToPath[section] || '/dashboard';
+    const path = sectionToPath[section] || '/user/documents';
     navigate(path, { replace: false });
   };
 
   // Sync URL changes with activeSection
   useEffect(() => {
     const path = location.pathname;
-    const newSection = pathToSection[path] || 'dashboard';
+    const newSection = pathToSection[path] || 'documents';
     if (newSection !== activeSection) {
       setActiveSectionState(newSection);
     }
@@ -235,6 +240,10 @@ export default function UserMainFrame({
   const [folders, setFolders] = useState([]);
   const [currentFolder, setCurrentFolder] = useState(null);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+  const [showEditFolderModal, setShowEditFolderModal] = useState(false);
+  const [editingFolderId, setEditingFolderId] = useState(null);
+  const [editFolderName, setEditFolderName] = useState('');
+  const [editFolderColor, setEditFolderColor] = useState('blue');
   const [showMoveToFolderModal, setShowMoveToFolderModal] = useState(false);
   const [documentToMove, setDocumentToMove] = useState(null);
   const [newFolderName, setNewFolderName] = useState('');
@@ -282,10 +291,15 @@ const [newField, setNewField] = useState({
 });
   const [errors, setErrors] = useState({});
   const [sharedDocuments, setSharedDocuments] = useState([]);
+  const [sharedFolders, setSharedFolders] = useState([]);
   const [sharedByMe, setSharedByMe] = useState([]);
   const [organizationShares, setOrganizationShares] = useState(dataStore ? dataStore.getAllOrgShares() : []);
   const [showShareModal, setShowShareModal] = useState(false);
   const [documentToShare, setDocumentToShare] = useState(null);
+  const [showShareFolderModal, setShowShareFolderModal] = useState(false);
+  const [folderToShare, setFolderToShare] = useState(null);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [documentToRename, setDocumentToRename] = useState(null);
   const [showSendToOrgModal, setShowSendToOrgModal] = useState(false);
   const [selectedDocForOrgShare, setSelectedDocForOrgShare] = useState(null);
 
@@ -339,6 +353,55 @@ const [newField, setNewField] = useState({
     }
   }, [currentUser.id]);
 
+  // Fetch shared folders from backend
+  useEffect(() => {
+    const fetchSharedFolders = async () => {
+      try {
+        const allFolderShares = await folderShareAPI.getAll();
+        
+        // Filter: shared with me (I'm the shared_to_user)
+        const sharedWithMe = allFolderShares.filter(share => 
+          share.shared_to_user === currentUser.user_index
+        ).map(share => ({
+          id: `folder-share-${share.share_id}`,
+          folder: share.folder_data || folders.find(f => f.folder_id === share.folder),
+          folderId: share.folder,
+          sharedBy: share.shared_by_user,
+          sharedWith: [currentUser.user_index],
+          permission: 'view',
+          sharedAt: share.created_at,
+          isFolder: true
+        }));
+
+        // Filter: shared by me (I'm the shared_by_user)
+        const sharedByMe = allFolderShares.filter(share => 
+          share.shared_by_user === currentUser.user_index
+        ).map(share => ({
+          id: `folder-share-${share.share_id}`,
+          folder: share.folder_data || folders.find(f => f.folder_id === share.folder),
+          folderId: share.folder,
+          sharedBy: currentUser.user_index,
+          sharedWith: [share.shared_to_user],
+          permission: 'view',
+          sharedAt: share.created_at,
+          isFolder: true,
+          shareId: share.share_id
+        }));
+
+        const allFolderShares_ = [...sharedWithMe, ...sharedByMe];
+        console.log('All folder shares:', allFolderShares_);
+        setSharedFolders(allFolderShares_);
+      } catch (error) {
+        console.error('Failed to fetch shared folders:', error);
+        setSharedFolders([]);
+      }
+    };
+
+    if (currentUser.user_index) {
+      fetchSharedFolders();
+    }
+  }, [currentUser.user_index, folders]);
+
   // Fetch tags from backend
   useEffect(() => {
     const fetchTags = async () => {
@@ -364,11 +427,10 @@ const [newField, setNewField] = useState({
   }, []);
   
  const menuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'documents', label: 'My Documents', icon: FileText },
+  { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'shared', label: 'Shared Documents', icon: Share2 },
   { id: 'folders', label: 'Folders', icon: Folder },
-  { id: 'fields', label: 'Tags', icon: Settings },
+  { id: 'fields', label: 'Categories', icon: Settings },
   { id: 'recycle-bin', label: 'Recycle Bin', icon: Trash2 }
 ];
   const addAuditLog = async (action, resource, status = 'Success') => {
@@ -392,7 +454,6 @@ const [newField, setNewField] = useState({
     // Save to backend API
     try {
       await auditLogAPI.create({
-        user: currentUser.username || currentUser.id,
         action: action,
         resource: resource,
         status: status
@@ -482,16 +543,23 @@ const handleToggleFieldActive = async (fieldId) => {
       setErrors({ folderName: 'Folder name is required' });
       return;
     }
-    if (folders.some(folder => folder.name === newFolderName)) {
-      setErrors({ folderName: 'Folder name already exists' });
+    if (folders.some(folder => folder.folder_name === newFolderName && folder.parent_folder === currentFolder)) {
+      setErrors({ folderName: 'Folder name already exists in this location' });
       return;
     }
     
     try {
-      const newFolder = await folderAPI.create({
-        name: newFolderName,
-        color: newFolderColor
-      });
+      const folderData = {
+        folder_name: newFolderName,
+        folder_color: newFolderColor
+      };
+      
+      // If creating a subfolder, set parent_folder
+      if (currentFolder) {
+        folderData.parent_folder = currentFolder;
+      }
+      
+      const newFolder = await folderAPI.create(folderData);
       console.log('Folder created:', newFolder);
       
       setFolders([...folders, newFolder]);
@@ -509,53 +577,90 @@ const handleToggleFieldActive = async (fieldId) => {
   };
 
  const handleDeleteFolder = async (folderId) => {
-    const documentsInFolder = userDocuments.filter(doc => doc.folderId === folderId);
+    // Get folder name
+    const folder = folders.find(f => f.folder_id === folderId);
+    const folderName = folder?.folder_name || 'Folder';
     
+    // Get documents in this folder
+    const documentsInFolder = userDocuments.filter(doc => doc.folder === folderId);
+    
+    let confirmMessage = `Are you sure you want to delete "${folderName}"?`;
     if (documentsInFolder.length > 0) {
-      if (window.confirm(`This folder contains ${documentsInFolder.length} document(s). Delete folder and move documents to root?`)) {
-        try {
-          await folderAPI.delete(folderId);
-          
-          // Move documents to root in frontend
-          documentsInFolder.forEach(doc => {
-            if (dataStore) {
-              dataStore.updateDocument(doc.id, { folderId: null });
-            }
-          });
-          
-          setFolders(folders.filter(f => f.id !== folderId));
-          if (currentFolder === folderId) {
-            setCurrentFolder(null);
-          }
-          
-          const folderName = folders.find(f => f.id === folderId)?.name || 'Folder';
-          addAuditLog('Folder Deleted', `${folderName} with ${documentsInFolder.length} documents moved to root`, 'Success');
-        } catch (error) {
-          console.error('Failed to delete folder:', error);
-          alert(`Failed to delete folder: ${error.message}`);
+      confirmMessage = `This folder contains ${documentsInFolder.length} document(s). Are you sure you want to delete "${folderName}"?`;
+    }
+    
+    if (window.confirm(confirmMessage)) {
+      try {
+        await folderAPI.delete(folderId);
+        
+        // Remove folder from state
+        setFolders(folders.filter(f => f.folder_id !== folderId));
+        
+        // If we're currently viewing this folder, go back
+        if (currentFolder === folderId) {
+          setCurrentFolder(null);
         }
-      }
-    } else {
-      if (window.confirm('Are you sure you want to delete this folder?')) {
-        try {
-          await folderAPI.delete(folderId);
-          
-          setFolders(folders.filter(f => f.id !== folderId));
-          if (currentFolder === folderId) {
-            setCurrentFolder(null);
-          }
-          
-          const folderName = folders.find(f => f.id === folderId)?.name || 'Folder';
-          addAuditLog('Folder Deleted', `${folderName} (empty)`, 'Success');
-        } catch (error) {
-          console.error('Failed to delete folder:', error);
-          alert(`Failed to delete folder: ${error.message}`);
-        }
+        
+        addAuditLog('Folder Deleted', `${folderName}`, 'Success');
+      } catch (error) {
+        console.error('Failed to delete folder:', error);
+        alert(`Failed to delete folder: ${error.message}`);
       }
     }
   };
 
- const handleMoveToFolder = async (folderId) => {
+  const handleRenameFolder = async (folderId) => {
+    const folder = folders.find(f => f.folder_id === folderId);
+    if (folder) {
+      setEditingFolderId(folderId);
+      setEditFolderName(folder.folder_name);
+      setEditFolderColor(folder.folder_color || 'blue');
+      setShowEditFolderModal(true);
+    }
+  };
+
+  const handleSaveFolder = async () => {
+    if (!editFolderName.trim()) {
+      setErrors({ folderName: 'Folder name is required' });
+      return;
+    }
+
+    // Check for duplicate names at same level
+    const folder = folders.find(f => f.folder_id === editingFolderId);
+    if (folders.some(f => 
+      f.folder_id !== editingFolderId && 
+      f.folder_name === editFolderName && 
+      f.parent_folder === folder?.parent_folder
+    )) {
+      setErrors({ folderName: 'A folder with this name already exists in this location' });
+      return;
+    }
+
+    try {
+      const updatedData = {
+        folder_name: editFolderName,
+        folder_color: editFolderColor
+      };
+
+      const updatedFolder = await folderAPI.update(editingFolderId, updatedData);
+      
+      // Update folders state
+      setFolders(folders.map(f => f.folder_id === editingFolderId ? updatedFolder : f));
+      
+      addAuditLog('Folder Renamed', `${updatedFolder.folder_name} - Color: ${editFolderColor}`, 'Success');
+      
+      setShowEditFolderModal(false);
+      setEditingFolderId(null);
+      setEditFolderName('');
+      setEditFolderColor('blue');
+      setErrors({});
+    } catch (error) {
+      console.error('Failed to save folder:', error);
+      setErrors({ general: error.message });
+    }
+  };
+
+  const handleMoveToFolder = async (folderId) => {
     if (!documentToMove) return;
     
     try {
@@ -869,71 +974,233 @@ const handleEmptyRecycleBin = async () => {
   }
 };
 
-  const handleOpenDocument = (doc) => {
-    setViewingDocument(doc);
-    setShowDocumentViewer(true);
+  const handleOpenDocument = async (doc) => {
+    // Check if document already has content loaded
+    if (doc.fileData || doc.content || doc.ocrContent) {
+      setViewingDocument(doc);
+      setShowDocumentViewer(true);
+      return;
+    }
+
+    // If document has a file URL, try to load the content
+    if (doc.doc_file_url || doc.doc_file) {
+      try {
+        const fileUrl = doc.doc_file_url || doc.doc_file;
+        const fileName = doc.doc_name || 'document';
+        const fileExtension = fileName.toLowerCase().split('.').pop();
+
+        // For PDFs, fetch as blob to create a usable data URL for iframe
+        if (fileExtension === 'pdf') {
+          try {
+            const response = await fetch(fileUrl, { 
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${getAccessToken()}` }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
+            }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            setViewingDocument({
+              ...doc,
+              fileData: blobUrl,
+              format: 'pdf',
+              doc_name: doc.doc_name || doc.title,
+              title: doc.doc_name || doc.title,
+              isBlobUrl: true
+            });
+            setShowDocumentViewer(true);
+          } catch (pdfError) {
+            console.error('PDF fetch error:', pdfError);
+            alert('Failed to load PDF: ' + pdfError.message);
+          }
+        }
+        // For images, fetch as blob
+        else if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(fileExtension)) {
+          try {
+            const response = await fetch(fileUrl, { 
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${getAccessToken()}` }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Failed to fetch image: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            setViewingDocument({
+              ...doc,
+              fileData: blobUrl,
+              format: 'image',
+              doc_name: doc.doc_name || doc.title,
+              title: doc.doc_name || doc.title,
+              isBlobUrl: true
+            });
+            setShowDocumentViewer(true);
+          } catch (imgError) {
+            console.error('Image fetch error:', imgError);
+            alert('Failed to load image: ' + imgError.message);
+          }
+        }
+        // For text files, fetch and display content
+        else if (['txt', 'docx', 'doc'].includes(fileExtension)) {
+          try {
+            const response = await fetch(fileUrl, { 
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${getAccessToken()}` }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
+            }
+
+            if (fileExtension === 'txt') {
+              const textContent = await response.text();
+              setViewingDocument({
+                ...doc,
+                content: textContent,
+                format: 'text',
+                doc_name: doc.doc_name || doc.title,
+                title: doc.doc_name || doc.title
+              });
+            } else if (fileExtension === 'docx' || fileExtension === 'doc') {
+              // For docx files, try to extract text using mammoth
+              const arrayBuffer = await response.arrayBuffer();
+              try {
+                const result = await mammoth.extractText({ arrayBuffer });
+                setViewingDocument({
+                  ...doc,
+                  content: result.value,
+                  format: 'docx',
+                  doc_name: doc.doc_name || doc.title,
+                  title: doc.doc_name || doc.title
+                });
+              } catch (mammothError) {
+                console.error('Error parsing docx:', mammothError);
+                // Fall back to showing download option
+                setViewingDocument({
+                  ...doc,
+                  fileData: fileUrl,
+                  format: 'docx',
+                  doc_name: doc.doc_name || doc.title,
+                  title: doc.doc_name || doc.title
+                });
+              }
+            }
+            setShowDocumentViewer(true);
+          } catch (fetchError) {
+            console.error('Fetch error:', fetchError);
+            // If fetch fails, still show the document with download option
+            setViewingDocument({
+              ...doc,
+              fileData: fileUrl,
+              format: fileExtension,
+              doc_name: doc.doc_name || doc.title,
+              title: doc.doc_name || doc.title,
+              fetchError: 'Preview not available, but you can download the file'
+            });
+            setShowDocumentViewer(true);
+          }
+        } 
+        // For other files, show the download option
+        else {
+          setViewingDocument({
+            ...doc,
+            fileData: fileUrl,
+            format: fileExtension,
+            doc_name: doc.doc_name || doc.title,
+            title: doc.doc_name || doc.title
+          });
+          setShowDocumentViewer(true);
+        }
+      } catch (error) {
+        console.error('Error loading document:', error);
+        alert('Failed to load document. Please try again.');
+      }
+    } else {
+      // No file available, show empty document
+      setViewingDocument({
+        ...doc,
+        doc_name: doc.doc_name || doc.title,
+        title: doc.doc_name || doc.title
+      });
+      setShowDocumentViewer(true);
+    }
   };
 
   const handleDownloadDocument = (doc) => {
-    if (doc.fileData) {
-      const link = document.createElement('a');
-      link.href = doc.fileData;
-      link.download = doc.fileName || doc.title;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else if (doc.content || doc.ocrContent) {
-      const content = doc.content || doc.ocrContent;
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${doc.title.replace(/[^a-z0-9]/gi, '_')}.txt`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    try {
+      if (doc.fileData && (doc.format === 'pdf' || ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'docx', 'doc'].includes(doc.format))) {
+        // For binary files directly from URL
+        const link = document.createElement('a');
+        link.href = doc.fileData;
+        link.download = doc.doc_name || doc.title || 'document';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else if (doc.content || doc.ocrContent) {
+        // For text content
+        const content = doc.content || doc.ocrContent;
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${(doc.doc_name || doc.title || 'document').replace(/[^a-z0-9]/gi, '_')}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        alert('No content available to download');
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Failed to download document');
     }
   };
 
   const handlePrintDocument = (doc) => {
-    if (doc.fileData && doc.format === 'pdf') {
-      const printWindow = window.open(doc.fileData);
-      if (printWindow) {
-        printWindow.onload = () => {
-          printWindow.print();
-        };
+    try {
+      if (doc.fileData && (doc.format === 'pdf' || ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(doc.format))) {
+        // For PDFs and images, open in new tab for printing
+        window.open(doc.fileData, '_blank');
+      } else if (doc.content || doc.ocrContent) {
+        // For text content, create a new tab with formatted content
+        const content = doc.content || doc.ocrContent;
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(`
+            <html>
+              <head>
+                <title>${doc.doc_name || doc.title || 'Document'}</title>
+                <style>
+                  body { font-family: Georgia, serif; padding: 40px; line-height: 1.6; color: #333; }
+                  pre { white-space: pre-wrap; word-wrap: break-word; }
+                  h1 { text-align: center; color: #000; margin-bottom: 30px; }
+                </style>
+              </head>
+              <body>
+                <h1>${doc.doc_name || doc.title || 'Document'}</h1>
+                <pre>${content}</pre>
+              </body>
+            </html>
+          `);
+          printWindow.document.close();
+          setTimeout(() => {
+            printWindow.print();
+          }, 250);
+        }
+      } else {
+        alert('No content available to print');
       }
-    } else if (doc.content || doc.ocrContent) {
-      const content = doc.content || doc.ocrContent;
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>${doc.title}</title>
-              <style>
-                body { font-family: Georgia, serif; padding: 40px; line-height: 1.6; }
-                pre { white-space: pre-wrap; }
-              </style>
-            </head>
-            <body>
-              <pre>${content}</pre>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.onload = () => {
-          printWindow.print();
-        };
-      }
-    } else if (doc.fileData) {
-      const printWindow = window.open(doc.fileData);
-      if (printWindow) {
-        printWindow.onload = () => {
-          printWindow.print();
-        };
-      }
+    } catch (error) {
+      console.error('Print error:', error);
+      alert('Failed to print document');
     }
   };
 
@@ -1113,77 +1380,47 @@ const handleEmptyRecycleBin = async () => {
     
     try {
       const uploadPromises = uploadedDocFiles.map(async (file) => {
-        const fileExtension = file.name.split('.').pop().toLowerCase();
-        let format = 'other';
-        if (fileExtension === 'pdf') format = 'pdf';
-        else if (fileExtension === 'docx' || fileExtension === 'doc') format = 'docx';
-        
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = async (e) => {
-            try {
-              const docData = {
-                title: file.name,
-                description: 'Uploaded document',
-                format: format,
-                folder_id: currentFolder,
-                file_data: e.target.result,
-                content: `Uploaded file: ${file.name}`,
-                personal_info: {},
-                custom_field_values: { ...uploadTagValues }
-              };
-              
-              const createdDoc = await documentAPI.create(docData);
-              console.log('Document uploaded successfully:', createdDoc);
-              
-              // Also update dataStore
-              if (dataStore) {
-                const doc = {
-                  id: createdDoc.id,
-                  title: file.name,
-                  description: 'Uploaded document',
-                  customFieldValues: { ...uploadTagValues },
-                  personalInfo: {},
-                  format: format,
-                  folderId: currentFolder,
-                  fileName: file.name,
-                  fileSize: (file.size / 1024).toFixed(2) + ' KB',
-                  fileData: e.target.result,
-                  mimeType: file.type,
-                  createdAt: createdDoc.createdAt || new Date().toLocaleString(),
-                  createdBy: currentUser.id
-                };
-                dataStore.addDocument(doc);
-                addAuditLog(
-                  'Document Uploaded',
-                  `${file.name} (${(file.size / 1024).toFixed(2)} KB) - ${format.toUpperCase()}`,
-                  'Success'
-                );
-              }
-              
-              resolve(createdDoc);
-            } catch (error) {
-              reject(error);
-            }
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+        try {
+          // Upload file using multipart form data
+          const uploadedDoc = await documentAPI.uploadFiles(
+            [file],
+            file.name,
+            'Uploaded document',
+            currentFolder
+          );
+          
+          console.log('Document uploaded successfully:', uploadedDoc);
+          
+          // Audit log
+          addAuditLog(
+            'Document Uploaded',
+            `${file.name} (${(file.size / 1024).toFixed(2)} KB)`,
+            'Success'
+          );
+          
+          return uploadedDoc;
+        } catch (error) {
+          console.error('Failed to upload file:', file.name, error);
+          throw error;
+        }
       });
       
-      await Promise.all(uploadPromises);
+      const uploadedDocs = await Promise.all(uploadPromises);
       
-      // Refresh documents list
+      // Refresh documents list from backend
       const allDocs = await documentAPI.getAll();
-      const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username);
-      setUserDocuments(myDocs);
+      setUserDocuments(allDocs);
+      
+      // Load updated folders to get correct doc counts
+      const allFolders = await folderAPI.getAll();
+      setFolders(allFolders);
       
       setShowUploadDocumentModal(false);
       setUploadedDocFiles([]);
       setUploadPreviews([]);
       setCurrentPreviewIndex(0);
       setUploadTagValues({});
-      alert(`${uploadedDocFiles.length} document${uploadedDocFiles.length > 1 ? 's' : ''} uploaded successfully!`);
+      alert(`${uploadedDocs.length} document${uploadedDocs.length > 1 ? 's' : ''} uploaded successfully!`);
     } catch (error) {
       console.error('Failed to upload documents:', error);
       alert(`Failed to upload documents: ${error.message}`);
@@ -1248,8 +1485,6 @@ const handleEmptyRecycleBin = async () => {
   };
 
   const handleShareDocument = async (shareData) => {
-  console.log('📤 Sharing document:', shareData);
-
   const documentToShare = userDocuments.find(doc => doc.id === shareData.documentId);
   
   if (!documentToShare) {
@@ -1258,52 +1493,30 @@ const handleEmptyRecycleBin = async () => {
   }
 
   try {
-    // Update the document's shared_with field in the backend
-    const currentSharedWith = documentToShare.sharedWith || [];
-    const updatedSharedWith = [...new Set([...currentSharedWith, ...shareData.sharedWith])];
-    
-    await documentAPI.update(documentToShare.id, {
-      shared_with: updatedSharedWith
-    });
+    // Share with each selected user
+    const sharePromises = shareData.sharedWith.map(userId =>
+      documentShareAPI.create({
+        doc: shareData.documentId,
+        shared_to_user: userId
+      })
+    );
 
-    console.log('✅ Document shared_with updated in backend');
+    await Promise.all(sharePromises);
 
-    const newShare = {
-      id: 'share-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-      documentId: shareData.documentId,
-      document: documentToShare,
-      sharedWith: shareData.sharedWith, 
-      sharedBy: shareData.sharedBy,
-      permission: shareData.permission,
-      message: shareData.message,
-      sharedAt: shareData.sharedAt
-    };
-    
-    if (dataStore) {
-      dataStore.addDirectShare(newShare);
-      
-      const recipientNames = shareData.sharedWith
-        .map(userId => {
-          const user = allUsers.find(u => u.id === userId);
-          return user ? (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username) : userId;
-        })
-        .join(', ');
+    const recipientNames = shareData.sharedWith
+      .map(userId => {
+        const user = allUsers.find(u => u.user_index === userId);
+        return user ? (user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id) : userId;
+      })
+      .join(', ');
 
-      addAuditLog(
-        'Document Shared (Direct)',
-        `"${documentToShare.title}" shared with ${recipientNames} (${shareData.permission} access)`,
-        'Success'
-      );
+    addAuditLog(
+      'Document Shared',
+      `"${documentToShare.title}" shared with ${recipientNames}`,
+      'Success'
+    );
 
-      console.log('✅ Share saved to DataStore');
-    }
-
-    // Refresh documents list from backend
-    const allDocs = await documentAPI.getAll();
-    const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username);
-    setUserDocuments(myDocs);
-
-    alert(`✅ Document "${documentToShare.title}" successfully shared with ${shareData.sharedWith.length} user(s)!`);
+    alert(`Document "${documentToShare.title}" successfully shared!`);
     setShowShareModal(false);
     setDocumentToShare(null);
   } catch (error) {
@@ -1312,13 +1525,90 @@ const handleEmptyRecycleBin = async () => {
   }
 };
 
+  const handleShareFolder = async (shareData) => {
+    const folderToShare = folders.find(f => f.folder_id === shareData.folderId);
+    
+    if (!folderToShare) {
+      alert('❌ Error: Folder not found');
+      return;
+    }
+
+    try {
+      // Share with each selected user
+      const sharePromises = shareData.sharedWith.map(userId =>
+        folderShareAPI.create({
+          folder: shareData.folderId,
+          shared_to_user: userId
+        })
+      );
+
+      await Promise.all(sharePromises);
+
+      const recipientNames = shareData.sharedWith
+        .map(userId => {
+          const user = allUsers.find(u => u.user_index === userId);
+          return user ? (user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id) : userId;
+        })
+        .join(', ');
+
+      addAuditLog(
+        'Folder Shared',
+        `"${folderToShare.folder_name}" shared with ${recipientNames}`,
+        'Success'
+      );
+
+      alert(`Folder "${folderToShare.folder_name}" successfully shared!`);
+      setShowShareFolderModal(false);
+      setFolderToShare(null);
+    } catch (error) {
+      console.error('❌ Failed to share folder:', error);
+      alert(`❌ Failed to share folder: ${error.message}`);
+    }
+  };
 
   const openShareModal = (doc) => {
-  console.log('📂 Opening share modal for:', doc.title);
   setDocumentToShare(doc);
   setShowShareModal(true);
 };  
 
+  const openShareFolderModal = (folder) => {
+    setFolderToShare(folder);
+    setShowShareFolderModal(true);
+  };
+
+  const openRenameModal = (doc) => {
+    setDocumentToRename(doc);
+    setShowRenameModal(true);
+  };
+
+  const handleRenameDocument = async (renameData) => {
+    try {
+      const document = userDocuments.find(doc => doc.doc_id === renameData.documentId || doc.id === renameData.documentId);
+      
+      if (!document) {
+        throw new Error('Document not found');
+      }
+
+      // Update the document via API
+      await documentAPI.update(document.id || document.doc_id, {
+        doc_name: renameData.newName
+      });
+
+      // Update local state
+      setUserDocuments(userDocuments.map(doc => 
+        doc.id === renameData.documentId || doc.doc_id === renameData.documentId
+          ? { ...doc, doc_name: renameData.newName }
+          : doc
+      ));
+
+      addAuditLog('Document Renamed', `"${renameData.newName}"`, 'Success');
+      setShowRenameModal(false);
+      setDocumentToRename(null);
+    } catch (error) {
+      console.error('Error renaming document:', error);
+      throw error;
+    }
+  };
 
   const handleRemoveShare = (shareId) => {
   if (!window.confirm('Are you sure you want to stop sharing this document?')) {
@@ -1345,13 +1635,10 @@ const handleEmptyRecycleBin = async () => {
 
   
  const handleSendToOrganization = (doc) => {
-  console.log('🏢 Opening organization share modal for:', doc.title);
   setSelectedDocForOrgShare(doc);
   setShowSendToOrgModal(true);
 };
 const handleConfirmSendToOrganization = async (shareData) => {
-  console.log('🏢 Sending to organization:', shareData);
-
   const documentToShare = userDocuments.find(d => d.id === shareData.documentId);
   
   if (!documentToShare) {
@@ -1367,8 +1654,6 @@ const handleConfirmSendToOrganization = async (shareData) => {
     await documentAPI.update(documentToShare.id, {
       shared_with: updatedSharedWith
     });
-
-    console.log('✅ Document shared_with updated in backend');
 
     const createdShare = await organizationShareAPI.create({
       documentId: shareData.documentId,
@@ -1399,8 +1684,6 @@ const handleConfirmSendToOrganization = async (shareData) => {
         `Document: "${documentToShare.title}" sent to ${newShare.recipients.length} recipients via ${shareData.distributionMode}`,
         'Success'
       );
-
-      console.log('✅ Org share saved to DataStore');
     }
 
     setOrganizationShares((prev) => [createdShare, ...prev]);
@@ -1446,7 +1729,6 @@ const handleSaveToMyDocuments = (document, source) => {
     folderId: null
   };
 
-  console.log('💾 Saving shared document:', savedDoc);
   if (dataStore) {
     dataStore.addDocument(savedDoc);
     addAuditLog(
@@ -1454,8 +1736,6 @@ const handleSaveToMyDocuments = (document, source) => {
       `"${savedDoc.title}" - Saved from ${source === 'org-share' ? 'Organization Share' : 'Direct Share'}`,
       'Success'
     );
-    
-    console.log('✅ Document saved to My Documents');
     
     const goToMyDocs = window.confirm(
       `✅ Document "${document.title}" has been saved to your "My Documents"!\n\nWould you like to go to My Documents now?`
@@ -1488,6 +1768,23 @@ const handleSaveToMyDocuments = (document, source) => {
         onCreateFolder={handleCreateFolder}
       />
 
+      <EditFolderModal
+        show={showEditFolderModal}
+        onClose={() => { 
+          setShowEditFolderModal(false); 
+          setEditingFolderId(null);
+          setEditFolderName(''); 
+          setEditFolderColor('blue');
+          setErrors({}); 
+        }}
+        folderName={editFolderName}
+        setFolderName={setEditFolderName}
+        folderColor={editFolderColor}
+        setFolderColor={setEditFolderColor}
+        errors={errors}
+        onSaveFolder={handleSaveFolder}
+      />
+
       <MoveToFolderModal
         show={showMoveToFolderModal}
         onClose={() => { 
@@ -1502,7 +1799,14 @@ const handleSaveToMyDocuments = (document, source) => {
       <DocumentViewerModal
         show={showDocumentViewer}
         document={viewingDocument}
-        onClose={() => { setShowDocumentViewer(false); setViewingDocument(null); }}
+        onClose={() => { 
+          // Clean up blob URLs to prevent memory leaks
+          if (viewingDocument?.isBlobUrl && viewingDocument?.fileData) {
+            URL.revokeObjectURL(viewingDocument.fileData);
+          }
+          setShowDocumentViewer(false); 
+          setViewingDocument(null); 
+        }}
         onPrint={handlePrintDocument}
         onDownload={handleDownloadDocument}
       />
@@ -1589,24 +1893,35 @@ const handleSaveToMyDocuments = (document, source) => {
         onShareDocument={handleShareDocument}
       />
 
+      <ShareFolderModal
+        show={showShareFolderModal}
+        onClose={() => {
+          setShowShareFolderModal(false);
+          setFolderToShare(null);
+        }}
+        folder={folderToShare}
+        allUsers={allUsers}
+        currentUser={currentUser}
+        onShareFolder={handleShareFolder}
+      />
+
+      <RenameDocumentModal
+        show={showRenameModal}
+        onClose={() => {
+          setShowRenameModal(false);
+          setDocumentToRename(null);
+        }}
+        document={documentToRename}
+        onRename={handleRenameDocument}
+      />
+
       <ChangePasswordModal
         isOpen={showChangePasswordModal}
         onClose={() => setShowChangePasswordModal(false)}
         currentUsername={currentUser.username || currentUser.id}
       />
 
-      <SendToOrganizationModal
-        show={showSendToOrgModal}
-        onClose={() => {
-          setShowSendToOrgModal(false);
-          setSelectedDocForOrgShare(null);
-        }}
-        document={selectedDocForOrgShare}
-       organizationTree={orgTree}
-        userList={allUsers}
-        currentUser={currentUser}
-        onSendToOrganization={handleConfirmSendToOrganization}
-      />
+      {/* SendToOrganizationModal removed - consolidated into Share To modal */}
 
       <Sidebar
         sidebarOpen={sidebarOpen}
@@ -1632,16 +1947,8 @@ const handleSaveToMyDocuments = (document, source) => {
         />
 
         <div className="flex-1 overflow-auto p-6">
-          {activeSection === 'dashboard' && (
-            <Dashboard
-              currentUser={currentUser}
-              userDocuments={userDocuments}
-              folders={folders}
-              setActiveSection={setActiveSection}
-            />
-          )}
           {activeSection === 'documents' && (
-            <Documents
+            <DocumentsManager
               currentFolder={currentFolder}
               setCurrentFolder={setCurrentFolder}
               folders={folders}
@@ -1657,6 +1964,7 @@ const handleSaveToMyDocuments = (document, source) => {
               filterByTag={filterByTag}
               setFilterByTag={setFilterByTag}
               setShowUploadDocumentModal={setShowUploadDocumentModal}
+              setShowCreateFolderModal={setShowCreateFolderModal}
               setShowOCRModal={setShowOCRModal}
               onOpenDocument={handleOpenDocument}
               onDeleteDocument={handleDeleteDocument}
@@ -1664,38 +1972,28 @@ const handleSaveToMyDocuments = (document, source) => {
               onPrintDocument={handlePrintDocument}
               onMoveToFolder={openMoveToFolderModal}
               onShareDocument={openShareModal}
-              onSendToOrganization={handleSendToOrganization}
+              onRenameDocument={openRenameModal}
+              onDeleteFolder={handleDeleteFolder}
+              onShareFolder={(folder) => openShareFolderModal(folder)}
+              onRenameFolder={handleRenameFolder}
+              getFolderDocumentCount={getFolderDocumentCount}
             />
           )}
           {activeSection === 'shared' && (
             <SharedDocuments
               sharedDocuments={sharedDocuments}
+              sharedFolders={sharedFolders}
               organizationShares={organizationShares}
               currentUser={currentUser}
               onOpenDocument={handleOpenDocument}
               onRemoveShare={handleRemoveShare}
               allUsers={allUsers}
-               organizationTree={orgTree}
-               onSaveToMyDocuments={handleSaveToMyDocuments}
-            />
-          )}
-          {activeSection === 'folders' && (
-            <Folders
-              folders={folders}
-              getFolderDocumentCount={getFolderDocumentCount}
-              setShowCreateFolderModal={setShowCreateFolderModal}
-              onDeleteFolder={handleDeleteFolder}
-              setCurrentFolder={setCurrentFolder}
-              setActiveSection={setActiveSection}
+              organizationTree={orgTree}
+              onSaveToMyDocuments={handleSaveToMyDocuments}
             />
           )}
           {activeSection === 'fields' && (
-            <Tags
-              customFields={customFields}
-              setShowAddFieldModal={setShowAddFieldModal}
-              onDeleteField={handleDeleteField}
-              onToggleFieldActive={handleToggleFieldActive}
-            />
+            <Category userOrg={loggedInUser.full_data?.org} />
           )}
           {activeSection === 'recycle-bin' && (
            <RecycleBin

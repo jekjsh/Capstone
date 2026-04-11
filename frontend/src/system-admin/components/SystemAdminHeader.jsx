@@ -1,5 +1,7 @@
 import { Settings, LogOut, Lock, User, Menu } from 'lucide-react';
 import { useState } from 'react';
+import { useSystemTheme } from '../../contexts/SystemThemeContext';
+import { getRoleDisplayName } from '../../utils/roleMapper';
 
 export default function SystemAdminHeader({ 
   currentUser, 
@@ -10,6 +12,7 @@ export default function SystemAdminHeader({
 }) {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const { theme } = useSystemTheme();
 
   return (
     <div className="bg-white shadow-sm px-6 py-4 flex items-center justify-between">
@@ -21,7 +24,9 @@ export default function SystemAdminHeader({
         >
           <Menu className="w-5 h-5 text-gray-600" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-800">System Administration</h1>
+        <h1 className="text-2xl font-bold text-gray-800">
+          {theme?.sys_name || 'System Administration'}
+        </h1>
       </div>
       <div className="flex items-center gap-4">
         <div className="relative">
@@ -64,7 +69,7 @@ export default function SystemAdminHeader({
               <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
                 <div className="px-4 py-2 border-b border-gray-200">
                   <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
-                  <p className="text-xs text-gray-500">{currentUser.role}</p>
+                  <p className="text-xs text-gray-500">{getRoleDisplayName(currentUser.role)}</p>
                 </div>
                 <button
                   onClick={() => {

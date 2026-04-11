@@ -1,5 +1,6 @@
 import { X, Share2, Users, Eye, Edit, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { documentShareAPI } from '../../../services/api';
 
 export default function ShareDocumentModal({ 
   show, 
@@ -13,17 +14,49 @@ export default function ShareDocumentModal({
   const [sharePermission, setSharePermission] = useState('view');
   const [shareMessage, setShareMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentlySharedWith, setCurrentlySharedWith] = useState([]);
+  const [shareMap, setShareMap] = useState({}); // Map of userId -> share_id for easy deletion
+
+  // Fetch existing shares for this document
+  useEffect(() => {
+    const fetchExistingShares = async () => {
+      if (!show || !document) return;
+      
+      try {
+        const shares = await documentShareAPI.getAll();
+        // Filter shares for this specific document
+        const docShares = shares.filter(share => share.doc === document.id);
+        // Extract the user_index of users this document is shared with
+        const sharedUserIds = docShares.map(share => share.shared_to_user);
+        const map = {};
+        docShares.forEach(share => {
+          map[share.shared_to_user] = share.share_id;
+        });
+        setCurrentlySharedWith(sharedUserIds);
+        setSelectedUsers(sharedUserIds);
+        setShareMap(map);
+      } catch (error) {
+        console.error('Failed to fetch existing shares:', error);
+      }
+    };
+
+    fetchExistingShares();
+  }, [show, document]);
 
   if (!show || !document) return null;
 
-  // Filter users (exclude current user)
-  const availableUsers = allUsers.filter(user => user.id !== currentUser.id);
+  // Filter users in the same organization, exclude current user
+  const availableUsers = allUsers.filter(user => 
+    user.user_index !== currentUser.user_index && 
+    user.org === currentUser.org
+  );
   
-  // Filter based on search - use firstName, lastName, username, or email
+  // Filter based on search
   const filteredUsers = availableUsers.filter(user => {
-    const displayName = `${user.firstName || ''} ${user.lastName || ''}`.toLowerCase().trim();
-    const username = (user.username || '').toLowerCase();
-    const email = (user.email || '').toLowerCase();
+    const displayName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase().trim();
+    const username = (user.user_id || '').toLowerCase();
+    const email = (user.email_add || '').toLowerCase();
     const searchLower = searchQuery.toLowerCase();
     
     return displayName.includes(searchLower) || 
@@ -39,27 +72,57 @@ export default function ShareDocumentModal({
     );
   };
 
-  const handleShare = () => {
-    if (selectedUsers.length === 0) {
-      alert('Please select at least one user to share with');
-      return;
+  const handleShare = async () => {
+    setIsLoading(true);
+    try {
+      // Determine who to unshare with (were shared before, not selected now)
+      const usersToUnshare = currentlySharedWith.filter(userId => !selectedUsers.includes(userId));
+      
+      // Determine who to share with (not shared before, selected now)
+      const usersToShare = selectedUsers.filter(userId => !currentlySharedWith.includes(userId));
+
+      // Handle unsharing (delete operations)
+      for (const userId of usersToUnshare) {
+        const shareId = shareMap[userId];
+        if (shareId) {
+          await documentShareAPI.delete(shareId);
+        }
+      }
+
+      // Handle new shares
+      if (usersToShare.length > 0) {
+        await onShareDocument({
+          documentId: document.id,
+          sharedWith: usersToShare,
+          permission: sharePermission,
+          message: shareMessage,
+          sharedBy: currentUser.user_index,
+          sharedAt: new Date().toISOString()
+        });
+      } else if (usersToUnshare.length > 0) {
+        // Only unsharing, no new shares
+        const recipientNames = usersToUnshare
+          .map(userId => {
+            const user = allUsers.find(u => u.user_index === userId);
+            return user ? (user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id) : userId;
+          })
+          .join(', ');
+        
+        alert(`Document "${document.doc_name || document.title}" unshared from ${recipientNames}`);
+      }
+
+      // Reset form
+      setSelectedUsers([]);
+      setShareMessage('');
+      setSearchQuery('');
+      setCurrentlySharedWith([]);
+      setShareMap({});
+      onClose();
+    } catch (error) {
+      alert('Failed to update document shares: ' + error.message);
+    } finally {
+      setIsLoading(false);
     }
-
-    onShareDocument({
-      documentId: document.id,
-      sharedWith: selectedUsers,
-      permission: sharePermission,
-      message: shareMessage,
-      sharedBy: currentUser.id,
-      sharedAt: new Date().toLocaleString()
-    });
-
-    // Reset form
-    setSelectedUsers([]);
-    setSharePermission('view');
-    setShareMessage('');
-    setSearchQuery('');
-    onClose();
   };
 
   const getPermissionIcon = (permission) => {
@@ -80,8 +143,8 @@ export default function ShareDocumentModal({
               <Share2 className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-800">Share Document</h2>
-              <p className="text-sm text-gray-500">{document.title}</p>
+              <h2 className="text-xl font-bold text-gray-800">Share To</h2>
+              <p className="text-sm text-gray-500">{document.doc_name}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -165,34 +228,40 @@ export default function ShareDocumentModal({
 
             {/* User List */}
             <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto">
-              {filteredUsers.length === 0 ? (
+              {availableUsers.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <Users className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                  <p>No users found</p>
+                  <p>No users in your organization to share with</p>
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <Users className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                  <p>No users found matching your search</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-200">
                   {filteredUsers.map((user) => (
                     <label
-                      key={user.id}
+                      key={user.user_index}
                       className="flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer transition-colors"
                     >
                       <input
                         type="checkbox"
-                        checked={selectedUsers.includes(user.id)}
-                        onChange={() => handleToggleUser(user.id)}
+                        checked={selectedUsers.includes(user.user_index)}
+                        onChange={() => handleToggleUser(user.user_index)}
                         className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                        disabled={isLoading}
                       />
                       <div className="flex items-center gap-3 flex-1">
                         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                          {(user.firstName || user.username || 'U').charAt(0).toUpperCase()}
+                          {(user.first_name || user.user_id || 'U').charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-gray-800">{user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username}</p>
-                          <p className="text-sm text-gray-500">{user.email || user.jobTitle || '-'}</p>
+                          <p className="font-medium text-gray-800">{user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id}</p>
+                          <p className="text-sm text-gray-500">{user.email_add || '-'}</p>
                         </div>
                       </div>
-                      {selectedUsers.includes(user.id) && (
+                      {selectedUsers.includes(user.user_index) && (
                         <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
                           {getPermissionIcon(sharePermission)}
                           <span className="capitalize">{sharePermission}</span>
@@ -213,13 +282,15 @@ export default function ShareDocumentModal({
               </p>
               <div className="flex flex-wrap gap-2">
                 {selectedUsers.map(userId => {
-                  const user = availableUsers.find(u => u.id === userId);
+                  const user = availableUsers.find(u => u.user_index === userId);
+                  const displayName = user ? (user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id) : userId;
                   return (
                     <div key={userId} className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-blue-300">
-                      <span className="text-sm text-gray-700">{user?.name}</span>
+                      <span className="text-sm text-gray-700">{displayName}</span>
                       <button
                         onClick={() => handleToggleUser(userId)}
                         className="text-gray-400 hover:text-red-600"
+                        disabled={isLoading}
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -235,16 +306,17 @@ export default function ShareDocumentModal({
           <button
             onClick={onClose}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+            disabled={isLoading}
           >
             Cancel
           </button>
           <button
             onClick={handleShare}
-            disabled={selectedUsers.length === 0}
+            disabled={isLoading || (selectedUsers.length === 0 && currentlySharedWith.length === 0)}
             className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             <Share2 className="w-4 h-4" />
-            Share Document
+            {isLoading ? 'Updating...' : 'Update Sharing'}
           </button>
         </div>
       </div>

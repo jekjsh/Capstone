@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { userAPI, idFormatAPI } from '../../services/api';
 import { validateUserId, getFormatHint, generateSampleIds } from '../../utils/idFormatValidator';
+import { getRoleDisplayName } from '../../utils/roleMapper';
 
 export default function SystemAdminAddUserModal({
   isOpen,
@@ -19,7 +20,9 @@ export default function SystemAdminAddUserModal({
   const [formData, setFormData] = useState({
     userId: '',
     firstName: '',
+    middleName: '',
     lastName: '',
+    suffix: '',
     email: '',
     role: 'User',
     organizationUnitId: '',
@@ -66,11 +69,13 @@ export default function SystemAdminAddUserModal({
       setFormData({
         userId: editingUser.id || editingUser.userId || '',
         firstName: editingUser.firstName || '',
+        middleName: editingUser.middleName || '',
         lastName: editingUser.lastName || '',
+        suffix: editingUser.suffix || '',
         email: editingUser.email || '',
         role: editingUser.role || 'User',
         organizationUnitId: editingUser.organizationUnitId || '',
-        organizationPosition: editingUser.organizationPosition || ''
+        organizationPosition: editingUser.userPos || editingUser.organizationPosition || ''
       });
       setUserIdFormatValid(true);
       setStep(1); // Start at step 1 for editing
@@ -79,7 +84,9 @@ export default function SystemAdminAddUserModal({
       setFormData({
         userId: '',
         firstName: '',
+        middleName: '',
         lastName: '',
+        suffix: '',
         email: '',
         role: 'User',
         organizationUnitId: '',
@@ -207,11 +214,15 @@ export default function SystemAdminAddUserModal({
       await userAPI.update(formData.userId, {
         first_name: formData.firstName,
         firstName: formData.firstName,
+        middle_name: formData.middleName,
+        middleName: formData.middleName,
         last_name: formData.lastName,
         lastName: formData.lastName,
+        suffix: formData.suffix,
         email: formData.email,
         role: formData.role,
         organizationUnitId: formData.organizationUnitId || null,
+        user_pos: formData.organizationPosition,
         organizationPosition: formData.organizationPosition || null
       });
 
@@ -221,7 +232,9 @@ export default function SystemAdminAddUserModal({
       setFormData({
         userId: '',
         firstName: '',
+        middleName: '',
         lastName: '',
+        suffix: '',
         email: '',
         role: 'User',
         organizationUnitId: '',
@@ -257,12 +270,14 @@ export default function SystemAdminAddUserModal({
       const newUser = await userAPI.create({
         username: formData.userId,
         first_name: formData.firstName,
+        middle_name: formData.middleName,
         last_name: formData.lastName,
+        suffix: formData.suffix,
         email: formData.email,
         password: passwordData.password,
         role: formData.role,
         organizationUnitId: formData.organizationUnitId || null,
-        organizationPosition: formData.organizationPosition || null
+        user_pos: formData.organizationPosition
       });
 
       console.log('User created successfully:', newUser);
@@ -271,7 +286,9 @@ export default function SystemAdminAddUserModal({
       setFormData({
         userId: '',
         firstName: '',
+        middleName: '',
         lastName: '',
+        suffix: '',
         email: '',
         role: 'User',
         organizationUnitId: '',
@@ -330,7 +347,9 @@ export default function SystemAdminAddUserModal({
               setFormData({
                 userId: '',
                 firstName: '',
+                middleName: '',
                 lastName: '',
+                suffix: '',
                 email: '',
                 role: 'User',
                 organizationUnitId: '',
@@ -390,8 +409,8 @@ export default function SystemAdminAddUserModal({
               {!isEditMode && <p className="mt-1 text-xs text-gray-500">{getFormatHint()}</p>}
             </div>
 
-            {/* First Name & Last Name */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* First Name & Middle Name & Last Name & Suffix */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
                 <input
@@ -407,6 +426,17 @@ export default function SystemAdminAddUserModal({
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+                <input
+                  type="text"
+                  value={formData.middleName}
+                  onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Michael"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
                 <input
                   type="text"
@@ -418,6 +448,17 @@ export default function SystemAdminAddUserModal({
                   placeholder="Doe"
                 />
                 {errors.lastName && <p className="mt-1 text-sm text-red-500">{errors.lastName}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Suffix</label>
+                <input
+                  type="text"
+                  value={formData.suffix}
+                  onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Jr., Sr., III"
+                />
               </div>
             </div>
 
@@ -495,7 +536,9 @@ export default function SystemAdminAddUserModal({
                   setFormData({
                     userId: '',
                     firstName: '',
+                    middleName: '',
                     lastName: '',
+                    suffix: '',
                     email: '',
                     role: 'User',
                     organizationUnitId: '',
@@ -530,7 +573,7 @@ export default function SystemAdminAddUserModal({
               <p className="text-sm text-blue-800">{formData.firstName} {formData.lastName}</p>
               <p className="text-xs text-blue-700 mt-1">{formData.userId}</p>
               <p className="text-xs text-blue-700">{formData.email}</p>
-              <p className="text-xs text-blue-700 mt-2">Role: {formData.role}</p>
+              <p className="text-xs text-blue-700 mt-2">Role: {getRoleDisplayName(formData.role)}</p>
             </div>
 
             <div>

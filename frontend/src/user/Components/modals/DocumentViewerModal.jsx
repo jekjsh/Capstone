@@ -35,13 +35,23 @@ export default function DocumentViewerModal({ show, document, onClose, onPrint, 
 
         <div className="flex-1 overflow-auto" style={{ backgroundColor: '#525659' }}>
           <div className="max-w-full h-full p-8">
+            {document.fetchError && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3">
+                <div className="text-yellow-600 font-bold text-lg">⚠</div>
+                <div>
+                  <h3 className="font-semibold text-yellow-900 mb-1">Preview Not Available</h3>
+                  <p className="text-sm text-yellow-800">{document.fetchError}</p>
+                </div>
+              </div>
+            )}
             {document.fileData && document.format === 'pdf' ? (
-              <div className="w-full h-full">
-                <embed
-                  src={document.fileData}
+              <div className="w-full h-full flex items-center justify-center">
+                <iframe
+                  src={`${document.fileData}#toolbar=0&navpanes=0&view=FitH`}
                   type="application/pdf"
-                  className="w-full h-full bg-white shadow-2xl"
-                  style={{ minHeight: '800px' }}
+                  className="w-full h-full bg-white"
+                  title="PDF Viewer"
+                  style={{ border: 'none' }}
                 />
               </div>
             ) : document.fileData && (document.mimeType?.startsWith('image/')) ? (

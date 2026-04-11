@@ -53,6 +53,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     middle_name = models.CharField(max_length=100, blank=True, null=True)
     last_name = models.CharField(max_length=100)
     suffix = models.CharField(max_length=20, blank=True, null=True)
+    user_pos = models.CharField(max_length=255, blank=True, null=True)
     email_add = models.EmailField(unique=True)
     role_type = models.CharField(max_length=50, default='user')
     joined_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)

@@ -1,5 +1,6 @@
-import { Search } from 'lucide-react';
+import { Search, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import AdminPagination from './AdminPagination';
 
 export default function AdminLogAudits({
   auditLogs = [],
@@ -14,18 +15,93 @@ export default function AdminLogAudits({
 }) {
   
   const [, setRenderKey] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   
   useEffect(() => {
     setRenderKey(prev => prev + 1);
-  }, [auditLogs, auditLogs.length]);
+    setCurrentPage(1); // Reset to page 1 when filters change
+  }, [auditLogs, auditLogs.length, logSearchQuery, logFilterAction, logFilterStatus]);
   
   const filteredLogs = getFilteredLogs();
   
+  // Pagination calculations
+  const totalRecords = filteredLogs.length;
+  const totalPages = Math.ceil(totalRecords / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const paginatedLogs = filteredLogs.slice(startIndex, endIndex);
+  
+  // Pagination handlers
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+  
+  const handleRowsPerPageChange = (e) => {
+    const newRowsPerPage = parseInt(e.target.value);
+    setRowsPerPage(newRowsPerPage);
+    setCurrentPage(1); // Reset to page 1
+  };
+  
+  const handleFirstPage = () => setCurrentPage(1);
+  const handleLastPage = () => setCurrentPage(totalPages);
+  const handlePreviousPage = () => handlePageChange(currentPage - 1);
+  const handleNextPage = () => handlePageChange(currentPage + 1);
+  
+  // CSV Export function
+  const exportToCSV = () => {
+    const headers = ['Timestamp', 'User ID', 'User Name', 'Action', 'Resource', 'Status'];
+    const rows = filteredLogs.map(log => [
+      log?.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A',
+      log?.userId || 'N/A',
+      log?.userName || 'N/A',
+      log?.action || 'N/A',
+      log?.resource || 'N/A',
+      log?.status || 'N/A'
+    ]);
+    
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => 
+        row.map(cell => {
+          // Escape quotes and wrap in quotes if contains comma
+          const escaped = String(cell).replace(/"/g, '""');
+          return escaped.includes(',') || escaped.includes('"') ? `"${escaped}"` : escaped;
+        }).join(',')
+      )
+    ].join('\n');
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `audit_logs_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-800">Audit Logs
-
-      </h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800">Audit Logs</h2>
+        <button
+          onClick={exportToCSV}
+          disabled={filteredLogs.length === 0}
+          className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Export filtered logs to CSV"
+        >
+          <Download className="w-5 h-5" />
+          Export CSV
+        </button>
+      </div>
 
       <div className="bg-white p-4 rounded-lg shadow-md space-y-4">
         <div className="relative">
@@ -82,7 +158,7 @@ export default function AdminLogAudits({
         )}
 
         <div className="text-sm text-gray-600">
-          Showing <span className="font-semibold">{filteredLogs.length}</span> of <span className="font-semibold">{auditLogs.length}</span> logs
+          Showing <span className="font-semibold">{startIndex + 1}–{Math.min(endIndex, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> logs
         </div>
       </div>
 
@@ -99,7 +175,7 @@ export default function AdminLogAudits({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredLogs.length === 0 ? (
+              {paginatedLogs.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
                     {auditLogs.length === 0 
@@ -108,7 +184,7 @@ export default function AdminLogAudits({
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((log, idx) => {
+                paginatedLogs.map((log, idx) => {
                   // Safe date formatting
                   let formattedDate = 'N/A';
                   try {
@@ -155,6 +231,22 @@ export default function AdminLogAudits({
           </table>
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      <AdminPagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        rowsPerPage={rowsPerPage}
+        totalRecords={totalRecords}
+        onPageChange={handlePageChange}
+        onRowsPerPageChange={handleRowsPerPageChange}
+        onFirstPage={handleFirstPage}
+        onLastPage={handleLastPage}
+        onPreviousPage={handlePreviousPage}
+        onNextPage={handleNextPage}
+      />
     </div>
   );
 }

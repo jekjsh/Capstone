@@ -23,6 +23,7 @@ import {
 } from './component/AdminModals';
 import AdminAllDocumentsView from './component/AdminAllDocumentsView';
 import AdminOrgSharesView from './component/AdminOrgSharesView';
+import Category from './component/Category';
 import { organizationAPI, userAPI, auditLogAPI, documentAPI, systemSettingsAPI, organizationShareAPI, sessionAPI, authAPI } from '../services/api';
 
 export default function Mainframe({ 
@@ -41,6 +42,7 @@ export default function Mainframe({
     'users': '/admin/user-management',
     'all-documents': '/admin/all-user-documents',
     'org-shares': '/admin/organization-shares',
+    'categories': '/admin/categories',
     'logs': '/admin/audit-logs'
   };
 
@@ -122,11 +124,12 @@ const [viewingDocument, setViewingDocument] = useState(null);
     description: ''
   });
   
-  const applyCustomization = (custom) => {
-    document.documentElement.style.setProperty('--primary-color', custom.primaryColor);
-    document.documentElement.style.setProperty('--sidebar-gradient-start', custom.sidebarGradientStart);
-    document.documentElement.style.setProperty('--sidebar-gradient-end', custom.sidebarGradientEnd);
-  };
+  // OLD: Customization is now handled by SystemThemeContext
+  // const applyCustomization = (custom) => {
+  //   document.documentElement.style.setProperty('--primary-color', custom.primaryColor);
+  //   document.documentElement.style.setProperty('--sidebar-gradient-start', custom.sidebarGradientStart);
+  //   document.documentElement.style.setProperty('--sidebar-gradient-end', custom.sidebarGradientEnd);
+  // };
 
   // Helper function to transform API user data from snake_case to camelCase
   const transformUsers = (apiData) => {
@@ -134,7 +137,10 @@ const [viewingDocument, setViewingDocument] = useState(null);
     return userArray.map(user => ({
       id: user.user_id,
       firstName: user.first_name,
+      middleName: user.middle_name || '',
       lastName: user.last_name,
+      suffix: user.suffix || '',
+      userPos: user.user_pos || '',
       email: user.email_add,
       role: user.role_type,
       isActive: user.is_active,
@@ -142,7 +148,10 @@ const [viewingDocument, setViewingDocument] = useState(null);
       organizationUnitId: user.org || '',
       user_id: user.user_id,
       first_name: user.first_name,
+      middle_name: user.middle_name || '',
       last_name: user.last_name,
+      suffix: user.suffix || '',
+      user_pos: user.user_pos || '',
       email_add: user.email_add,
       role_type: user.role_type,
       is_active: user.is_active,
@@ -185,6 +194,17 @@ const [viewingDocument, setViewingDocument] = useState(null);
     };
     fetchCurrentUser();
   }, []);
+
+  // Function to refresh user list
+  const refreshUserList = async () => {
+    try {
+      const data = await userAPI.getAll();
+      const transformedUsers = transformUsers(data);
+      setUserList(transformedUsers);
+    } catch (error) {
+      console.error('Failed to refresh users:', error);
+    }
+  };
 
   // Fetch users from API
   useEffect(() => {
@@ -363,31 +383,31 @@ const [viewingDocument, setViewingDocument] = useState(null);
     fetchOrgShares();
   }, [dataStore]);
 
-  useEffect(() => {
-    if (dataStore) {
-      const custom = dataStore.getCustomization();
-      if (custom) {
-        setCustomization(custom);
-        applyCustomization(custom);
-      }
-    }
-  }, [dataStore]);
-   useEffect(() => {
-    if (dataStore) {
-      const unsubscribe = dataStore.subscribe(() => {
-       
-        forceUpdate(prev => prev + 1);
-        
-       
-        const custom = dataStore.getCustomization();
-        if (custom) {
-          setCustomization(custom);
-          applyCustomization(custom);
-        }
-      });
-      return unsubscribe;
-    }
-  }, [dataStore]);
+
+  // OLD: Customization is now handled by SystemThemeContext
+  // useEffect(() => {
+  //   if (dataStore) {
+  //     const custom = dataStore.getCustomization();
+  //     if (custom) {
+  //       setCustomization(custom);
+  //       applyCustomization(custom);
+  //     }
+  //   }
+  // }, [dataStore]);
+
+  // useEffect(() => {
+  //   if (dataStore) {
+  //     const unsubscribe = dataStore.subscribe(() => {
+  //       forceUpdate(prev => prev + 1);
+  //       const custom = dataStore.getCustomization();
+  //       if (custom) {
+  //         setCustomization(custom);
+  //         applyCustomization(custom);
+  //       }
+  //     });
+  //     return unsubscribe;
+  //   }
+  // }, [dataStore]);
 
   useEffect(() => {
     if (dataStore) {
@@ -424,7 +444,8 @@ const [viewingDocument, setViewingDocument] = useState(null);
     
    
     setCustomization(newSettings);
-    applyCustomization(newSettings);
+    // OLD: Customization is now applied by SystemThemeContext
+    // applyCustomization(newSettings);
     
    
     addAuditLog(
@@ -491,7 +512,8 @@ const [viewingDocument, setViewingDocument] = useState(null);
       icon: FileText,
       children: [
         { id: 'all-documents', label: 'All User Documents', icon: null },
-        { id: 'org-shares', label: 'Organization Shares', icon: null }
+        { id: 'org-shares', label: 'Organization Shares', icon: null },
+        { id: 'categories', label: 'Categories', icon: null }
       ]
     },
     { id: 'logs', label: 'Audit Logs', icon: ClipboardList }
@@ -922,9 +944,16 @@ const [viewingDocument, setViewingDocument] = useState(null);
   };
 
  const getFilteredUsers = () => {
+  const adminOrgId = loggedInUser?.full_data?.org;
+  
   return userList.filter(user => {
     // Don't show system_admin users in user management
     if (user.role_type === 'system_admin') {
+      return false;
+    }
+    
+    // Only show users from the admin's organization
+    if (!adminOrgId || user.organizationUnitId !== adminOrgId) {
       return false;
     }
     
@@ -946,10 +975,49 @@ const [viewingDocument, setViewingDocument] = useState(null);
       if (!Array.isArray(auditLogs)) {
         return [];
       }
+
+      const adminOrgId = loggedInUser?.full_data?.org;
+      const adminUserId = loggedInUser?.user_id;
       
       return auditLogs.filter(log => {
         if (!log) return false;
         
+        // Exclude login and logout actions
+        const action = (log?.action || '').toLowerCase();
+        if (action.includes('login') || action.includes('logout')) {
+          return false;
+        }
+        
+        // Only include record-related and organization-joined actions
+        const isRecordRelated = action.includes('record') || 
+                               action.includes('document') || 
+                               action.includes('category');
+        const isOrgRelated = action.includes('organization') || 
+                            action.includes('joined') || 
+                            action.includes('org');
+        
+        if (!isRecordRelated && !isOrgRelated) {
+          return false;
+        }
+        
+        // Filter by users in the admin's organization or the admin themselves
+        let userInOrgScope = false;
+        const logUserId = log?.userId;
+        
+        // Include logs from the admin themselves
+        if (logUserId === adminUserId) {
+          userInOrgScope = true;
+        } else if (adminOrgId) {
+          // Check if user is in the admin's organization
+          const userInOrg = userList.find(u => u.id === logUserId && u.organizationUnitId === adminOrgId);
+          userInOrgScope = !!userInOrg;
+        }
+        
+        if (!userInOrgScope) {
+          return false;
+        }
+        
+        // Apply manual filters
         const matchesSearch = 
           (log?.user || log?.userName || '').toString().toLowerCase().includes(logSearchQuery.toLowerCase()) ||
           (log?.action || '').toString().toLowerCase().includes(logSearchQuery.toLowerCase()) ||
@@ -969,11 +1037,10 @@ const [viewingDocument, setViewingDocument] = useState(null);
 
   const getActions = () => {
     try {
-      if (!Array.isArray(auditLogs)) {
-        return [];
-      }
-      const actions = [...new Set(auditLogs.map(log => log?.action || ''))];
-      return actions.filter(action => action && action.trim());
+      // Get actions from the filtered logs (after our scoping and exclusion filters)
+      const filteredLogs = getFilteredLogs();
+      const actions = [...new Set(filteredLogs.map(log => log?.action || ''))];
+      return actions.filter(action => action && action.trim()).sort();
     } catch (error) {
       console.error('Error getting actions:', error);
       return [];
@@ -1266,8 +1333,6 @@ const handlePrintDocument = (doc) => {
         activeSection={activeSection}
         setActiveSection={setActiveSection}
         currentUser={loggedInUser}
-         customization={customization}
-         dataStore={dataStore}
       />
       
 
@@ -1296,6 +1361,7 @@ const handlePrintDocument = (doc) => {
               organizationTree={organizationTree}
               userList={userList}
               organizations={organizations}
+              onRefreshUsers={refreshUserList}
             />
           )}
           {activeSection === 'users' && (
@@ -1318,6 +1384,7 @@ const handlePrintDocument = (doc) => {
               dataStore={dataStore}
               documents={documents}
               userList={userList}
+              loggedInUser={loggedInUser}
               onViewDocument={handleViewDocument}        
               onDownloadDocument={handleDownloadDocument}
             />
@@ -1330,6 +1397,9 @@ const handlePrintDocument = (doc) => {
               onViewDocument={handleViewDocument}     
               onDownloadDocument={handleDownloadDocument}
             />
+          )}
+          {activeSection === 'categories' && (
+            <Category userOrg={loggedInUser.full_data?.org} />
           )}
           {activeSection === 'logs' && (
             <ErrorBoundary>

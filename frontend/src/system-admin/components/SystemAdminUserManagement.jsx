@@ -1,4 +1,5 @@
 import { Search, MoreVertical } from 'lucide-react';
+import { getRoleDisplayName } from '../../utils/roleMapper';
 
 export default function SystemAdminUserManagement({ 
   userList, 
@@ -158,8 +159,8 @@ export default function SystemAdminUserManagement({
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">First Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Position</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Organization</th>
@@ -182,13 +183,31 @@ export default function SystemAdminUserManagement({
                   const orgUnit = organizationUnits.find(org => org.id === user.organizationUnitId);
                   const orgName = orgUnit ? orgUnit.name : 'Unassigned';
                   
+                  // Format full name with middle initial and suffix
+                  const formatFullName = () => {
+                    let fullName = user.firstName;
+                    
+                    if (user.middleName) {
+                      const middleInitial = user.middleName.charAt(0).toUpperCase();
+                      fullName += ` ${middleInitial}.`;
+                    }
+                    
+                    fullName += ` ${user.lastName}`;
+                    
+                    if (user.suffix) {
+                      fullName += ` ${user.suffix}`;
+                    }
+                    
+                    return fullName;
+                  };
+                  
                   return (
                     <tr key={user.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm text-gray-900">{user.id}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{user.firstName}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{user.lastName}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{formatFullName()}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{user.userPos || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{user.email}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{user.role}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{getRoleDisplayName(user.role)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{orgName}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${

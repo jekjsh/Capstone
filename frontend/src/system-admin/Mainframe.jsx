@@ -4,9 +4,9 @@ import SystemAdminSidebar from './components/SystemAdminSidebar';
 import SystemAdminHeader from './components/SystemAdminHeader';
 import SystemAdminDashboard from './components/SystemAdminDashboard';
 import SystemAdminUserManagement from './components/SystemAdminUserManagement';
-import SystemAdminDocuments from './components/SystemAdminDocuments';
 import SystemAdminAuditLogs from './components/SystemAdminAuditLogs';
 import OrganizationalStructure from './components/OrganizationalStructure';
+import OrgUnitUsersView from './components/OrgUnitUsersView';
 import ErrorBoundary from '../admin/component/ErrorBoundary';
 import SystemAdminAddUserModal from './components/SystemAdminAddUserModal';
 import AdminCustomizationModal from '../admin/component/AdminCustomizationModal';
@@ -29,7 +29,7 @@ export default function SystemAdminMainFrame({
   const sectionToPath = {
     'dashboard': '/system-admin/dashboard',
     'user-management': '/system-admin/user-management',
-    'all-documents': '/system-admin/all-documents',
+    'org-users': '/system-admin/users-by-organization',
     'audit-logs': '/system-admin/audit-logs',
     'organization': '/system-admin/organization'
   };
@@ -182,6 +182,9 @@ export default function SystemAdminMainFrame({
       id: user.user_id,
       firstName: user.first_name,
       lastName: user.last_name,
+      middleName: user.middle_name || '',
+      suffix: user.suffix || '',
+      userPos: user.user_pos || '',
       email: user.email_add,
       role: user.role_type,
       isActive: user.is_active,
@@ -190,6 +193,9 @@ export default function SystemAdminMainFrame({
       user_id: user.user_id,
       first_name: user.first_name,
       last_name: user.last_name,
+      middle_name: user.middle_name || '',
+      suffix: user.suffix || '',
+      user_pos: user.user_pos || '',
       email_add: user.email_add,
       role_type: user.role_type,
       is_active: user.is_active,
@@ -246,6 +252,17 @@ export default function SystemAdminMainFrame({
     } catch (error) {
       console.error('Error transforming audit logs:', error, apiData);
       return [];
+    }
+  };
+
+  // Function to refresh user list
+  const refreshUserList = async () => {
+    try {
+      const data = await userAPI.getAll();
+      const transformedUsers = transformUsers(data);
+      setUserList(transformedUsers);
+    } catch (error) {
+      console.error('Failed to refresh users:', error);
     }
   };
 
@@ -542,13 +559,12 @@ export default function SystemAdminMainFrame({
             />
           )}
 
-          {activeSection === 'all-documents' && (
-            <SystemAdminDocuments
-              documentList={documentList}
+          {activeSection === 'org-users' && (
+            <OrgUnitUsersView
+              organizationTree={organizationTree}
               userList={userList}
-              onDeleteDocument={handleDeleteDocument}
-              setShowDocumentViewer={setShowDocumentViewer}
-              setViewingDocument={setViewingDocument}
+              organizations={organizationTree}
+              onRefreshUsers={refreshUserList}
             />
           )}
 

@@ -26,13 +26,13 @@ class IdFormatAdmin(admin.ModelAdmin):
 
 class CustomUserAdmin(BaseUserAdmin):
     model = CustomUser
-    list_display = ['user_id', 'first_name', 'last_name', 'email_add', 'org', 'role_type', 'is_active']
+    list_display = ['user_id', 'first_name', 'last_name', 'email_add', 'user_pos', 'org', 'role_type', 'is_active']
     list_filter = ['is_active', 'is_staff', 'role_type', 'org']
     search_fields = ['user_id', 'email_add', 'first_name', 'last_name']
     ordering = ['user_id']
     fieldsets = (
         (None, {'fields': ('user_id', 'password', 'email_add')}),
-        ('Personal info', {'fields': ('first_name', 'middle_name', 'last_name', 'suffix')}),
+        ('Personal info', {'fields': ('first_name', 'middle_name', 'last_name', 'suffix', 'user_pos')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Organization', {'fields': ('org', 'role_type')}),
     )

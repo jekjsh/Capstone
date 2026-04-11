@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { useSystemTheme } from '../../contexts/SystemThemeContext';
+import { getRoleDisplayName } from '../../utils/roleMapper';
 
 export default function AdminSidebar({ 
   sidebarOpen, 
@@ -7,45 +9,48 @@ export default function AdminSidebar({
   menuItems, 
   activeSection, 
   setActiveSection, 
-  currentUser,
-  customization: customizationProp,
-  dataStore
+  currentUser
 }) {
-  const [customization, setCustomization] = useState({
-    sidebarGradientStart: customizationProp?.sidebarGradientStart || '#4F46E5',
-    sidebarGradientEnd: customizationProp?.sidebarGradientEnd || '#7C3AED'
-  });
   const [expandedDropdowns, setExpandedDropdowns] = useState({ 'organization': true, 'documents-mgmt': true });
+  const { theme } = useSystemTheme();
 
- useEffect(() => {
-    if (dataStore) {
-      const loadCustomization = () => {
-        const custom = dataStore.getCustomization();
-        if (custom) {
-          setCustomization({
-            sidebarGradientStart: custom.sidebarGradientStart || '#4F46E5',
-            sidebarGradientEnd: custom.sidebarGradientEnd || '#7C3AED'
-          });
-        }
-      };
-
-
-      loadCustomization();
-
-
-      const unsubscribe = dataStore.subscribe(() => {
-        loadCustomization();
-      });
-
-      return unsubscribe;
+  const getSidebarColor = () => {
+    // Sidebar color is always a hex value now
+    const color = theme?.sidebar_color;
+    if (!color) return '#4F46E5'; // default fallback
+    
+    // Use the color directly if it's a hex, otherwise it's still a preset name - convert it
+    if (color.startsWith('#')) {
+      return color;
     }
-  }, [dataStore]);
+    
+    // Fallback for old preset names
+    const colorMap = {
+      blue: '#3B82F6',
+      indigo: '#4F46E5',
+      purple: '#A855F7',
+      pink: '#EC4899',
+      red: '#EF4444',
+      orange: '#F97316',
+      yellow: '#EAB308',
+      green: '#22C55E',
+      teal: '#14B8A6',
+      cyan: '#06B6D4',
+      slate: '#64748B',
+      zinc: '#71717A',
+      neutral: '#737373',
+      stone: '#78716C',
+    };
+    
+    return colorMap[color] || '#4F46E5';
+  };
 
   return (
     <div 
       className={`${sidebarOpen ? 'w-64' : 'w-0'} text-white transition-all duration-300 flex flex-col overflow-hidden`}
       style={{
-        background: `linear-gradient(to bottom, ${customization.sidebarGradientStart}, ${customization.sidebarGradientEnd})`
+        backgroundColor: getSidebarColor(),
+        backgroundImage: 'none',
       }}
     >
       {/* Profile Section at Top */}
@@ -53,14 +58,14 @@ export default function AdminSidebar({
         <div className={`flex items-center gap-3 ${!sidebarOpen && 'justify-center'}`}>
           <div 
             className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold flex-shrink-0"
-            style={{ color: customization.sidebarGradientStart }}
+            style={{ color: getSidebarColor() }}
           >
             {currentUser?.name?.charAt(0) || 'A'}
           </div>
           {sidebarOpen && (
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm truncate">{currentUser?.name || 'Admin'}</p>
-              <p className="text-xs opacity-75 truncate">{currentUser?.role || 'Admin'}</p>
+              <p className="text-xs opacity-75 truncate">{getRoleDisplayName(currentUser?.role) || 'Organization Head'}</p>
             </div>
           )}
         </div>

@@ -5,7 +5,7 @@ export default function Unauthorized({ currentUser }) {
   const navigate = useNavigate();
 
   const getDashboardUrl = () => {
-    if (!currentUser) return '/dashboard';
+    if (!currentUser) return '/user/documents';
     
     const roleType = currentUser.role_type || currentUser.role;
     
@@ -16,7 +16,7 @@ export default function Unauthorized({ currentUser }) {
         return '/system-admin/dashboard';
       case 'user':
       default:
-        return '/dashboard';
+        return '/user/documents';
     }
   };
 

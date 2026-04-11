@@ -1,24 +1,42 @@
 // frontend/src/pages/LoginInterface.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import LoginForm from './LoginForm';
 import fallbackLogo from './assets/images/sra.svg';
 import fallbackBg from './assets/images/fallback.avif';
+import { systemThemeAPI } from './services/api';
 
 export default function LoginInterface() {
-  // Simulating the data you will eventually fetch from the system_themes table
-  const [themeData] = useState({
+  const [themeData, setThemeData] = useState({
     sys_name: 'Record Keeping Management System',
+    sys_abbr: 'RKMS',
     sys_logo: fallbackLogo,
     sys_backg: fallbackBg
   });
 
-  /* // FUTURE: Replace with API call to fetch active theme
   useEffect(() => {
-    fetch('http://localhost:8000/api/system/theme/active/')
-      .then(res => res.json())
-      .then(data => setThemeData(data));
+    const fetchTheme = async () => {
+      try {
+        const activeTheme = await systemThemeAPI.getActive();
+        setThemeData(prev => ({
+          ...prev,
+          sys_name: activeTheme.sys_name || prev.sys_name,
+          sys_abbr: activeTheme.sys_abbr || prev.sys_abbr,
+          sys_logo: activeTheme.sys_logo || prev.sys_logo,
+          sys_backg: activeTheme.sys_backg || prev.sys_backg
+        }));
+        
+        // Update document title with the system abbreviation
+        if (activeTheme.sys_abbr) {
+          document.title = `${activeTheme.sys_abbr} RKMS`;
+        }
+      } catch (error) {
+        console.error('Failed to fetch system theme:', error);
+        // Use defaults if fetch fails
+      }
+    };
+
+    fetchTheme();
   }, []);
-  */
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative bg-gray-100">

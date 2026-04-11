@@ -1,4 +1,7 @@
 import { Search, Edit, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getRoleDisplayName } from '../../utils/roleMapper';
+import AdminPagination from './AdminPagination';
 export default function AdminUserManagement({ 
   userList, 
   userSearchQuery, 
@@ -12,7 +15,39 @@ export default function AdminUserManagement({
   handleDeleteUser,
   setShowAddUserModal
 }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  useEffect(() => {
+    setCurrentPage(1); // Reset to page 1 when filters change
+  }, [userSearchQuery, userFilterRole, userFilterStatus]);
+  
   const filteredUsers = getFilteredUsers();
+  
+  // Pagination calculations
+  const totalRecords = filteredUsers.length;
+  const totalPages = Math.ceil(totalRecords / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+  
+  // Pagination handlers
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+  
+  const handleRowsPerPageChange = (e) => {
+    const newRowsPerPage = parseInt(e.target.value);
+    setRowsPerPage(newRowsPerPage);
+    setCurrentPage(1); // Reset to page 1
+  };
+  
+  const handleFirstPage = () => setCurrentPage(1);
+  const handleLastPage = () => setCurrentPage(totalPages);
+  const handlePreviousPage = () => handlePageChange(currentPage - 1);
+  const handleNextPage = () => handlePageChange(currentPage + 1);
   
   return (
     <div className="space-y-6">
@@ -80,7 +115,7 @@ export default function AdminUserManagement({
         )}
 
         <div className="text-sm text-gray-600">
-          Showing <span className="font-semibold">{filteredUsers.length}</span> of <span className="font-semibold">{userList.length}</span> users
+          Showing <span className="font-semibold">{startIndex + 1}–{Math.min(endIndex, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> users
         </div>
       </div>
 
@@ -90,8 +125,8 @@ export default function AdminUserManagement({
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">First Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Position</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -99,7 +134,7 @@ export default function AdminUserManagement({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredUsers.length === 0 ? (
+              {paginatedUsers.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
                     {userList.length === 0 
@@ -108,45 +143,81 @@ export default function AdminUserManagement({
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm text-gray-900">{user.id}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{user.firstName}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{user.lastName}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{user.email}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{user.role}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                        user.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {user.isActive ? 'ACTIVE' : 'INACTIVE'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <div className="flex justify-center gap-2">
-                        <button 
-                          onClick={() => handleEditUser(user.id)}
-                          className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                          title="Edit User"
-                        >
-                          <Edit className="w-5 h-5" />
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteUser(user.id)}
-                          className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                          title="Delete User"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                paginatedUsers.map((user) => {
+                  // Format full name with middle initial and suffix
+                  const formatFullName = () => {
+                    let fullName = user.firstName;
+                    
+                    if (user.middleName) {
+                      const middleInitial = user.middleName.charAt(0).toUpperCase();
+                      fullName += ` ${middleInitial}.`;
+                    }
+                    
+                    fullName += ` ${user.lastName}`;
+                    
+                    if (user.suffix) {
+                      fullName += ` ${user.suffix}`;
+                    }
+                    
+                    return fullName;
+                  };
+                  
+                  return (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm text-gray-900">{user.id}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{formatFullName()}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{user.userPos || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{user.email}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{getRoleDisplayName(user.role)}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                          user.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {user.isActive ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <div className="flex justify-center gap-2">
+                          <button 
+                            onClick={() => handleEditUser(user.id)}
+                            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                            title="Edit User"
+                          >
+                            <Edit className="w-5 h-5" />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteUser(user.id)}
+                            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                            title="Delete User"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      <AdminPagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        rowsPerPage={rowsPerPage}
+        totalRecords={totalRecords}
+        onPageChange={handlePageChange}
+        onRowsPerPageChange={handleRowsPerPageChange}
+        onFirstPage={handleFirstPage}
+        onLastPage={handleLastPage}
+        onPreviousPage={handlePreviousPage}
+        onNextPage={handleNextPage}
+      />
     </div>
   );
 }

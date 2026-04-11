@@ -1,7 +1,8 @@
-import { Share2, FileText, Eye, Edit, Users, Clock, User, X, Building2, Download } from 'lucide-react';
+import { Share2, FileText, Eye, Edit, Users, Clock, User, X, Building2, Download, Folder as FolderIcon } from 'lucide-react';
 
 export default function SharedDocuments({
   sharedDocuments,
+  sharedFolders = [],
   organizationShares,
   currentUser,
   onOpenDocument,
@@ -16,6 +17,14 @@ export default function SharedDocuments({
 
   const sharedByMe = sharedDocuments.filter(share => 
     share.sharedBy === currentUser.id
+  );
+
+  const foldersSharedWithMe = sharedFolders.filter(share =>
+    share.sharedWith.includes(currentUser.user_index)
+  );
+
+  const foldersSharedByMe = sharedFolders.filter(share =>
+    share.sharedBy === currentUser.user_index
   );
 
   const orgDistributedToMe = organizationShares ? organizationShares.filter(share =>
@@ -148,6 +157,82 @@ export default function SharedDocuments({
               Save
             </button>
           )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderFolderCard = (share, isSharedByMe = false) => {
+    const folderColor = share.folder?.folder_color || 'blue';
+    const colorMap = {
+      blue: { bg: 'bg-blue-100', text: 'text-blue-600' },
+      green: { bg: 'bg-green-100', text: 'text-green-600' },
+      purple: { bg: 'bg-purple-100', text: 'text-purple-600' },
+      red: { bg: 'bg-red-100', text: 'text-red-600' },
+      yellow: { bg: 'bg-yellow-100', text: 'text-yellow-600' },
+      pink: { bg: 'bg-pink-100', text: 'text-pink-600' }
+    };
+    
+    const colors = colorMap[folderColor] || colorMap.blue;
+    const sharedUsers = isSharedByMe
+      ? share.sharedWith.map(userId => getUserName(userId)).join(', ')
+      : getUserName(share.sharedBy);
+
+    return (
+      <div key={share.id} className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-lg transition-shadow">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-start gap-3 flex-1">
+            <div className={`w-12 h-12 ${colors.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+              <FolderIcon className={`w-6 h-6 ${colors.text}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-semibold text-gray-800 mb-1 truncate">
+                {share.folder?.folder_name || 'Untitled Folder'}
+              </h3>
+              <p className="text-sm text-gray-500">
+                Folder
+              </p>
+            </div>
+          </div>
+          {isSharedByMe && (
+            <button
+              onClick={() => onRemoveShare(share.shareId || share.id)}
+              className="text-gray-400 hover:text-red-600 p-1 ml-2"
+              title="Remove share"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            <Clock className="w-3 h-3" />
+            <span>{share.sharedAt}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 mb-3 p-3 bg-gray-50 rounded-lg">
+          <User className="w-4 h-4 text-gray-500" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-500">
+              {isSharedByMe ? 'Shared with:' : 'Shared by:'}
+            </p>
+            <p className="text-sm font-medium text-gray-800 truncate">
+              {sharedUsers}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            disabled
+            className="flex-1 px-4 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed flex items-center justify-center gap-2"
+            title="Folder navigation not available in shared view"
+          >
+            <Eye className="w-4 h-4" />
+            View Folder
+          </button>
         </div>
       </div>
     );
@@ -314,19 +399,20 @@ export default function SharedDocuments({
           <Share2 className="w-5 h-5 text-blue-600" />
           <h3 className="text-lg font-semibold text-gray-800">Directly Shared With Me</h3>
           <div className="flex items-center justify-center w-7 h-7 bg-blue-500 text-white rounded-full text-sm font-bold">
-            {sharedWithMe.length}
+            {sharedWithMe.length + foldersSharedWithMe.length}
           </div>
         </div>
 
-        {sharedWithMe.length === 0 ? (
+        {sharedWithMe.length === 0 && foldersSharedWithMe.length === 0 ? (
           <div className="bg-white rounded-lg shadow-md p-12 text-center border border-gray-200">
             <Share2 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg mb-2">No documents shared with you yet</p>
-            <p className="text-gray-400 text-sm">Documents that others share with you will appear here</p>
+            <p className="text-gray-500 text-lg mb-2">No items shared with you yet</p>
+            <p className="text-gray-400 text-sm">Documents and folders that others share with you will appear here</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {sharedWithMe.map(share => renderShareCard(share, false))}
+            {foldersSharedWithMe.map(share => renderFolderCard(share, false))}
           </div>
         )}
       </div>
@@ -336,19 +422,20 @@ export default function SharedDocuments({
           <Share2 className="w-5 h-5 text-green-600" />
           <h3 className="text-lg font-semibold text-gray-800">Directly Shared By Me</h3>
           <div className="flex items-center justify-center w-7 h-7 bg-green-500 text-white rounded-full text-sm font-bold">
-            {sharedByMe.length}
+            {sharedByMe.length + foldersSharedByMe.length}
           </div>
         </div>
 
-        {sharedByMe.length === 0 ? (
+        {sharedByMe.length === 0 && foldersSharedByMe.length === 0 ? (
           <div className="bg-white rounded-lg shadow-md p-12 text-center border border-gray-200">
             <Share2 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg mb-2">You haven't shared any documents yet</p>
-            <p className="text-gray-400 text-sm">Share documents from your library to collaborate with others</p>
+            <p className="text-gray-500 text-lg mb-2">You haven't shared any items yet</p>
+            <p className="text-gray-400 text-sm">Share documents and folders from your library to collaborate with others</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {sharedByMe.map(share => renderShareCard(share, true))}
+            {foldersSharedByMe.map(share => renderFolderCard(share, true))}
           </div>
         )}
       </div>

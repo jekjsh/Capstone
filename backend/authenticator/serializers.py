@@ -9,7 +9,7 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['user_index', 'user_id', 'first_name', 'last_name', 'email_add', 'role_type', 'org', 'is_active', 'joined_at']
+        fields = ['user_index', 'user_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'email_add', 'role_type', 'org', 'is_active', 'joined_at']
         # We don't include the password here for security
 
 # 1b. User Create/Update Serializer (Handles password for create/update)
@@ -18,7 +18,7 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['user_id', 'first_name', 'last_name', 'email_add', 'password', 'role_type', 'org', 'is_active', 'joined_at']
+        fields = ['user_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'email_add', 'password', 'role_type', 'org', 'is_active', 'joined_at']
     
     def create(self, validated_data):
         password = validated_data.pop('password', None)
@@ -26,7 +26,10 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
             user_id=validated_data['user_id'],
             email_add=validated_data['email_add'],
             first_name=validated_data.get('first_name', ''),
+            middle_name=validated_data.get('middle_name', ''),
             last_name=validated_data.get('last_name', ''),
+            suffix=validated_data.get('suffix', ''),
+            user_pos=validated_data.get('user_pos', ''),
             role_type=validated_data.get('role_type', 'user'),
             org=validated_data.get('org', None),
             is_active=validated_data.get('is_active', True)
@@ -41,7 +44,10 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
         
         # Update fields
         instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.middle_name = validated_data.get('middle_name', instance.middle_name)
         instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.suffix = validated_data.get('suffix', instance.suffix)
+        instance.user_pos = validated_data.get('user_pos', instance.user_pos)
         instance.email_add = validated_data.get('email_add', instance.email_add)
         instance.role_type = validated_data.get('role_type', instance.role_type)
         instance.org = validated_data.get('org', instance.org)

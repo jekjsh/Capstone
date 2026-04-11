@@ -10,8 +10,13 @@ export default function InactivityWarningModal({ show, secondsRemaining, onStayL
 
   if (!show) return null;
 
+  // Prevent clicks inside the modal from triggering activity listeners
+  const handleModalClick = (e) => {
+    e.stopPropagation();
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={handleModalClick}>
       <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
         <div className="flex items-center gap-4 mb-4">
           <AlertTriangle className="w-8 h-8 text-orange-500 flex-shrink-0" />
