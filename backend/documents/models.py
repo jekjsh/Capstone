@@ -28,6 +28,15 @@ class Document(models.Model):
     doc_file = models.FileField(upload_to='documents/%Y/%m/%d/', null=True, blank=True) # New: actual file upload
     doc_uploaded = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # OCR Metadata Fields
+    extracted_text = models.TextField(blank=True, null=True) # Full OCR output text
+    detected_fields = models.JSONField(default=dict, blank=True) # Structured field extraction (names, dates, ref numbers, doc types)
+    validity_date = models.DateField(blank=True, null=True) # Extracted validity/expiration date
+    is_duplicate = models.BooleanField(default=False) # Flag for duplicate detection
+    duplicate_of = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='duplicates')
+    auto_category_confidence = models.FloatField(default=0.0) # Confidence score for auto-tagging (0.0 to 1.0)
+    ocr_processed = models.BooleanField(default=False) # Whether OCR has been run on this document
 
     class Meta:
         db_table = 'documents'

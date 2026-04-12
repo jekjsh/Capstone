@@ -1,0 +1,39 @@
+🚀 Key OCR Features
+1. Smart Data Extraction (Structured OCR)
+The system goes beyond raw text dumping. It utilizes Pattern Detection (Regex) and Keyword Mapping to identify and pull specific fields from scanned documents:
+Fields Extracted: Names, Dates, Document Types, and Reference Numbers.
+Impact: Converts "dumb" images into a structured database, enabling advanced filtering and reporting.
+2. Auto-Tagging & Classification
+Eliminate manual filing. The OCR engine analyzes document layouts and content to automatically categorize uploads:
+Categories: Invoices, Student Records, Memoranda, Contracts, etc.
+Impact: Ensures a cleaner database with zero manual sorting required.
+3. ⏰ Proactive Monitoring & Alerts
+The "Control" center of the system. The OCR specifically scans for validity periods and deadlines:
+Function: If the OCR detects "Valid until: June 15, 2026," the system automatically flags the record.
+Alerts: Triggers dashboard notifications and admin alerts as deadlines approach.
+4. 🔍 Deep-Content Intelligent Search
+Move beyond searching by filename. Our integration allows users to search for any word located inside a scanned PDF or image.
+Example: Searching "John Cruz" will retrieve every document where his name appears within the text body.
+5. 📊 Duplicate Detection & Validation
+The system cross-references extracted OCR data (like ID numbers or Reference codes) against existing records.
+Benefit: Prevents redundant entries and maintains data integrity.
+🛠️ Technical Stack
+Frontend: React (Vite)
+Backend: Django (Python)
+OCR Engine: Tesseract OCR (Optimized for 300+ DPI)
+Database: PostgreSQL (Storing structured OCR metadata)
+📂 Workflow
+Upload: User uploads a scanned image or PDF.
+Process: OCR engine performs text and field extraction.
+Classify: System auto-tags the document based on content.
+Monitor: If a date is detected, the system adds it to the Monitoring Dashboard.
+Store: Structured data is indexed for instant global search.
+
+
+⚠️ CRITICAL INSTRUCTIONS: SCOPE OF WORK ⚠️
+Please implement the OCR Integration features as described in the README, following these strict constraints:
+LOGIC ONLY: Focus exclusively on the OCR pipeline (Text extraction, Field detection via Regex, Auto-tagging, and Date detection).
+DO NOT CHANGE THE UI: Do not modify the existing React components, CSS, or layout. Keep the current design exactly as it is.
+DO NOT MODIFY EXISTING FEATURES: Keep the current authentication, database schema (unless adding OCR metadata fields), and navigation intact.
+INTEGRATION ONLY: Only add the necessary backend logic (Django/Python) and the specific frontend "Upload" handler to connect the OCR results to the database.
+Goal: Transform the raw OCR output into structured, searchable data for the "Monitoring and Control" dashboard without altering the visual identity or existing functionality of the system.

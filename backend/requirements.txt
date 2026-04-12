@@ -9,4 +9,9 @@ sqlparse
 psycopg2-binary
 python-dotenv
 pillow
+pytesseract
+pdf2image
+opencv-python
+python-dateutil
+regex
 

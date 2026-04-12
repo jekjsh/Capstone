@@ -22,11 +22,19 @@ class DocumentSerializer(serializers.ModelSerializer):
     folder_name = serializers.CharField(source='folder.folder_name', read_only=True, allow_null=True)
     doc_file_url = serializers.SerializerMethodField()
     categories = serializers.SerializerMethodField()
+    duplicate_of_name = serializers.CharField(source='duplicate_of.doc_name', read_only=True, allow_null=True)
     
     class Meta:
         model = Document
-        fields = ['doc_id', 'user_index', 'folder', 'folder_name', 'doc_name', 'doc_desc', 'doc_path', 'doc_file', 'doc_file_url', 'doc_uploaded', 'updated_at', 'categories']
-        read_only_fields = ['doc_id', 'user_index', 'doc_uploaded', 'updated_at']
+        fields = [
+            'doc_id', 'user_index', 'folder', 'folder_name', 'doc_name', 'doc_desc', 'doc_path', 'doc_file', 'doc_file_url', 
+            'doc_uploaded', 'updated_at', 'categories',
+            # OCR Fields
+            'extracted_text', 'detected_fields', 'validity_date', 'is_duplicate', 'duplicate_of', 'duplicate_of_name',
+            'auto_category_confidence', 'ocr_processed'
+        ]
+        read_only_fields = ['doc_id', 'user_index', 'doc_uploaded', 'updated_at', 'extracted_text', 'detected_fields', 
+                            'validity_date', 'is_duplicate', 'duplicate_of', 'auto_category_confidence', 'ocr_processed']
     
     def get_categories(self, obj):
         """Return categories linked to this document"""

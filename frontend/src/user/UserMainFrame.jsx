@@ -258,6 +258,7 @@ export default function UserMainFrame({
   const [uploadPreviews, setUploadPreviews] = useState([]);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
   const [ocrText, setOcrText] = useState('');
+  const [ocrFileRef, setOcrFileRef] = useState(null);
   const [isProcessingOCR, setIsProcessingOCR] = useState(false);
   const [showAddFieldModal, setShowAddFieldModal] = useState(false);
   const [showPersonalInfoForm, setShowPersonalInfoForm] = useState(false);
@@ -1234,52 +1235,127 @@ const handleEmptyRecycleBin = async () => {
     }
   };
 
-  const handleProcessOCR = () => {
+  const handleProcessOCR = async () => {
     if (!uploadedFile) {
       alert('Please upload a file first');
       return;
     }
+    
+    // If we already have OCR text for this file, show it
+    if (ocrText && ocrFileRef === uploadedFile.name) {
+      return;
+    }
+    
     setIsProcessingOCR(true);
-    setTimeout(() => {
-      setOcrText(`[OCR Extracted Text from ${uploadedFile.name}]\n\nThis is a simulated OCR result. In a real implementation, this would contain the actual text extracted from the uploaded image or PDF document using OCR technology.\n\nSample extracted content:\n- Name: John Doe\n- Address: 123 Main Street\n- Date: November 11, 2025\n- Document Type: Official Record`);
+    setOcrText('Processing OCR... Please wait.');
+    
+    try {
+      console.log('Starting OCR process for file:', uploadedFile.name);
+      
+      // First, we need to upload the file to the backend if not already done
+      let uploadedDoc = null;
+      
+      // Check if this file was already uploaded in handleUploadDocument
+      const existingDoc = userDocuments.find(doc => doc.doc_name === uploadedFile.name);
+      console.log('Existing document found:', existingDoc);
+      
+      if (existingDoc && existingDoc.ocr_processed) {
+        // If OCR was already processed during upload, fetch the data
+        console.log('Using existing processed document');
+        uploadedDoc = existingDoc;
+      } else if (!existingDoc) {
+        // If not uploaded yet, upload it now
+        console.log('Uploading file to backend...');
+        const response = await documentAPI.uploadFiles(
+          [uploadedFile],
+          uploadedFile.name,
+          'OCR Document',
+          currentFolder
+        );
+        console.log('Upload response:', response);
+        uploadedDoc = response[0] || response;
+      } else {
+        console.log('Using existing document (OCR not yet processed)');
+        uploadedDoc = existingDoc;
+      }
+      
+      console.log('uploadedDoc:', uploadedDoc);
+      
+      // Fetch the document details to get OCR data
+      if (uploadedDoc && uploadedDoc.doc_id) {
+        console.log('Fetching document details for ID:', uploadedDoc.doc_id);
+        const docDetails = await documentAPI.getById(uploadedDoc.doc_id);
+        console.log('Document details:', docDetails);
+        
+        if (docDetails.extracted_text) {
+          // Real OCR text from backend
+          console.log('OCR text found, length:', docDetails.extracted_text.length);
+          let ocrDisplay = `[OCR Extracted Text from ${uploadedFile.name}]\n\n`;
+          ocrDisplay += docDetails.extracted_text;
+          
+          if (docDetails.detected_fields && Object.keys(docDetails.detected_fields).length > 0) {
+            ocrDisplay += '\n\n--- EXTRACTED FIELDS ---\n';
+            if (docDetails.detected_fields.names && docDetails.detected_fields.names.length > 0) {
+              ocrDisplay += `Names: ${docDetails.detected_fields.names.join(', ')}\n`;
+            }
+            if (docDetails.detected_fields.dates && docDetails.detected_fields.dates.length > 0) {
+              ocrDisplay += `Dates: ${docDetails.detected_fields.dates.join(', ')}\n`;
+            }
+            if (docDetails.detected_fields.reference_numbers && docDetails.detected_fields.reference_numbers.length > 0) {
+              ocrDisplay += `Reference Numbers: ${docDetails.detected_fields.reference_numbers.join(', ')}\n`;
+            }
+            if (docDetails.detected_fields.document_type) {
+              ocrDisplay += `Document Type: ${docDetails.detected_fields.document_type}\n`;
+            }
+          }
+          
+          if (docDetails.validity_date) {
+            ocrDisplay += `\nValidity Date: ${docDetails.validity_date}\n`;
+          }
+          
+          setOcrText(ocrDisplay);
+          setOcrFileRef(uploadedFile.name);
+        } else {
+          console.warn('No extracted_text in response. Full response:', docDetails);
+          setOcrText(`No text extracted from the document. Response fields: ${Object.keys(docDetails).join(', ')}`);
+        }
+      } else {
+        console.error('No uploadedDoc or doc_id:', uploadedDoc);
+        setOcrText('Error: Could not upload or retrieve document');
+      }
+    } catch (error) {
+      console.error('OCR processing error:', error);
+      setOcrText(`Error processing OCR: ${error.message}`);
+    } finally {
       setIsProcessingOCR(false);
-    }, 2000);
+    }
   };
 
   
-  const handleUseOCRText = () => {
+  const handleUseOCRText = async () => {
     if (!ocrText) {
       alert('Please process OCR first');
       return;
     }
-    const doc = {
-      id: Date.now().toString(),
-      title: `OCR Document - ${uploadedFile.name}`,
-      description: 'Document created from OCR extraction',
-      customFieldValues: {},
-      personalInfo: {},
-      format: 'ocr',
-      folderId: currentFolder,
-      ocrContent: ocrText,
-      createdAt: new Date().toLocaleString(),
-      createdBy: currentUser.id 
-    };
     
-    
-    if (dataStore) {
-      dataStore.addDocument(doc);
-
-       addAuditLog(
-        'OCR Document Created',
-        `${doc.title} - Extracted from ${uploadedFile.name}`,
-        'Success'
-      );
+    try {
+      // The document is already created and processed by the backend
+      // Just close the modal and refresh the documents list
+      alert('OCR document processed and saved successfully!');
+      
+      // Refresh documents list
+      const allDocs = await documentAPI.getAll();
+      setUserDocuments(allDocs);
+      
+      // Close modals and reset state
+      setShowOCRModal(false);
+      setUploadedFile(null);
+      setOcrText('');
+      setOcrFileRef(null);
+    } catch (error) {
+      console.error('Error finalizing OCR document:', error);
+      alert(`Error: ${error.message}`);
     }
-    
-    setShowOCRModal(false);
-    setUploadedFile(null);
-    setOcrText('');
-    alert('Document created from OCR text!');
   };
 
   const handleDocumentFileUpload = (e) => {
