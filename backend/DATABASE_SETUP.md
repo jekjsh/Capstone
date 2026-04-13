@@ -1,64 +1,85 @@
-# Django Capstone Backend - Setup Guide
+# Django Capstone Backend - Database Setup Guide
 
 ## Project Structure Overview
 
-Your backend is organized into separate Django apps (not true microservices, but modular monolithic):
+Your backend is organized into separate Django apps (modular monolithic - not true microservices):
 
 ```
 backend/
 ├── authenticator/        # User authentication & organizations
-├── documents/           # Document management
+├── documents/           # Document management & OCR
 ├── monitoring/          # Audit logs & notifications
 ├── system_config/       # System themes & configuration
-└── backend/             # Main Django project
+└── backend/             # Main Django project settings
 ```
 
-**This is all one database with 9 main tables:**
-- users (CustomUser)
-- organizations
-- id_format
-- documents
-- document_shares
-- ocr_data
-- audit_logs
-- notifications
-- system_themes
+## Current Database Configuration
+
+```
+Database Engine:    PostgreSQL
+Database Name:      rkms
+Database User:      postgres
+Database Password:  capstone1
+Host:               localhost
+Port:               5432
+```
+
+Database tables:
+- CustomUser (users)
+- Organization
+- IDFormat
+- Document
+- DocumentShare
+- OCRData
+- AuditLog
+- Notification
+- SystemTheme
 
 ---
 
-## Database Initialization Commands
+## Quick Start: Database Setup
 
-### 1. Create Migrations (First Time Only)
+### 1. Verify PostgreSQL is Running
 ```powershell
-cd C:\Capstone\backend
+# Check if PostgreSQL service is running
+psql -U postgres -h localhost
 
-# Create migrations for all apps
-python manage.py makemigrations authenticator
-python manage.py makemigrations documents
-python manage.py makemigrations monitoring
-python manage.py makemigrations system_config
+# Should connect without error. If not, start PostgreSQL service
 ```
 
-### 2. Apply Migrations (Create Tables)
+### 2. Create Database
 ```powershell
-# Apply all migrations to PostgreSQL database
+# Connect to PostgreSQL and create the database
+psql -U postgres -h localhost
+
+# In psql prompt:
+CREATE DATABASE rkms;
+\q
+```
+
+### 3. Apply Django Migrations
+```powershell
+cd backend
+
+# Install dependencies first (if not done)
+pip install -r requirements.txt
+
+# Run migrations
 python manage.py migrate
 ```
 
-### 3. Create Superuser (Admin)
+### 4. Create Superuser (Admin Account)
 ```powershell
-# This will be your admin account to access /admin/ dashboard
 python manage.py createsuperuser
 
 # Follow prompts:
-# - User ID: admin1
-# - Email: admin@system.com
+# - Username: admin
+# - Email: admin@example.com
 # - Password: (your choice)
 ```
 
-### 4. Verify Database
+### 5. Verify Setup
 ```powershell
-# Check if database is set up correctly
 python manage.py check
 
 # Should output: "System check identified no issues (0 silenced)."
@@ -69,13 +90,30 @@ python manage.py check
 ## Running the Development Server
 
 ```powershell
-cd C:\Capstone\backend
+cd backend
 
-# Start development server
+# Start backend server
 python manage.py runserver
 
 # Should display:
 # Starting development server at http://127.0.0.1:8000/
+# Access admin panel: http://127.0.0.1:8000/admin/
+```
+
+---
+
+## Frontend Development Server
+
+```powershell
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Usually runs on http://localhost:5173/
 ```
 
 ---
@@ -183,29 +221,48 @@ python manage.py runserver
 
 ## Troubleshooting
 
-**Database won't connect:**
-- Check PostgreSQL is running
-- Verify credentials in `backend/settings.py`
-- Run: `psql -U postgres -h localhost`
-
-**"Table already exists" error:**
-- Your database might already be initialized. Run: `python manage.py migrate --fake-initial`
-
-**Cannot login with superuser:**
-- Clear browser cookies
-- Try creating another superuser: `python manage.py createsuperuser`
-
-**Port 8000 already in use:**
-- Use different port: `python manage.py runserver 8001`
+| Issue | Solution |
+|-------|----------|
+| **PostgreSQL connection fails** | Ensure PostgreSQL service is running. Test with: `psql -U postgres -h localhost` |
+| **"Database does not exist" error** | Create database: `CREATE DATABASE rkms;` (in psql) |
+| **"Table already exists" error** | Database might be initialized. Try: `python manage.py migrate --fake-initial` |
+| **Cannot login to admin panel** | Clear browser cookies and try again, or create new superuser |
+| **Port 8000 already in use** | Use different port: `python manage.py runserver 8001` |
+| **Port 5173 (frontend) already in use** | Use different port: `npm run dev -- --port 5174` |
+| **"Module not found" errors** | Install dependencies: `pip install -r requirements.txt` (backend) or `npm install` (frontend) |
 
 ---
 
-## Next Steps
+## Environment Variables
 
-1. ✅ Run migrations
-2. ✅ Create superuser
-3. ✅ Test API endpoints with Postman/Insomnia
-4. 📝 Create admin users with different roles
-5. 🔗 Connect frontend to these API endpoints
-6. 🔐 Implement organization hierarchy logic (as needed)
-7. 📊 Set up audit logging triggers in views
+The backend uses `python-dotenv` to load `.env` file (if present). Current `settings.py` uses hardcoded values, but you can create a `.env` file for override:
+
+```
+DEBUG=True
+SECRET_KEY=your-secret-key
+POSTGRES_DB=rkms
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=capstone1
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+```
+
+---
+
+## Making Model Changes
+
+When you modify any `models.py`:
+
+```powershell
+# 1. Create migration
+python manage.py makemigrations <app_name>
+
+# 2. View what will change
+python manage.py sqlmigrate <app_name> <migration_number>
+
+# 3. Apply migration
+python manage.py migrate
+
+# 4. Restart server
+python manage.py runserver
+```

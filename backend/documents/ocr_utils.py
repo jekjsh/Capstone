@@ -386,7 +386,7 @@ def detect_duplicates(text, detected_fields, existing_documents):
 def process_document_ocr(document_instance, file_path):
     """
     Main OCR processing pipeline for a document.
-    Orchestrates all OCR operations and updates the document instance.
+    Orchestrates all OCR operations and saves extracted text to .txt file.
     
     Args:
         document_instance: Document model instance to update
@@ -403,7 +403,8 @@ def process_document_ocr(document_instance, file_path):
         'category': None,
         'confidence': 0.0,
         'duplicates': [],
-        'error': None
+        'error': None,
+        'txt_file_path': None  # Path to saved .txt file
     }
     
     try:
@@ -432,6 +433,23 @@ def process_document_ocr(document_instance, file_path):
         result['extracted_text'] = extracted_text
         logger.info(f"Text extraction complete: {len(extracted_text)} characters extracted")
         
+        # SAVE EXTRACTED TEXT TO .TXT FILE
+        ocr_output_dir = Path(file_path).parent.parent / 'ocr_outputs'
+        ocr_output_dir.mkdir(exist_ok=True, parents=True)
+        
+        # Create filename: original_name_TIMESTAMP.txt
+        original_name = Path(document_instance.doc_file.name).stem  # filename without extension
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        txt_filename = f"{original_name}_{timestamp}.txt"
+        txt_file_path = ocr_output_dir / txt_filename
+        
+        # Write extracted text to file
+        with open(txt_file_path, 'w', encoding='utf-8') as f:
+            f.write(extracted_text)
+        
+        result['txt_file_path'] = str(txt_file_path)
+        logger.info(f"Extracted text saved to: {txt_file_path}")
+        
         # Step 2: Detect structured fields
         detected_fields = detect_document_fields(extracted_text)
         result['detected_fields'] = detected_fields
@@ -455,8 +473,8 @@ def process_document_ocr(document_instance, file_path):
         duplicates = detect_duplicates(extracted_text, detected_fields, existing_docs)
         result['duplicates'] = duplicates
         
-        # Update document instance with extracted data
-        document_instance.extracted_text = extracted_text
+        # Update document instance - NOTE: NOT storing extracted_text in database anymore
+        # Only storing metadata fields
         document_instance.detected_fields = detected_fields
         document_instance.validity_date = validity_date
         document_instance.auto_category_confidence = confidence
