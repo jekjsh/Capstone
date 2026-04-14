@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bell, X, UserPlus, Check, AlertCircle } from 'lucide-react';
-import { userCreationRequestAPI, notificationAPI } from '../../services/api';
+import { Bell, X, UserPlus, Check, AlertCircle, RefreshCcw } from 'lucide-react';
+import { notificationAPI } from '../../services/api';
 
 export default function SystemAdminNotifications({ currentUser, onRequestsUpdate }) {
   const [showNotifications, setShowNotifications] = useState(false);
@@ -22,10 +22,32 @@ export default function SystemAdminNotifications({ currentUser, onRequestsUpdate
   const loadNotifications = async () => {
     try {
       setIsLoading(true);
+      // Sync pending user creation requests into notifications before reading list.
+      await notificationAPI.generateNotifications();
       // Fetch actual notifications from backend
-      const notifications = await notificationAPI.getAll();
-      setNotifications(notifications);
-      const unread = notifications.filter(n => !n.is_read).length;
+      const rawNotifications = await notificationAPI.getAll();
+      const normalizedNotifications = (rawNotifications || []).map((item) => ({
+        id: item?.notif_id ?? item?.id,
+        type: item?.type || 'pending_requests',
+        title: item?.title || 'New User Creation Request',
+        message: item?.message || item?.notif_msg || 'A new user creation request is waiting for review.',
+        timestamp: item?.timestamp || item?.created_at,
+        is_read: Boolean(item?.is_read),
+      })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      // Keep only the latest notification per message to avoid showing duplicates.
+      const dedupedNotifications = [];
+      const seenMessages = new Set();
+      for (const notification of normalizedNotifications) {
+        if (seenMessages.has(notification.message)) {
+          continue;
+        }
+        seenMessages.add(notification.message);
+        dedupedNotifications.push(notification);
+      }
+
+      setNotifications(dedupedNotifications);
+      const unread = dedupedNotifications.filter(n => !n.is_read).length;
       setUnreadCount(unread);
     } catch (error) {
       console.error('Error loading request notifications:', error);
@@ -43,6 +65,7 @@ export default function SystemAdminNotifications({ currentUser, onRequestsUpdate
         prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
+      await loadNotifications();
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -55,16 +78,23 @@ export default function SystemAdminNotifications({ currentUser, onRequestsUpdate
       // Update local state
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
+      await loadNotifications();
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
     }
   };
 
-  const handleDeleteNotification = (notificationId) => {
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    const notification = notifications.find(n => n.id === notificationId);
-    if (notification && !notification.is_read) {
-      setUnreadCount(prev => Math.max(0, prev - 1));
+  const handleDeleteNotification = async (notificationId) => {
+    try {
+      await notificationAPI.delete(notificationId);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      const notification = notifications.find(n => n.id === notificationId);
+      if (notification && !notification.is_read) {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+      await loadNotifications();
+    } catch (error) {
+      console.error('Error deleting notification:', error);
     }
   };
 
@@ -111,6 +141,12 @@ export default function SystemAdminNotifications({ currentUser, onRequestsUpdate
     return date.toLocaleDateString();
   };
 
+  const getRequestIdFromMessage = (message) => {
+    const text = message || '';
+    const match = text.match(/request\s+([A-Za-z0-9-]+)/i);
+    return match ? match[1] : null;
+  };
+
   return (
     <div className="relative">
       <button
@@ -137,6 +173,15 @@ export default function SystemAdminNotifications({ currentUser, onRequestsUpdate
             <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50 rounded-t-lg">
               <h3 className="font-semibold text-gray-800">Request Notifications</h3>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={loadNotifications}
+                  className="text-xs text-gray-600 hover:text-gray-800 flex items-center gap-1"
+                  title="Refresh notifications"
+                  disabled={isLoading}
+                >
+                  <RefreshCcw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
                 {unreadCount > 0 && (
                   <button
                     onClick={handleMarkAllRead}
@@ -174,7 +219,7 @@ export default function SystemAdminNotifications({ currentUser, onRequestsUpdate
                         }
                         // Navigate to requests page
                         if (onRequestsUpdate) {
-                          onRequestsUpdate();
+                          onRequestsUpdate(getRequestIdFromMessage(notification.message));
                           setShowNotifications(false);
                         }
                       }}

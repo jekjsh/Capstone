@@ -12,9 +12,9 @@ import ErrorBoundary from '../admin/component/ErrorBoundary';
 import SystemAdminAddUserModal from './components/SystemAdminAddUserModal';
 import AdminCustomizationModal from '../admin/component/AdminCustomizationModal';
 import SystemAdminIDFormatter from './components/SystemAdminIDFormatter';
-import DocumentViewerModal from '../user/Components/modals/DocumentViewerModal';
-import ChangePasswordModal from '../user/Components/modals/ChangePasswordModal';
-import EditProfileModal from './components/EditProfileModal';
+import DocumentViewerModal from '../components/modals/DocumentViewerModal';
+import ChangePasswordModal from '../components/ChangePasswordModal';
+import EditProfileModal from '../components/EditProfileModal';
 import RequestApprovalModal from './components/RequestApprovalModal';
 import { UserActionMenu, EditPasswordModal } from '../admin/component/AdminModals';
 import SystemAdminVerificationModal from './components/SystemAdminVerificationModal';
@@ -28,6 +28,9 @@ export default function SystemAdminMainFrame({
   const navigate = useNavigate();
   const location = useLocation();
   const [loggedInUser, setLoggedInUser] = useState(currentUser);
+
+  // Compute the correct user_id from whatever source is available
+  const currentUserId = loggedInUser?.user_id || loggedInUser?.id || currentUser?.user_id || currentUser?.id || loggedInUser?.full_data?.user_id;
 
   // Mapping between section IDs and URL paths
   const sectionToPath = {
@@ -65,9 +68,37 @@ export default function SystemAdminMainFrame({
     }
   }, [location.pathname]);
 
+  // Role-based access control - System Admin only
+  useEffect(() => {
+    const validateAccess = async () => {
+      const userRole = currentUser?.role_type || currentUser?.role;
+      
+      if (userRole !== 'system_admin') {
+        // Log unauthorized access attempt
+        try {
+          await auditLogAPI.create({
+            audit_action: 'Unauthorized Access Attempt',
+            audit_desc: `User ${currentUser?.user_id || 'Unknown'} (Role: ${userRole}) attempted to access System Admin panel`,
+            audit_status: 'Failed'
+          });
+        } catch (error) {
+          console.error('Failed to log unauthorized access:', error);
+        }
+        
+        // Redirect to Unauthorized page
+        navigate('/unauthorized', { replace: true });
+      }
+    };
+
+    if (currentUser) {
+      validateAccess();
+    }
+  }, [currentUser?.role_type]);
+
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [targetRequestId, setTargetRequestId] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
   const [viewingDocument, setViewingDocument] = useState(null);
@@ -105,6 +136,11 @@ export default function SystemAdminMainFrame({
     confirmPassword: ''
   });
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [requestStatusBreakdown, setRequestStatusBreakdown] = useState({
+    pending: 0,
+    approved: 0,
+    denied: 0,
+  });
 
   // Data states
   const [userList, setUserList] = useState([]);
@@ -156,7 +192,14 @@ export default function SystemAdminMainFrame({
         const { userCreationRequestAPI } = await import('../services/api');
         const requests = await userCreationRequestAPI.getAll();
         const pendingCount = requests.filter(req => req.status === 'pending').length;
+        const approvedCount = requests.filter(req => req.status === 'approved').length;
+        const deniedCount = requests.filter(req => req.status === 'denied' || req.status === 'rejected').length;
         setPendingRequestsCount(pendingCount);
+        setRequestStatusBreakdown({
+          pending: pendingCount,
+          approved: approvedCount,
+          denied: deniedCount,
+        });
       } catch (error) {
         console.error('Failed to fetch requests count:', error);
       }
@@ -223,7 +266,6 @@ export default function SystemAdminMainFrame({
         firstName: user.first_name || '',
         lastName: user.last_name || '',
         middleName: user.middle_name || '',
-        suffix: user.suffix || '',
         userPos: user.user_pos || '',
         email: user.email_add || '',
         role: user.role_type || 'User',
@@ -234,6 +276,7 @@ export default function SystemAdminMainFrame({
         first_name: user.first_name || '',
         last_name: user.last_name || '',
         middle_name: user.middle_name || '',
+        suffix: user.suffix || '',
         user_pos: user.user_pos || '',
         email_add: user.email_add || '',
         role_type: user.role_type || 'User',
@@ -643,7 +686,10 @@ export default function SystemAdminMainFrame({
           onEditProfile={() => setShowEditProfileModal(true)}
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
-          onRequestsUpdate={() => setActiveSection('requests')}
+          onRequestsUpdate={(requestId = null) => {
+            setActiveSection('requests');
+            setTargetRequestId(requestId);
+          }}
         />
 
         <div className="flex-1 overflow-auto p-6">
@@ -654,6 +700,8 @@ export default function SystemAdminMainFrame({
               auditLogs={auditLogs}
               dataStore={dataStore}
               pendingRequestsCount={pendingRequestsCount}
+              requestStatusBreakdown={requestStatusBreakdown}
+              setActiveSection={setActiveSection}
             />
           )}
 
@@ -706,7 +754,10 @@ export default function SystemAdminMainFrame({
           )}
 
           {activeSection === 'requests' && (
-            <SystemAdminRequests onOpenRequestModal={handleOpenRequestModal} />
+            <SystemAdminRequests
+              onOpenRequestModal={handleOpenRequestModal}
+              targetRequestId={targetRequestId}
+            />
           )}
         </div>
       </div>
@@ -724,7 +775,7 @@ export default function SystemAdminMainFrame({
       <ChangePasswordModal
         isOpen={showChangePasswordModal}
         onClose={() => setShowChangePasswordModal(false)}
-        currentUsername={loggedInUser.user_id}
+        currentUsername={currentUserId}
       />
 
       <EditProfileModal

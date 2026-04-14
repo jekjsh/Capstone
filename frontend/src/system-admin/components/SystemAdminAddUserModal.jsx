@@ -35,6 +35,10 @@ export default function SystemAdminAddUserModal({
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const defaultSuffixOptions = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V', 'Esq.', 'PhD'];
+  const suffixOptions = defaultSuffixOptions.includes(formData.suffix)
+    ? defaultSuffixOptions
+    : [...defaultSuffixOptions, formData.suffix];
 
   // Load user ID format from backend API
   useEffect(() => {
@@ -509,13 +513,17 @@ export default function SystemAdminAddUserModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Suffix</label>
-                <input
-                  type="text"
+                <select
                   value={formData.suffix}
                   onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Jr., Sr., III"
-                />
+                >
+                  {suffixOptions.map((option) => (
+                    <option key={option || 'none'} value={option}>
+                      {option || 'None'}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

@@ -9,6 +9,8 @@ const truncateText = (text, maxLength = 50) => {
 export default function AdminDashboard({ 
   userList, 
   documentList,
+  folderShares = [],
+  documentShares = [],
   auditLogs = [],
   dataStore,     
   setActiveSection,
@@ -35,9 +37,6 @@ export default function AdminDashboard({
               currentUser.full_data.organization_unit_id ||
               currentUser.full_data.orgId;
     }
-    
-    console.log('Admin user:', currentUser);
-    console.log('Detected admin org ID:', orgId);
     
     return orgId;
   };
@@ -69,7 +68,6 @@ export default function AdminDashboard({
   };
 
   const adminOrg = findOrgDetails(adminOrgId);
-  console.log('Admin organization:', adminOrg);
 
   // Filter users by admin's organization - match all possible org ID fields
   const orgUsers = adminOrgId 
@@ -79,32 +77,28 @@ export default function AdminDashboard({
                          user.user_org_id ||
                          user.organization_unit_id ||
                          user.orgId;
-        const matches = userOrgId === adminOrgId;
-        if (!matches) {
-          console.log('User mismatch:', user.id, 'userOrgId:', userOrgId, 'adminOrgId:', adminOrgId);
-        }
+        const matches = String(userOrgId) === String(adminOrgId);
         return matches;
       })
     : userList;
-
-  console.log('Filtered users:', orgUsers.length, 'out of', userList.length);
 
   // Filter documents by admin's organization - match all possible org ID fields
   const orgDocuments = adminOrgId
     ? documentList.filter(doc => {
         const docOrgId = doc.organizationUnitId || 
                         doc.org || 
+                        doc.owning_org ||
                         doc.user_org_id ||
                         doc.organization_unit_id ||
                         doc.orgId;
-        return docOrgId === adminOrgId;
+        return String(docOrgId) === String(adminOrgId);
       })
     : documentList;
 
   const orgName = adminOrg?.name || 'Organization';
   const totalUsers = orgUsers.length;
   const totalDocuments = orgDocuments.length;
-  const totalOrgShares = dataStore ? dataStore.getAllOrgShares().length : 0;
+  const totalOrgShares = (Array.isArray(folderShares) ? folderShares.length : 0) + (Array.isArray(documentShares) ? documentShares.length : 0);
   
   return (
     <div className="space-y-6">
@@ -119,7 +113,11 @@ export default function AdminDashboard({
             <Users className="w-12 h-12 text-blue-500 opacity-50" />
           </div>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500">
+        <button
+          type="button"
+          onClick={() => setActiveSection('all-documents')}
+          className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500 text-left hover:shadow-lg transition-shadow"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 text-sm">Documents in {orgName}</p>
@@ -127,16 +125,20 @@ export default function AdminDashboard({
             </div>
             <Folder className="w-12 h-12 text-green-500 opacity-50" />
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-purple-500">
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection('org-shares')}
+          className="bg-white p-6 rounded-lg shadow-md border-l-4 border-purple-500 text-left hover:shadow-lg transition-shadow"
+        >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm">Organization Shares</p>
+              <p className="text-gray-600 text-sm">File Sharing</p>
               <p className="text-3xl font-bold text-gray-800">{totalOrgShares}</p>
             </div>
             <Share2 className="w-12 h-12 text-purple-500 opacity-50" />
           </div>
-        </div>
+        </button>
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-orange-500">
           <div className="flex items-center justify-between">
             <div>

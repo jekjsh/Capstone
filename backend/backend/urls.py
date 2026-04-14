@@ -10,6 +10,7 @@ from authenticator.views import (
     CustomTokenRefreshView,
     RegisterView, 
     UserProfileView,
+    UpdateUserProfileView,
     VerifyPasswordView,
     UserViewSet,
     OrganizationViewSet,
@@ -48,6 +49,7 @@ urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/register-request/', UserRegistrationRequestView.as_view(), name='register_request'),
     path('auth/profile/', UserProfileView.as_view(), name='user_profile'),
+    path('auth/update-profile/', UpdateUserProfileView.as_view(), name='update_user_profile'),
     path('auth/verify-password/', VerifyPasswordView.as_view(), name='verify_password'),
     
     # API routes (organizations, documents, etc.)

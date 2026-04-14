@@ -1,7 +1,7 @@
-import { Search, Edit, Trash2 } from 'lucide-react';
+import { Search, Edit, Eye } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getRoleDisplayName } from '../../utils/roleMapper';
-import AdminPagination from './AdminPagination';
+import Pagination from '../../components/Pagination';
 export default function AdminUserManagement({ 
   userList, 
   userSearchQuery, 
@@ -11,6 +11,7 @@ export default function AdminUserManagement({
   userFilterStatus,
   setUserFilterStatus,
   getFilteredUsers,
+  handleViewUser,
   handleEditUser,
   handleDeleteUser,
   setShowAddUserModal
@@ -62,6 +63,10 @@ export default function AdminUserManagement({
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow-md space-y-4">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          Policy: Setting a user to INACTIVE disables login access while organization-owned records remain recoverable by authorized admins.
+        </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
@@ -179,18 +184,18 @@ export default function AdminUserManagement({
                       <td className="px-6 py-4 text-sm">
                         <div className="flex justify-center gap-2">
                           <button 
+                            onClick={() => handleViewUser(user.id)}
+                            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                            title="View Profile"
+                          >
+                            <Eye className="w-5 h-5" />
+                          </button>
+                          <button 
                             onClick={() => handleEditUser(user.id)}
                             className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
                             title="Edit User"
                           >
                             <Edit className="w-5 h-5" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteUser(user.id)}
-                            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                            title="Delete User"
-                          >
-                            <Trash2 className="w-5 h-5" />
                           </button>
                         </div>
                       </td>
@@ -204,7 +209,7 @@ export default function AdminUserManagement({
       </div>
 
       {/* Pagination Controls */}
-      <AdminPagination
+      <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
         startIndex={startIndex}

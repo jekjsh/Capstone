@@ -11,9 +11,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 
 from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer, IdFormatSerializer, UserCreationRequestSerializer, UserCreationRequestCreateSerializer
-from monitoring.models import AuditLog
+from monitoring.models import AuditLog, Notification
 
 User = get_user_model()
 
@@ -135,6 +136,43 @@ class UserProfileView(generics.RetrieveAPIView):
         # Automatically returns the data of the user attached to the token
         return self.request.user
 
+# 4a. Update User Profile View (Protected) - for users to update their own profile
+class UpdateUserProfileView(generics.GenericAPIView):
+    permission_classes = (IsAuthenticated,)
+    
+    def patch(self, request, *args, **kwargs):
+        """Allow users to update their own profile"""
+        user = request.user
+        
+        # Only allow updating these fields
+        allowed_fields = ['first_name', 'middle_name', 'last_name', 'suffix', 'email_add', 'user_contact', 'user_birthdate']
+        
+        for field in allowed_fields:
+            if field in request.data:
+                setattr(user, field, request.data[field])
+        
+        try:
+            user.save()
+        except Exception as e:
+            return Response(
+                {'detail': f'Failed to save profile: {str(e)}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Return updated user data
+        return Response({
+            'user_id': user.user_id,
+            'first_name': user.first_name,
+            'middle_name': user.middle_name,
+            'last_name': user.last_name,
+            'suffix': user.suffix,
+            'email_add': user.email_add,
+            'user_contact': user.user_contact,
+            'user_birthdate': user.user_birthdate,
+            'user_pos': user.user_pos,
+            'role_type': user.role_type,
+        }, status=status.HTTP_200_OK)
+
 # 4b. Verify Password View (Protected)
 class VerifyPasswordView(generics.GenericAPIView):
     permission_classes = (IsAuthenticated,)
@@ -174,6 +212,52 @@ class UserViewSet(ModelViewSet):
     queryset = CustomUser.objects.all()
     permission_classes = (IsAuthenticated,)  # Must be logged in
     lookup_field = 'user_id'
+
+    def _run_access_disable_safeguard(self, target_user, actor_user):
+        """Notify org admins and audit record recoverability when user access is disabled."""
+        if not target_user or not target_user.org_id:
+            return
+
+        from documents.models import Folder, Document
+
+        active_folder_count = Folder.objects.filter(
+            created_by_user=target_user,
+            owning_org_id=target_user.org_id,
+            is_archived=False,
+        ).count()
+        active_document_count = Document.objects.filter(
+            uploaded_by_user=target_user,
+            owning_org_id=target_user.org_id,
+            is_archived=False,
+        ).count()
+
+        msg = (
+            f"Access-disable safeguard: user {target_user.user_id} was set inactive. "
+            f"Org-owned records remain recoverable. "
+            f"Active records created by user: {active_folder_count} folder(s), {active_document_count} document(s)."
+        )
+
+        # Inform active org admins except the actor to avoid redundant notifications.
+        admin_users = CustomUser.objects.filter(
+            org_id=target_user.org_id,
+            is_active=True,
+        ).filter(
+            Q(role_type__in=['admin', 'system_admin']) | Q(is_staff=True) | Q(is_superuser=True)
+        ).exclude(user_index=getattr(actor_user, 'user_index', None))
+
+        for admin_user in admin_users:
+            Notification.objects.create(
+                recipient_user=admin_user,
+                actor_user=actor_user,
+                notif_msg=msg[:255],
+            )
+
+        AuditLog.objects.create(
+            user_index=actor_user,
+            audit_action='User Access Disabled Safeguard',
+            audit_desc=msg,
+            audit_status='Success'
+        )
     
     def get_serializer_class(self):
         """Use different serializers for different actions"""
@@ -205,8 +289,30 @@ class UserViewSet(ModelViewSet):
     
     def update(self, request, *args, **kwargs):
         """Update user and log the action"""
+        target_user = self.get_object()
+        was_active = target_user.is_active
+
+        is_active_input = request.data.get('is_active', None)
+        deactivating = False
+        if is_active_input is not None:
+            deactivating = was_active and str(is_active_input).strip().lower() in ['false', '0', 'no', 'off']
+
         try:
             response = super().update(request, *args, **kwargs)
+
+            if deactivating:
+                try:
+                    target_user.refresh_from_db(fields=['is_active'])
+                    if target_user.is_active is False:
+                        self._run_access_disable_safeguard(target_user, request.user)
+                except Exception as safeguard_error:
+                    AuditLog.objects.create(
+                        user_index=request.user,
+                        audit_action='User Access Disabled Safeguard',
+                        audit_desc=f"Failed to run safeguard for {target_user.user_id}: {str(safeguard_error)}",
+                        audit_status='Failed'
+                    )
+
             # Log successful user update
             AuditLog.objects.create(
                 user_index=request.user,
@@ -366,7 +472,28 @@ class OrganizationViewSet(ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Delete organization and log the action"""
         try:
+            org = self.get_object()
             org_id = self.kwargs.get('org_id', 'unknown')
+
+            # Safeguard: prevent deleting orgs that still own records.
+            from documents.models import Folder, Document
+            folder_count = Folder.objects.filter((Q(owning_org=org) | Q(org=org)) & Q(is_archived=False)).count()
+            document_count = Document.objects.filter(owning_org=org, is_archived=False).count()
+
+            if folder_count > 0 or document_count > 0:
+                msg = (
+                    f"Cannot delete organization {org_id}. "
+                    f"It still has {folder_count} folder(s) and {document_count} document(s). "
+                    "Reassign or archive them first."
+                )
+                AuditLog.objects.create(
+                    user_index=request.user,
+                    audit_action='Delete Organization',
+                    audit_desc=msg,
+                    audit_status='Failed'
+                )
+                return Response({'detail': msg}, status=status.HTTP_400_BAD_REQUEST)
+
             response = super().destroy(request, *args, **kwargs)
             # Log successful organization deletion
             AuditLog.objects.create(
@@ -605,6 +732,8 @@ class UserCreationRequestViewSet(ModelViewSet):
                 last_name=user_creation_request.last_name,
                 suffix=user_creation_request.suffix,
                 user_pos=user_creation_request.user_pos,
+                user_contact=user_creation_request.user_contact,
+                user_birthdate=user_creation_request.user_birthdate,
                 org=user_creation_request.org,
                 role_type='user',
                 is_active=True
@@ -755,6 +884,21 @@ class UserRegistrationRequestView(generics.CreateAPIView):
             serializer.is_valid(raise_exception=True)
             self.perform_create(serializer)
             headers = self.get_success_headers(serializer.data)
+
+            # Notify system admins that a new user creation request is waiting for review.
+            created_request = serializer.instance
+            admin_users = User.objects.filter(is_active=True).filter(
+                Q(is_superuser=True) | Q(role_type='system_admin') | Q(role_type='admin')
+            ).distinct()
+            for admin_user in admin_users:
+                Notification.objects.get_or_create(
+                    recipient_user=admin_user,
+                    notif_msg=(
+                        f"New user creation request {created_request.request_id} "
+                        f"from {created_request.email_add}."
+                    ),
+                    defaults={'actor_user': admin_user}
+                )
             
             # Log successful registration request
             AuditLog.objects.create(

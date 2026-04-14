@@ -17,7 +17,6 @@ class Organization(models.Model):
 
 class IdFormat(models.Model):
     format_id = models.AutoField(primary_key=True)
-    org = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True)
     prefix = models.CharField(max_length=20)
     admin_separator = models.CharField(max_length=5)
     user_separator = models.CharField(max_length=5)
@@ -54,6 +53,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=100)
     suffix = models.CharField(max_length=20, blank=True, null=True)
     user_pos = models.CharField(max_length=255, blank=True, null=True)
+    user_contact = models.CharField(max_length=20, blank=True, null=True)
+    user_birthdate = models.DateField(blank=True, null=True)
     email_add = models.EmailField(unique=True)
     role_type = models.CharField(max_length=50, default='user')
     joined_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
@@ -65,6 +66,28 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = 'user_id'
     REQUIRED_FIELDS = ['email_add', 'first_name', 'last_name']
+
+    def get_full_name(self):
+        """
+        Generate full name with middle initial and suffix.
+        Format: First Middle_Initial Last, Suffix
+        Example: John P. Doe, Jr.
+        """
+        name_parts = [self.first_name, self.last_name]
+        
+        # Add middle initial if middle_name exists
+        if self.middle_name and self.middle_name.strip():
+            middle_initial = self.middle_name.strip()[0].upper() + '.'
+            # Insert middle initial between first and last name
+            name_parts = [self.first_name, middle_initial, self.last_name]
+        
+        full_name = ' '.join(name_parts)
+        
+        # Add suffix if it exists
+        if self.suffix and self.suffix.strip():
+            full_name = f"{full_name}, {self.suffix}"
+        
+        return full_name
 
     class Meta:
         db_table = 'users'
@@ -86,6 +109,8 @@ class UserCreationRequest(models.Model):
     suffix = models.CharField(max_length=50, blank=True, null=True)
     email_add = models.EmailField(unique=True)
     user_pos = models.CharField(max_length=255)
+    user_contact = models.CharField(max_length=20, blank=True, null=True)
+    user_birthdate = models.DateField(blank=True, null=True)
     org = models.ForeignKey(Organization, on_delete=models.PROTECT)
     
     # Request metadata

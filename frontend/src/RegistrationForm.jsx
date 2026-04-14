@@ -4,6 +4,7 @@ import { authAPI, organizationAPI } from './services/api';
 import './LoginForm.css';
 
 export default function RegistrationForm({ themeData, onBackToLogin, onRegistrationSuccess }) {
+  const suffixOptions = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V', 'Esq.', 'PhD'];
   const [formData, setFormData] = useState({
     first_name: '',
     middle_name: '',
@@ -242,14 +243,18 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
               <label className="block text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">
                 Suffix
               </label>
-              <input
-                type="text"
+              <select
                 name="suffix"
                 value={formData.suffix}
                 onChange={handleInputChange}
-                placeholder="Jr."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-600 text-sm"
-              />
+              >
+                {suffixOptions.map((option) => (
+                  <option key={option || 'none'} value={option}>
+                    {option || 'None'}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

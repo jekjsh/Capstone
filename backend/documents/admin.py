@@ -1,16 +1,16 @@
 from django.contrib import admin
-from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory
+from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory, DocumentArchive, FolderArchive
 
 
 class FolderAdmin(admin.ModelAdmin):
-    list_display = ['folder_id', 'folder_name', 'user_index', 'parent_folder', 'folder_color', 'created_at']
-    search_fields = ['folder_name', 'user_index__user_id']
-    list_filter = ['folder_color', 'created_at']
+    list_display = ['folder_id', 'folder_name', 'owning_org', 'created_by_user', 'parent_folder', 'folder_color', 'created_at']
+    search_fields = ['folder_name', 'owning_org__org_name', 'created_by_user__user_id']
+    list_filter = ['folder_color', 'created_at', 'owning_org']
     readonly_fields = ['created_at', 'updated_at']
     ordering = ['-created_at']
     fieldsets = (
         ('Folder Information', {
-            'fields': ('folder_name', 'folder_color', 'user_index', 'parent_folder', 'org')
+            'fields': ('folder_name', 'folder_color', 'owning_org', 'created_by_user', 'user_index', 'parent_folder', 'org')
         }),
         ('Details', {
             'fields': ('folder_path', 'created_at', 'updated_at')
@@ -19,8 +19,8 @@ class FolderAdmin(admin.ModelAdmin):
 
 
 class FolderShareAdmin(admin.ModelAdmin):
-    list_display = ['share_id', 'folder', 'shared_by_user', 'shared_to_user', 'created_at']
-    search_fields = ['folder__folder_name', 'shared_by_user__user_id', 'shared_to_user__user_id']
+    list_display = ['share_id', 'folder', 'shared_by_org', 'shared_with_org', 'created_at']
+    search_fields = ['folder__folder_name', 'shared_by_org__org_name', 'shared_with_org__org_name']
     list_filter = ['created_at']
     readonly_fields = ['created_at']
     ordering = ['-created_at']
@@ -34,15 +34,15 @@ class DocumentCategoryInline(admin.TabularInline):
 
 
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = ['doc_id', 'doc_name', 'user_index', 'folder', 'category_count', 'doc_uploaded', 'updated_at']
-    search_fields = ['doc_name', 'doc_desc', 'user_index__user_id', 'user_index__first_name', 'user_index__last_name']
-    list_filter = ['doc_uploaded', 'updated_at', 'folder__org']
+    list_display = ['doc_id', 'doc_name', 'user_index', 'owning_org', 'uploaded_by_user', 'folder', 'category_count', 'doc_uploaded', 'updated_at']
+    search_fields = ['doc_name', 'doc_desc', 'user_index__user_id', 'user_index__first_name', 'user_index__last_name', 'owning_org__org_name']
+    list_filter = ['doc_uploaded', 'updated_at', 'folder__org', 'owning_org']
     ordering = ['-doc_uploaded']
     inlines = [DocumentCategoryInline]
     readonly_fields = ['doc_uploaded', 'updated_at', 'display_categories']
     fieldsets = (
         ('Document Information', {
-            'fields': ('doc_name', 'doc_desc', 'user_index', 'folder')
+            'fields': ('doc_name', 'doc_desc', 'user_index', 'uploaded_by_user', 'owning_org', 'folder')
         }),
         ('File Details', {
             'fields': ('doc_path', 'doc_file', 'doc_uploaded', 'updated_at')
@@ -118,6 +118,22 @@ class DocumentCategoryAdmin(admin.ModelAdmin):
     ordering = ['-added_at']
 
 
+class DocumentArchiveAdmin(admin.ModelAdmin):
+    list_display = ['archive_id', 'archive_batch_id', 'source_doc_id', 'doc_name', 'owning_org', 'deleted_at', 'archived_at']
+    search_fields = ['source_doc_id', 'doc_name', 'archive_batch_id', 'owning_org__org_name']
+    list_filter = ['archived_at', 'deleted_at', 'owning_org']
+    readonly_fields = ['archived_at', 'snapshot']
+    ordering = ['-archived_at']
+
+
+class FolderArchiveAdmin(admin.ModelAdmin):
+    list_display = ['archive_id', 'archive_batch_id', 'source_folder_id', 'folder_name', 'owning_org', 'deleted_at', 'archived_at']
+    search_fields = ['source_folder_id', 'folder_name', 'archive_batch_id', 'owning_org__org_name']
+    list_filter = ['archived_at', 'deleted_at', 'owning_org']
+    readonly_fields = ['archived_at', 'snapshot']
+    ordering = ['-archived_at']
+
+
 admin.site.register(Folder, FolderAdmin)
 admin.site.register(FolderShare, FolderShareAdmin)
 admin.site.register(Document, DocumentAdmin)
@@ -125,3 +141,5 @@ admin.site.register(DocumentShare, DocumentShareAdmin)
 admin.site.register(OcrData, OcrDataAdmin)
 admin.site.register(Category, CategoryAdmin)
 admin.site.register(DocumentCategory, DocumentCategoryAdmin)
+admin.site.register(DocumentArchive, DocumentArchiveAdmin)
+admin.site.register(FolderArchive, FolderArchiveAdmin)

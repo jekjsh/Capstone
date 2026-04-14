@@ -1,5 +1,5 @@
 
-import { X, Edit, Key, Lock, Unlock } from 'lucide-react';
+import { X, Edit, Key, Lock, Unlock, CheckCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getRoleDisplayName } from '../../utils/roleMapper';
 
@@ -61,6 +61,11 @@ export function UserActionMenu({
           )}
           <span>{isActive ? 'Deactivate User' : 'Activate User'}</span>
         </button>
+        {isActive && (
+          <p className="px-4 pb-3 text-xs text-gray-500">
+            Deactivating access keeps organization-owned records recoverable by authorized admins.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -176,6 +181,37 @@ export function AddUserModal({
     }
   }, [showAddUserModal, dataStore, newUser.role]);
    if (!showAddUserModal) return null;
+  const isEditMode = Boolean(editingUserId);
+  const editingFullName = [newUser.firstName, newUser.middleName, newUser.lastName, newUser.suffix]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const suffixOptions = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V', 'Esq.', 'PhD'];
+
+  const findOrgNameById = (nodes, orgId) => {
+    if (!Array.isArray(nodes) || !orgId) return '';
+
+    for (const node of nodes) {
+      const nodeId = node.org_id || node.id;
+      if (String(nodeId) === String(orgId)) {
+        return node.org_name || node.name || '';
+      }
+
+      const children = node.sub_offices || node.children;
+      if (Array.isArray(children) && children.length > 0) {
+        const found = findOrgNameById(children, orgId);
+        if (found) return found;
+      }
+    }
+
+    return '';
+  };
+
+  const organizationUnitDisplayName =
+    findOrgNameById(organizationTree, newUser.organizationUnitId) ||
+    newUser.organizationUnitName ||
+    'Not assigned';
  const getPlaceholder = () => {
     if (currentFormat) {
       if (currentFormat.format.customFormat) {
@@ -209,8 +245,8 @@ export function AddUserModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center border-b border-gray-200 px-6 py-4">
           <h2 className="text-2xl font-bold text-gray-800">
             {editingUserId ? 'Edit User Information' : 'Add New User'}
           </h2>
@@ -223,8 +259,12 @@ export function AddUserModal({
               setNewUser({ 
                 userId: '', 
                 firstName: '', 
+                middleName: '',
                 lastName: '', 
+                suffix: '',
                 email: '', 
+                userContact: '',
+                userBirthdate: '',
                 role: 'User', 
                 organizationUnitId: '', 
                 organizationPosition: '' 
@@ -236,11 +276,11 @@ export function AddUserModal({
           </button>
         </div>
         
-        <div className="space-y-4">
+        <div className="p-6 space-y-4">
           {editingUserId ? (
             <div className="p-3 bg-blue-50 rounded-lg mb-4">
               <p className="text-sm text-blue-800">
-                <strong>Editing user:</strong> {editingUserId}
+                <strong>Editing user:</strong> {editingFullName || editingUserId}
               </p>
             </div>
           ) : (
@@ -283,7 +323,7 @@ export function AddUserModal({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* First Name */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
@@ -297,6 +337,18 @@ export function AddUserModal({
                 placeholder="e.g., John"
               />
               {errors.firstName && <p className="mt-1 text-sm text-red-500">{errors.firstName}</p>}
+            </div>
+
+            {/* Middle Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Middle Name</label>
+              <input
+                type="text"
+                value={newUser.middleName || ''}
+                onChange={(e) => setNewUser({ ...newUser, middleName: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="e.g., Santos"
+              />
             </div>
 
             {/* Last Name */}
@@ -314,6 +366,22 @@ export function AddUserModal({
               {errors.lastName && <p className="mt-1 text-sm text-red-500">{errors.lastName}</p>}
             </div>
 
+            {/* Suffix */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Suffix</label>
+              <select
+                value={newUser.suffix || ''}
+                onChange={(e) => setNewUser({ ...newUser, suffix: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {suffixOptions.map((option) => (
+                  <option key={option || 'none'} value={option}>
+                    {option || 'None'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
@@ -327,6 +395,35 @@ export function AddUserModal({
                 placeholder="e.g., john.doe@example.com"
               />
               {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
+            </div>
+
+            {/* Contact Number */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Contact Number</label>
+              <input
+                type="text"
+                value={newUser.userContact || ''}
+                onChange={(e) => setNewUser({ ...newUser, userContact: e.target.value })}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.userContact ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                }`}
+                placeholder="e.g., +63 912 345 6789"
+              />
+              {errors.userContact && <p className="mt-1 text-sm text-red-500">{errors.userContact}</p>}
+            </div>
+
+            {/* Birthdate */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+              <input
+                type="date"
+                value={newUser.userBirthdate || ''}
+                onChange={(e) => setNewUser({ ...newUser, userBirthdate: e.target.value })}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.userBirthdate ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                }`}
+              />
+              {errors.userBirthdate && <p className="mt-1 text-sm text-red-500">{errors.userBirthdate}</p>}
             </div>
 
             {/* Role */}
@@ -357,24 +454,35 @@ export function AddUserModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Organization Unit *</label>
-                <select
-                  value={newUser.organizationUnitId || ''}
-                  onChange={(e) => setNewUser({ ...newUser, organizationUnitId: e.target.value })}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                    errors.organizationUnitId ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-                  }`}
-                >
-                  <option value="">Select Organization Unit</option>
-                  {organizationTree && organizationTree.length > 0 && renderOrgUnitOptions(organizationTree)}
-                </select>
+                {isEditMode ? (
+                  <input
+                    type="text"
+                    value={organizationUnitDisplayName}
+                    readOnly
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-800"
+                  />
+                ) : (
+                  <select
+                    value={newUser.organizationUnitId || ''}
+                    onChange={(e) => setNewUser({ ...newUser, organizationUnitId: e.target.value })}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                      errors.organizationUnitId ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                    }`}
+                  >
+                    <option value="">Select Organization Unit</option>
+                    {organizationTree && organizationTree.length > 0 && renderOrgUnitOptions(organizationTree)}
+                  </select>
+                )}
                 {errors.organizationUnitId && <p className="mt-1 text-sm text-red-500">{errors.organizationUnitId}</p>}
                 <p className="mt-1 text-xs text-gray-500">
-                  The organizational unit where this user belongs
+                  {isEditMode
+                    ? 'Organization Unit is managed by System Admin and is shown for reference only.'
+                    : 'The organizational unit where this user belongs'}
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Position/Title in Organization</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
                 <input
                   type="text"
                   value={newUser.organizationPosition || ''}
@@ -390,7 +498,7 @@ export function AddUserModal({
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="flex gap-3 px-6 pb-6 mt-2">
           <button
             onClick={() => {
               setShowAddUserModal(false);
@@ -578,54 +686,11 @@ export function EditPasswordModal({
     setResetPasswordSuccess(false);
   };
 
-  // Show success state when password reset is successful
-  if (resetPasswordSuccess) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">Password Reset</h2>
-            <button 
-              onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-
-          <div className="space-y-6">
-            {/* Success Icon */}
-            <div className="flex justify-center">
-              <CheckCircle className="w-16 h-16 text-green-500" />
-            </div>
-
-            {/* Success Message */}
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm text-green-800 whitespace-pre-line">
-                {resetPasswordMessage}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={handleClose}
-              className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show original form for other uses (if any)
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Change Password</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Password Reset</h2>
           <button 
             onClick={handleClose}
             className="text-gray-400 hover:text-gray-600"
@@ -634,61 +699,26 @@ export function EditPasswordModal({
           </button>
         </div>
 
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-          <p className="text-sm text-gray-700">
-            <span className="font-semibold">Changing password for:</span>
-          </p>
-          <p className="text-sm text-gray-900 font-medium">
-            {userList.find(u => u.id === editingUserId)?.name}
-          </p>
-          <p className="text-xs text-gray-600">{editingUserId}</p>
-        </div>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">New Password</label>
-            <input
-              type="password"
-              value={passwordData.password}
-              onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.password ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="Enter new password"
-            />
-            {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
+        <div className="space-y-6">
+          {/* Success Icon */}
+          <div className="flex justify-center">
+            <CheckCircle className="w-16 h-16 text-green-500" />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
-            <input
-              type="password"
-              value={passwordData.confirmPassword}
-              onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.confirmPassword ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="Re-enter new password"
-            />
-            {errors.confirmPassword && <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>}
+          {/* Success Message */}
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-800 whitespace-pre-line">
+              {resetPasswordMessage}
+            </p>
           </div>
         </div>
 
         <div className="flex gap-3 mt-6">
           <button
             onClick={handleClose}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+            className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
           >
-            Cancel
-          </button>
-          <button
-            onClick={handleSaveUser}
-            disabled={!passwordData.password || !passwordData.confirmPassword || 
-              passwordData.password !== passwordData.confirmPassword
-            }
-            className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Update Password
+            Close
           </button>
         </div>
       </div>

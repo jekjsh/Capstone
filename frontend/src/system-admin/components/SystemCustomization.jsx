@@ -172,7 +172,11 @@ export default function SystemCustomization({ onClose }) {
       setTheme(updatedTheme);
       await refreshTheme();
       setSuccessMessage('Settings saved successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      
+      // Refresh page after showing success message
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
     } catch (err) {
       console.error('Save error:', err);
       setError(err.message || 'Failed to save settings');
@@ -298,10 +302,10 @@ export default function SystemCustomization({ onClose }) {
                     ) : (
                       <label className="w-24 h-24 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100">
                         <Upload className="w-4 h-4 text-gray-400 mb-1" />
-                        <span className="text-xs text-gray-600 text-center">PNG, JPG</span>
+                        <span className="text-xs text-gray-600 text-center">PNG, JPG, SVG</span>
                         <input
                           type="file"
-                          accept="image/png,image/jpeg"
+                          accept="image/png,image/jpeg,image/svg+xml"
                           onChange={handleLogoChange}
                           className="hidden"
                         />

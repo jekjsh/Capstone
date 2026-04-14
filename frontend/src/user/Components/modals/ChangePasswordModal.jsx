@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { userAPI } from '../../../services/api';
 
@@ -14,10 +14,25 @@ export default function ChangePasswordModal({ isOpen, onClose, currentUsername }
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Validate that we have a username when modal opens
+  useEffect(() => {
+    if (isOpen && !currentUsername) {
+      setError('Error: User ID is not available. Please refresh the page and try again.');
+    } else if (isOpen) {
+      setError('');
+    }
+  }, [isOpen, currentUsername]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    // Check if we have a username
+    if (!currentUsername) {
+      setError('Error: User ID is missing. Please refresh the page.');
+      return;
+    }
 
     // Validation
     if (!currentPassword || !newPassword || !confirmPassword) {

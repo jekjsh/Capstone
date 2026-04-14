@@ -521,7 +521,7 @@ export const documentAPI = {
 
   // Get documents shared with me
   getSharedWithMe: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/shared_with_me/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/shared_with_me/`);
     if (!response.ok) {
       throw new Error('Failed to fetch shared documents');
     }
@@ -530,7 +530,7 @@ export const documentAPI = {
 
   // Get documents shared by me
   getSharedByMe: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/shared_by_me/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/shared_by_me/`);
     if (!response.ok) {
       throw new Error('Failed to fetch documents shared by me');
     }
@@ -539,7 +539,7 @@ export const documentAPI = {
 
   // Get deleted documents
   getDeleted: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/deleted/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/deleted/`);
     if (!response.ok) {
       throw new Error('Failed to fetch deleted documents');
     }
@@ -548,7 +548,7 @@ export const documentAPI = {
 
   // Permanently delete a document
   permanentDelete: async (id) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/${id}/permanent_delete/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}/permanent_delete/`, {
       method: 'POST',
     });
     if (!response.ok) {
@@ -558,7 +558,7 @@ export const documentAPI = {
 
   // Empty trash
   emptyTrash: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/documents/empty_trash/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/empty_trash/`, {
       method: 'POST',
     });
     if (!response.ok) {
@@ -592,22 +592,31 @@ export const documentAPI = {
     }
     return await response.json();
   },
+
+  // Get ownership/history timeline for a document
+  getHistory: async (docId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${docId}/history/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch document history');
+    }
+    return await response.json();
+  },
 };
 
-// Organization Shares API
+// Organization Shares API (Folder Shares)
 export const organizationShareAPI = {
-  // Get all organization shares
+  // Get all organization shares (folder shares)
   getAll: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/organization-shares/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folder-shares/`);
     if (!response.ok) {
       throw new Error('Failed to fetch organization shares');
     }
     return await response.json();
   },
 
-  // Create a new organization share
+  // Create a new organization share (folder share)
   create: async (data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/organization-shares/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folder-shares/`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -656,6 +665,10 @@ export const documentShareAPI = {
 
 // Folder Share API
 export const folderShareAPI = {
+  // Contract (org-based):
+  // create payload: { folder, shared_with_org, share_msg? }
+  // response fields include: shared_by_org, shared_with_org, shared_by_org_name, shared_with_org_name
+
   // Get all folder shares
   getAll: async () => {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/folder-shares/`);
@@ -689,44 +702,51 @@ export const folderShareAPI = {
   },
 };
 
-// System Settings API
+// System Settings API (using ID Formats endpoint)
 export const systemSettingsAPI = {
   // Get user ID format configuration
   getUserIdFormat: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/system-settings/user_id_format/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/`);
     if (!response.ok) {
       throw new Error('Failed to fetch user ID format');
     }
-    return await response.json();
+    const data = await response.json();
+    // Return the first active format or the first one
+    return Array.isArray(data) ? (data.find(fmt => fmt.is_active) || data[0]) : data;
   },
 
   // Save user ID format configuration
   saveUserIdFormat: async (data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/system-settings/user_id_format/`, {
-      method: 'POST',
-      body: JSON.stringify({ setting_value: data }),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to save user ID format');
+    // Try to update existing active format
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to save user ID format');
+      }
+      return await response.json();
+    } catch (error) {
+      throw new Error(error.message || 'Failed to save user ID format');
     }
-    return await response.json();
   },
 
-  // Get all system settings
+  // Get all ID formats
   getAll: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/system-settings/`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/`);
     if (!response.ok) {
-      throw new Error('Failed to fetch system settings');
+      throw new Error('Failed to fetch ID formats');
     }
     return await response.json();
   },
 
-  // Get a specific system setting by key
+  // Get a specific system setting by key (deprecated - kept for compatibility)
   getByKey: async (settingKey) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/system-settings/?setting_key=${settingKey}`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/id-formats/`);
     if (!response.ok) {
-      throw new Error('Failed to fetch system setting');
+      throw new Error('Failed to fetch ID formats');
     }
     return await response.json();
   },
@@ -752,11 +772,54 @@ export const folderAPI = {
     return await response.json();
   },
 
+  // Get deleted folders
+  getDeleted: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/deleted/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch deleted folders');
+    }
+    return await response.json();
+  },
+
+  // Restore a deleted folder
+  restore: async (folderId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/restore/`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to restore folder');
+    }
+    return await response.json();
+  },
+
+  // Permanently delete a soft-deleted folder
+  permanentDelete: async (folderId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/permanent_delete/`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to permanently delete folder');
+    }
+    return await response.json();
+  },
+
   // Get documents in a specific folder
+  // Document contract includes `can_open` flag. When false, `doc_file` and `doc_file_url` are null.
   getDocuments: async (folderId) => {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/documents/`);
     if (!response.ok) {
       throw new Error('Failed to fetch folder documents');
+    }
+    return await response.json();
+  },
+
+  // Get ownership/history timeline for a folder
+  getHistory: async (folderId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/history/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch folder history');
     }
     return await response.json();
   },
@@ -822,53 +885,27 @@ export const folderAPI = {
   },
 };
 
-// Tags API
+// Tags API - Deprecated (using categories instead)
 export const tagAPI = {
-  // Get all tags for the current user
+  // Get all tags - no longer used, return empty array
   getAll: async () => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/tags/`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch tags');
-    }
-    return await response.json();
+    // Tags have been replaced with categories
+    return [];
   },
 
-  // Create a new tag
+  // Create a new tag - no longer used
   create: async (data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/tags/`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to create tag');
-    }
-    return await response.json();
+    return null;
   },
 
-  // Update a tag
+  // Update a tag - no longer used
   update: async (tagId, data) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/tags/${tagId}/`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to update tag');
-    }
-    return await response.json();
+    return null;
   },
 
-  // Delete a tag
+  // Delete a tag - no longer used
   delete: async (tagId) => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/tags/${tagId}/`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to delete tag');
-    }
-    return response.ok ? { success: true } : await response.json();
+    return { success: true };
   },
 };
 
@@ -995,6 +1032,19 @@ export const authAPI = {
     const response = await fetchWithAuth(`${API_BASE_URL}/auth/profile/`);
     if (!response.ok) {
       throw new Error('Failed to fetch current user profile');
+    }
+    return await response.json();
+  },
+  
+  // Update current user's profile
+  updateProfile: async (data) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/auth/update-profile/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update profile');
     }
     return await response.json();
   },

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bell, X, FileText, Users, Trash2, Check, CheckCheck } from 'lucide-react';
 import { notificationAPI } from '../../services/api';
 
-export default function Notifications({ currentUser }) {
+export default function Notifications({ currentUser, onNotificationNavigate }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -21,18 +21,25 @@ export default function Notifications({ currentUser }) {
 
   const loadNotifications = async () => {
     try {
-      // First generate/sync notifications
-      await notificationAPI.generateNotifications();
-      
-      // Then fetch all notifications
+      setIsLoading(true);
       const data = await notificationAPI.getAll();
-      setNotifications(data);
-      
-      // Count unread notifications
-      const unread = data.filter(n => !n.isRead).length;
+      const normalized = (data || []).map((item) => ({
+        id: item.notif_id,
+        isRead: Boolean(item.is_read),
+        createdAt: item.created_at,
+        message: item.notif_msg || '',
+        title: item.doc_name ? 'Document Shared' : 'Notification',
+        senderName: item.actor_name || '',
+      }));
+
+      setNotifications(normalized);
+
+      const unread = normalized.filter((n) => !n.isRead).length;
       setUnreadCount(unread);
     } catch (error) {
       console.error('Error loading notifications:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -71,17 +78,29 @@ export default function Notifications({ currentUser }) {
     }
   };
 
-  const getNotificationIcon = (type) => {
-    switch (type) {
-      case 'organization_share':
-        return <Users className="w-5 h-5 text-blue-500" />;
-      case 'document_share':
-        return <FileText className="w-5 h-5 text-green-500" />;
-      case 'deletion_warning':
-        return <Trash2 className="w-5 h-5 text-red-500" />;
-      default:
-        return <Bell className="w-5 h-5 text-gray-500" />;
+  const handleNotificationOpen = async (notification) => {
+    if (!notification) return;
+
+    if (!notification.isRead) {
+      await handleMarkRead(notification.id);
     }
+
+    if (onNotificationNavigate) {
+      onNotificationNavigate(notification);
+    }
+  };
+
+  const getNotificationIcon = (item) => {
+    const text = `${item.title} ${item.message}`.toLowerCase();
+    if (text.includes('shared')) {
+      return item.title.toLowerCase().includes('document')
+        ? <FileText className="w-5 h-5 text-green-500" />
+        : <Users className="w-5 h-5 text-blue-500" />;
+    }
+    if (text.includes('delete') || text.includes('removed')) {
+      return <Trash2 className="w-5 h-5 text-red-500" />;
+    }
+    return <Bell className="w-5 h-5 text-gray-500" />;
   };
 
   const formatTimeAgo = (dateString) => {
@@ -152,13 +171,14 @@ export default function Notifications({ currentUser }) {
                   {notifications.map((notification) => (
                     <div
                       key={notification.id}
+                      onClick={() => handleNotificationOpen(notification)}
                       className={`p-4 hover:bg-gray-50 transition-colors ${
                         !notification.isRead ? 'bg-blue-50/50' : ''
-                      }`}
+                      } cursor-pointer`}
                     >
                       <div className="flex gap-3">
                         <div className="flex-shrink-0 mt-1">
-                          {getNotificationIcon(notification.type)}
+                          {getNotificationIcon(notification)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
@@ -166,7 +186,10 @@ export default function Notifications({ currentUser }) {
                               {notification.title}
                             </p>
                             <button
-                              onClick={() => handleDeleteNotification(notification.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteNotification(notification.id);
+                              }}
                               className="text-gray-400 hover:text-red-500 flex-shrink-0"
                             >
                               <X className="w-4 h-4" />
@@ -186,7 +209,10 @@ export default function Notifications({ currentUser }) {
                             </span>
                             {!notification.isRead && (
                               <button
-                                onClick={() => handleMarkRead(notification.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkRead(notification.id);
+                                }}
                                 className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
                               >
                                 <Check className="w-3 h-3" />

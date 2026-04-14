@@ -1,8 +1,10 @@
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.db.models import Q
 from .models import AuditLog, Notification
 from .serializers import AuditLogSerializer, NotificationSerializer
+from authenticator.models import UserCreationRequest
 
 
 class AuditLogViewSet(viewsets.ModelViewSet):
@@ -16,11 +18,20 @@ class AuditLogViewSet(viewsets.ModelViewSet):
     ordering = ['-audit_timestamp']
     
     def get_queryset(self):
-        # Only superusers/admins can see all logs
-        if self.request.user.is_superuser:
+        user = self.request.user
+
+        # System-level users can see everything.
+        if user.is_superuser or getattr(user, 'role_type', None) == 'system_admin':
             return AuditLog.objects.all()
-        # Regular users can only see their own actions
-        return AuditLog.objects.filter(user_index=self.request.user)
+
+        # Org admins can view logs for users in their org (and any null-user system rows are excluded).
+        if getattr(user, 'role_type', None) == 'admin' and getattr(user, 'org_id', None) is not None:
+            return AuditLog.objects.filter(
+                Q(user_index__org_id=user.org_id) | Q(user_index=user)
+            )
+
+        # Regular users can only see their own actions.
+        return AuditLog.objects.filter(user_index=user)
     
     def create(self, request, *args, **kwargs):
         """Create a new audit log entry"""
@@ -43,6 +54,49 @@ class NotificationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Users see notifications they received
         return Notification.objects.filter(recipient_user=self.request.user)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def unread_count(self, request):
+        """Return unread notification count for the current user"""
+        count = Notification.objects.filter(recipient_user=request.user, is_read=False).count()
+        return Response({'unread_count': count})
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def generate_notifications(self, request):
+        """Sync notifications for pending user creation requests (system admin/admin only)."""
+        user = request.user
+        if not (user.is_superuser or user.role_type in ['system_admin', 'admin']):
+            return Response({'detail': 'Not authorized to generate notifications.'}, status=status.HTTP_403_FORBIDDEN)
+
+        pending_requests = UserCreationRequest.objects.filter(status='pending')
+        created_count = 0
+
+        for pending_request in pending_requests:
+            message = f"New user creation request {pending_request.request_id} from {pending_request.email_add}."
+            existing_notifications = Notification.objects.filter(
+                recipient_user=user,
+                notif_msg=message
+            ).order_by('-created_at', '-notif_id')
+
+            # Keep only one notification per pending request message for this user.
+            if existing_notifications.exists():
+                keep_notification = existing_notifications.first()
+                duplicate_ids = list(existing_notifications.values_list('notif_id', flat=True))[1:]
+                if duplicate_ids:
+                    Notification.objects.filter(notif_id__in=duplicate_ids).delete()
+                    # Ensure the kept one stays unread so the admin still sees pending work.
+                    if keep_notification.is_read:
+                        keep_notification.is_read = False
+                        keep_notification.save(update_fields=['is_read'])
+            else:
+                Notification.objects.create(
+                    recipient_user=user,
+                    actor_user=user,
+                    notif_msg=message
+                )
+                created_count += 1
+
+        return Response({'created': created_count})
     
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def mark_as_read(self, request, pk=None):

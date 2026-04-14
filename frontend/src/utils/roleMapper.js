@@ -13,10 +13,10 @@ export const getRoleDisplayName = (role) => {
   
   const roleMap = {
     'system_admin': 'IS Manager',
-    'admin': 'Organization Head',
+    'admin': 'Head',
     'user': 'Employee',
     'System Admin': 'IS Manager',
-    'Admin': 'Organization Head',
+    'Admin': 'Head',
     'User': 'Employee'
   };
 

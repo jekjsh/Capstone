@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { FileStack, ChevronDown, ChevronUp, Loader } from 'lucide-react';
+import { UserPlus, ChevronDown, ChevronUp, Loader } from 'lucide-react';
 import { userCreationRequestAPI } from '../../services/api';
 
-export default function SystemAdminRequests({ onOpenRequestModal }) {
+export default function SystemAdminRequests({ onOpenRequestModal, targetRequestId = null }) {
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -12,6 +12,23 @@ export default function SystemAdminRequests({ onOpenRequestModal }) {
   useEffect(() => {
     fetchRequests();
   }, []);
+
+  useEffect(() => {
+    if (!targetRequestId || requests.length === 0) {
+      return;
+    }
+
+    const matchedRequest = requests.find((request) => request.request_id === targetRequestId);
+    if (!matchedRequest) {
+      return;
+    }
+
+    setExpandedRequestId(targetRequestId);
+    const rowElement = document.getElementById(`request-row-${targetRequestId}`);
+    if (rowElement) {
+      rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [targetRequestId, requests]);
 
   const fetchRequests = async () => {
     try {
@@ -71,7 +88,7 @@ export default function SystemAdminRequests({ onOpenRequestModal }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-            <FileStack className="w-6 h-6 text-blue-600" />
+            <UserPlus className="w-6 h-6 text-blue-600" />
             Requests
           </h1>
           <p className="text-gray-600 mt-1">Manage pending requests from users</p>
@@ -103,7 +120,7 @@ export default function SystemAdminRequests({ onOpenRequestModal }) {
       {/* Requests List */}
       {!isLoading && requests.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-          <FileStack className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <UserPlus className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <p className="text-gray-500 text-lg">No requests at this time</p>
         </div>
       ) : (
@@ -112,6 +129,7 @@ export default function SystemAdminRequests({ onOpenRequestModal }) {
           {requests.map((request) => (
             <div
               key={request.request_id}
+              id={`request-row-${request.request_id}`}
               className="bg-blue-50 border-l-4 border-blue-500 transition-colors duration-200"
             >
               {/* Request Header */}

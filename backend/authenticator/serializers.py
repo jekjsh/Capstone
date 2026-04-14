@@ -7,10 +7,16 @@ User = get_user_model()
 
 # 1. User Details Serializer (What the frontend sees)
 class UserSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
-        fields = ['user_index', 'user_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'email_add', 'role_type', 'org', 'is_active', 'joined_at']
+        fields = ['user_index', 'user_id', 'name', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'user_contact', 'user_birthdate', 'email_add', 'role_type', 'org', 'is_active', 'joined_at']
         # We don't include the password here for security
+    
+    def get_name(self, obj):
+        """Return full name with middle initial and suffix"""
+        return obj.get_full_name()
 
 # 1b. User Create/Update Serializer (Handles password for create/update)
 class UserCreateUpdateSerializer(serializers.ModelSerializer):
@@ -18,7 +24,7 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['user_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'email_add', 'password', 'role_type', 'org', 'is_active', 'joined_at']
+        fields = ['user_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'user_contact', 'user_birthdate', 'email_add', 'password', 'role_type', 'org', 'is_active', 'joined_at']
     
     def create(self, validated_data):
         password = validated_data.pop('password', None)
@@ -30,6 +36,8 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
             last_name=validated_data.get('last_name', ''),
             suffix=validated_data.get('suffix', ''),
             user_pos=validated_data.get('user_pos', ''),
+            user_contact=validated_data.get('user_contact', ''),
+            user_birthdate=validated_data.get('user_birthdate', None),
             role_type=validated_data.get('role_type', 'user'),
             org=validated_data.get('org', None),
             is_active=validated_data.get('is_active', True)
@@ -48,6 +56,8 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
         instance.last_name = validated_data.get('last_name', instance.last_name)
         instance.suffix = validated_data.get('suffix', instance.suffix)
         instance.user_pos = validated_data.get('user_pos', instance.user_pos)
+        instance.user_contact = validated_data.get('user_contact', instance.user_contact)
+        instance.user_birthdate = validated_data.get('user_birthdate', instance.user_birthdate)
         instance.email_add = validated_data.get('email_add', instance.email_add)
         instance.role_type = validated_data.get('role_type', instance.role_type)
         instance.org = validated_data.get('org', instance.org)
@@ -66,7 +76,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['user_id', 'first_name', 'last_name', 'email_add', 'password', 'role_type', 'org']
+        fields = ['user_id', 'first_name', 'last_name', 'email_add', 'password', 'role_type', 'org', 'user_contact', 'user_birthdate']
 
     def create(self, validated_data):
         # This is where your custom ID logic will eventually go!
@@ -78,7 +88,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
             role_type=validated_data.get('role_type', 'user'),
-            org=validated_data.get('org', None)
+            org=validated_data.get('org', None),
+            user_contact=validated_data.get('user_contact', ''),
+            user_birthdate=validated_data.get('user_birthdate', None)
         )
         return user
 
@@ -128,7 +140,7 @@ class UserCreationRequestSerializer(serializers.ModelSerializer):
         model = UserCreationRequest
         fields = [
             'request_id', 'first_name', 'middle_name', 'last_name', 'suffix',
-            'email_add', 'user_pos', 'org', 'org_code', 'org_name',
+            'email_add', 'user_pos', 'user_contact', 'user_birthdate', 'org', 'org_code', 'org_name',
             'status', 'created_at', 'created_by',
             'claimed_by', 'claimed_by_name', 'claimed_at',
             'reviewed_by', 'reviewed_by_name', 'reviewed_at',
@@ -151,7 +163,7 @@ class UserCreationRequestSerializer(serializers.ModelSerializer):
 class UserCreationRequestCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserCreationRequest
-        fields = ['first_name', 'middle_name', 'last_name', 'suffix', 'email_add', 'user_pos', 'org', 'created_by']
+        fields = ['first_name', 'middle_name', 'last_name', 'suffix', 'email_add', 'user_pos', 'user_contact', 'user_birthdate', 'org', 'created_by']
     
     def create(self, validated_data):
         import uuid
@@ -166,6 +178,8 @@ class UserCreationRequestCreateSerializer(serializers.ModelSerializer):
             suffix=validated_data.get('suffix', ''),
             email_add=validated_data['email_add'],
             user_pos=validated_data['user_pos'],
+            user_contact=validated_data.get('user_contact', ''),
+            user_birthdate=validated_data.get('user_birthdate', None),
             org=validated_data['org'],
             created_by=validated_data['created_by'],
             status='pending'

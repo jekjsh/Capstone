@@ -1,7 +1,7 @@
 import { Search, MoreVertical, ChevronUp, ChevronDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getRoleDisplayName } from '../../utils/roleMapper';
-import AdminPagination from '../../admin/component/AdminPagination';
+import Pagination from '../../components/Pagination';
 
 export default function SystemAdminUserManagement({ 
   userList, 
@@ -158,6 +158,10 @@ export default function SystemAdminUserManagement({
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow-md space-y-4">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          Policy: Setting a user to Inactive disables login access while organization-owned records remain recoverable by authorized admins.
+        </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
@@ -339,7 +343,7 @@ export default function SystemAdminUserManagement({
 
       {/* Pagination */}
       {filteredUsers.length > 0 && (
-        <AdminPagination
+        <Pagination
           currentPage={currentPage}
           totalPages={Math.ceil(filteredUsers.length / rowsPerPage)}
           startIndex={(currentPage - 1) * rowsPerPage}

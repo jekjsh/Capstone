@@ -5,6 +5,7 @@ export default function ContextMenu({
   item,
   itemType = 'document', // 'document' or 'folder'
   onShare,
+  hideShareOption = false,
   onRename,
   onDelete,
   onPermissions,
@@ -131,7 +132,7 @@ export default function ContextMenu({
           )}
 
           {/* Share To */}
-          {onShare && (
+          {onShare && !hideShareOption && (
             <button
               onClick={() => handleMenuClick(onShare)}
               className="w-full flex items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 transition-colors border-b border-gray-100 text-sm"

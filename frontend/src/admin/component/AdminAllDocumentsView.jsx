@@ -1,7 +1,7 @@
 import { FileText, Search, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { documentAPI, authAPI } from '../../services/api';
-import AdminPagination from './AdminPagination';
+import { documentAPI } from '../../services/api';
+import Pagination from '../../components/Pagination';
 
 export default function AdminAllDocumentsView({ 
   documents = [], 
@@ -17,7 +17,6 @@ export default function AdminAllDocumentsView({
   const [error, setError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [adminOrg, setAdminOrg] = useState(null);
 
   // Fetch documents on mount
   useEffect(() => {
@@ -29,8 +28,8 @@ export default function AdminAllDocumentsView({
       setIsLoading(true);
       setError('');
       const data = await documentAPI.getAll();
-      console.log('Fetched documents:', data);
-      setAllDocuments(Array.isArray(data) ? data : []);
+      const normalized = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
+      setAllDocuments(normalized);
     } catch (err) {
       console.error('Failed to fetch documents:', err);
       setError('Failed to load documents: ' + err.message);
@@ -46,6 +45,20 @@ export default function AdminAllDocumentsView({
       (doc.user_index && doc.user_index.first_name && doc.user_index.first_name.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSearch;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredDocuments.length / rowsPerPage));
+
+  useEffect(() => {
+    if (Array.isArray(documents) && documents.length > 0 && allDocuments.length === 0) {
+      setAllDocuments(documents);
+    }
+  }, [documents, allDocuments.length]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const getUserFullName = (userIndex) => {
     if (!userIndex) return 'Unknown';
@@ -238,9 +251,9 @@ export default function AdminAllDocumentsView({
 
       {/* Pagination */}
       {filteredDocuments.length > 0 && (
-        <AdminPagination
+        <Pagination
           currentPage={currentPage}
-          totalPages={Math.ceil(filteredDocuments.length / rowsPerPage)}
+          totalPages={totalPages}
           startIndex={(currentPage - 1) * rowsPerPage}
           endIndex={currentPage * rowsPerPage}
           rowsPerPage={rowsPerPage}
@@ -251,9 +264,9 @@ export default function AdminAllDocumentsView({
             setCurrentPage(1);
           }}
           onFirstPage={() => setCurrentPage(1)}
-          onLastPage={() => setCurrentPage(Math.ceil(filteredDocuments.length / rowsPerPage))}
+          onLastPage={() => setCurrentPage(totalPages)}
           onPreviousPage={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-          onNextPage={() => setCurrentPage(prev => Math.min(Math.ceil(filteredDocuments.length / rowsPerPage), prev + 1))}
+          onNextPage={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
         />
       )}
 

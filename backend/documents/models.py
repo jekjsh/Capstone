@@ -3,12 +3,18 @@ from django.conf import settings
 
 class Folder(models.Model):
     folder_id = models.AutoField(primary_key=True)
-    user_index = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='owned_folders')
+    owning_org = models.ForeignKey('authenticator.Organization', on_delete=models.CASCADE, related_name='owned_folders')
+    created_by_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='created_folders', null=True, blank=True)
+    user_index = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='owned_folders')  # Legacy: keeping for backward compatibility
     parent_folder = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subfolders')
-    org = models.ForeignKey('authenticator.Organization', on_delete=models.CASCADE, null=True, blank=True)
+    org = models.ForeignKey('authenticator.Organization', on_delete=models.CASCADE, null=True, blank=True)  # Legacy field
     folder_name = models.CharField(max_length=255)
     folder_path = models.CharField(max_length=500, blank=True, null=True)
     folder_color = models.CharField(max_length=20, default='blue')
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    is_archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -20,12 +26,18 @@ class Folder(models.Model):
 
 class Document(models.Model):
     doc_id = models.AutoField(primary_key=True)
-    user_index = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='owned_docs')
+    owning_org = models.ForeignKey('authenticator.Organization', on_delete=models.CASCADE, related_name='owned_documents')
+    uploaded_by_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='uploaded_docs', null=True, blank=True)
+    user_index = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='owned_docs')  # Legacy: keeping for backward compatibility during transition
     folder = models.ForeignKey(Folder, on_delete=models.CASCADE, null=True, blank=True, related_name='documents')
     doc_name = models.CharField(max_length=255)
     doc_desc = models.TextField(blank=True, null=True)
     doc_path = models.CharField(max_length=500, blank=True, null=True) # Legacy: storing the file path as string
     doc_file = models.FileField(upload_to='documents/%Y/%m/%d/', null=True, blank=True) # New: actual file upload
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    is_archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
     doc_uploaded = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -37,6 +49,7 @@ class DocumentShare(models.Model):
     doc = models.ForeignKey(Document, on_delete=models.CASCADE)
     shared_by_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shares_sent')
     shared_to_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shares_received')
+    share_msg = models.TextField(blank=True, null=True)
     share_timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -44,13 +57,15 @@ class DocumentShare(models.Model):
 
 class FolderShare(models.Model):
     share_id = models.AutoField(primary_key=True)
-    folder = models.ForeignKey(Folder, on_delete=models.CASCADE, related_name='shares')
-    shared_by_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='folder_shares_sent')
-    shared_to_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='folder_shares_received')
+    folder = models.ForeignKey(Folder, on_delete=models.CASCADE, related_name='org_shares')
+    shared_by_org = models.ForeignKey('authenticator.Organization', on_delete=models.CASCADE, related_name='folders_shared_by', null=True, blank=True)
+    shared_with_org = models.ForeignKey('authenticator.Organization', on_delete=models.CASCADE, related_name='folders_shared_with', null=True, blank=True)
+    share_msg = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'folder_shares'
+        unique_together = ('folder', 'shared_with_org')  # Each org can only receive one share per folder
 
 class OcrData(models.Model):
     ocr_id = models.AutoField(primary_key=True)
@@ -85,3 +100,36 @@ class DocumentCategory(models.Model):
     class Meta:
         db_table = 'document_categories'
         unique_together = ('doc', 'category')
+
+
+class FolderArchive(models.Model):
+    archive_id = models.AutoField(primary_key=True)
+    archive_batch_id = models.CharField(max_length=36, null=True, blank=True, db_index=True)
+    source_folder_id = models.IntegerField(db_index=True)
+    owning_org = models.ForeignKey('authenticator.Organization', on_delete=models.SET_NULL, null=True, blank=True)
+    folder_name = models.CharField(max_length=255)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(auto_now_add=True)
+    snapshot = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'folder_archive'
+        indexes = [models.Index(fields=['source_folder_id'])]
+
+
+class DocumentArchive(models.Model):
+    archive_id = models.AutoField(primary_key=True)
+    archive_batch_id = models.CharField(max_length=36, null=True, blank=True, db_index=True)
+    source_doc_id = models.IntegerField(db_index=True)
+    owning_org = models.ForeignKey('authenticator.Organization', on_delete=models.SET_NULL, null=True, blank=True)
+    doc_name = models.CharField(max_length=255)
+    doc_desc = models.TextField(blank=True, null=True)
+    doc_path = models.CharField(max_length=500, blank=True, null=True)
+    doc_file_path = models.CharField(max_length=500, blank=True, null=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(auto_now_add=True)
+    snapshot = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'document_archive'
+        indexes = [models.Index(fields=['source_doc_id'])]

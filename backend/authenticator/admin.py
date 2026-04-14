@@ -20,26 +20,26 @@ class OrganizationAdmin(admin.ModelAdmin):
     )
 
 class IdFormatAdmin(admin.ModelAdmin):
-    list_display = ['format_id', 'org', 'prefix', 'is_active']
+    list_display = ['format_id', 'prefix', 'is_active']
     search_fields = ['prefix']
-    list_filter = ['is_active', 'org']
+    list_filter = ['is_active']
 
 class CustomUserAdmin(BaseUserAdmin):
     model = CustomUser
-    list_display = ['user_id', 'first_name', 'last_name', 'email_add', 'user_pos', 'org', 'role_type', 'is_active']
+    list_display = ['user_id', 'first_name', 'last_name', 'email_add', 'user_contact', 'user_birthdate', 'user_pos', 'org', 'role_type', 'is_active']
     list_filter = ['is_active', 'is_staff', 'role_type', 'org']
-    search_fields = ['user_id', 'email_add', 'first_name', 'last_name']
+    search_fields = ['user_id', 'email_add', 'first_name', 'last_name', 'user_contact']
     ordering = ['user_id']
     fieldsets = (
         (None, {'fields': ('user_id', 'password', 'email_add')}),
-        ('Personal info', {'fields': ('first_name', 'middle_name', 'last_name', 'suffix', 'user_pos')}),
+        ('Personal info', {'fields': ('first_name', 'middle_name', 'last_name', 'suffix', 'user_contact', 'user_birthdate', 'user_pos')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Organization', {'fields': ('org', 'role_type')}),
     )
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('user_id', 'email_add', 'password1', 'password2', 'first_name', 'last_name', 'org', 'role_type'),
+            'fields': ('user_id', 'email_add', 'password1', 'password2', 'first_name', 'last_name', 'user_contact', 'user_birthdate', 'org', 'role_type'),
         }),
     )
 

@@ -5,6 +5,8 @@ export default function FolderCard({
   folder,
   viewMode = 'list',
   docCount = 0,
+  isShared = false,
+  sharedLabel = 'Shared',
   onFolderClick,
   onDeleteClick,
   onShareClick,
@@ -26,7 +28,7 @@ export default function FolderCard({
     >
       <button
         onClick={() => onFolderClick?.(folder.folder_id)}
-        className="flex items-center gap-3 text-left flex-1 min-w-0"
+        className="flex items-center gap-3 text-left flex-1 min-w-0 select-none"
       >
         <div
           className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -36,7 +38,14 @@ export default function FolderCard({
           <Folder className="w-6 h-6" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="font-bold text-gray-800 line-clamp-1">{folder.folder_name}</h3>
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="font-bold text-gray-800 line-clamp-1 select-none">{folder.folder_name}</h3>
+            {isShared && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                {sharedLabel}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-600 line-clamp-1">
             {docCount} item{docCount !== 1 ? 's' : ''}
           </p>
@@ -44,13 +53,25 @@ export default function FolderCard({
       </button>
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
         {showDeleteButton && (
-          <ContextMenu
-            item={folder}
-            itemType="folder"
-            onShare={() => onShareClick?.(folder)}
-            onRename={() => onRenameClick?.(folder.folder_id)}
-            onDelete={() => onDeleteClick?.(folder.folder_id)}
-          />
+          <>
+            {onShareClick && (
+              <button
+                onClick={() => onShareClick(folder)}
+                className="px-2.5 py-1.5 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100 flex items-center gap-1"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                Share
+              </button>
+            )}
+            <ContextMenu
+              item={folder}
+              itemType="folder"
+              hideShareOption={true}
+              onShare={() => onShareClick?.(folder)}
+              onRename={() => onRenameClick?.(folder.folder_id)}
+              onDelete={() => onDeleteClick?.(folder.folder_id)}
+            />
+          </>
         )}
       </div>
     </div>

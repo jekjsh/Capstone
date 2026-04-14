@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import LoginInterface from './LoginInterface';
 import { authAPI, clearAuthTokens, getAccessToken, systemThemeAPI } from './services/api';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -32,6 +34,17 @@ export default function App() {
         // Update document title immediately
         if (theme?.sys_abbr) {
           document.title = `${theme.sys_abbr} RKMS`;
+        }
+        
+        // Update favicon based on sys_logo
+        if (theme?.sys_logo) {
+          const logoUrl = theme.sys_logo.startsWith('http') 
+            ? theme.sys_logo 
+            : `http://localhost:8000${theme.sys_logo}`;
+          const link = document.querySelector("link[rel='icon']");
+          if (link) {
+            link.href = logoUrl;
+          }
         }
         
         // Apply theme colors to CSS variables immediately
@@ -172,6 +185,18 @@ export default function App() {
 
   return (
     <SystemThemeProvider initialTheme={initialTheme}>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={true}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="colored"
+      />
       <Router>
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />

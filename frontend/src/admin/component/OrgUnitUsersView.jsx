@@ -1,13 +1,14 @@
 import { Users, Search, Briefcase, Plus, Trash2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import Pagination from '../../components/Pagination';
 
 export default function OrgUnitUsersView({ 
   organizationTree, 
   userList,
   organizations = [],
-  onRefreshUsers
+  onRefreshUsers,
+  loggedInUser
 }) {
-  const [selectedOrgId, setSelectedOrgId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
@@ -16,55 +17,62 @@ export default function OrgUnitUsersView({
   const [isRemovingUser, setIsRemovingUser] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // Build organization tree from flat list
-  const orgTree = useMemo(() => {
-    if (!organizations || organizations.length === 0) {
-      return [];
+  // Determine role type
+  const userRole = loggedInUser?.role_type || loggedInUser?.role || 'user';
+  const userOrgId = loggedInUser?.org || loggedInUser?.full_data?.org;
+
+  // Get the organization to display
+  const viewingOrganization = useMemo(() => {
+    if (userRole === 'system_admin') {
+      return null;
+    } else if (userRole === 'admin') {
+      if (!userOrgId) return null;
+      return organizations.find(org => org.org_id === userOrgId);
     }
-    
-    const orgsMap = new Map();
-    organizations.forEach(org => {
-      orgsMap.set(org.org_id, {
-        ...org,
-        children: []
-      });
-    });
-    
-    const roots = [];
-    organizations.forEach(org => {
-      const orgNode = orgsMap.get(org.org_id);
-      if (!org.parent_org) {
-        roots.push(orgNode);
-      } else {
-        const parent = orgsMap.get(org.parent_org);
-        if (parent) {
-          parent.children.push(orgNode);
-        }
-      }
-    });
-    
-    // Sort children for consistency
-    const sortOrgs = (orgs) => {
-      orgs.forEach(org => {
-        org.children.sort((a, b) => a.org_name.localeCompare(b.org_name));
-        if (org.children.length > 0) {
-          sortOrgs(org.children);
-        }
-      });
-    };
-    
-    sortOrgs(roots);
-    roots.sort((a, b) => a.org_name.localeCompare(b.org_name));
-    
-    return roots;
-  }, [organizations]);
+    return null;
+  }, [userRole, userOrgId, organizations]);
 
-  const getOrgMemberCount = (orgId) => {
-    return userList.filter(u => u.org === orgId).length;
+  // Get organization name
+  const getOrgName = () => {
+    if (viewingOrganization) {
+      return viewingOrganization.org_name;
+    }
+    return 'Organization';
   };
 
-  // Get users without organization (unassigned users, excluding system_admin)
+  // Get users in the organization being viewed
+  const organizationUsers = useMemo(() => {
+    if (userRole === 'admin') {
+      if (!userOrgId) return [];
+      return userList.filter(user => user.org === userOrgId);
+    } else if (userRole === 'system_admin') {
+      return userList;
+    }
+    return [];
+  }, [userRole, userOrgId, userList]);
+
+  // Filter users by search query
+  const filteredUsers = useMemo(() => {
+    let users = organizationUsers;
+    
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      users = users.filter(user =>
+        user.id?.toLowerCase().includes(query) ||
+        user.firstName?.toLowerCase().includes(query) ||
+        user.lastName?.toLowerCase().includes(query) ||
+        user.middle_name?.toLowerCase().includes(query) ||
+        user.email?.toLowerCase().includes(query)
+      );
+    }
+    
+    return users;
+  }, [organizationUsers, searchQuery]);
+
+  // Get unassigned users for the Add Member modal
   const unassignedUsers = useMemo(() => {
     let users = userList.filter(u => !u.org && u.role_type !== 'system_admin');
     
@@ -81,44 +89,43 @@ export default function OrgUnitUsersView({
     return users;
   }, [userList, memberSearchQuery]);
 
+  // Paginate filtered users
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    return filteredUsers.slice(startIndex, startIndex + rowsPerPage);
+  }, [filteredUsers, currentPage, rowsPerPage]);
+
   const assignUserToOrg = async (userId) => {
     setIsAddingUser(true);
     try {
-      // Call API to assign user to organization
       const response = await fetch(`http://localhost:8000/api/users/${userId}/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         },
-        body: JSON.stringify({ org: selectedOrgId })
+        body: JSON.stringify({ org: userOrgId })
       });
 
       if (!response.ok) {
         throw new Error('Failed to assign user to organization');
       }
 
-      // Update local state
       const updatedUser = await response.json();
-      console.log('User assigned successfully:', updatedUser);
       
-      // Refresh user list to reflect the change in real-time
       if (onRefreshUsers) {
         await onRefreshUsers();
       }
       
-      // Show success notification
       setNotification({
         show: true,
         message: `${updatedUser.first_name || updatedUser.firstName} ${updatedUser.last_name || updatedUser.lastName} has been added successfully!`,
         type: 'success'
       });
       
-      // Clear search and close modal
       setMemberSearchQuery('');
       setShowAddMemberModal(false);
       
-      // Auto-hide notification after 3 seconds
       setTimeout(() => {
         setNotification({ show: false, message: '', type: 'success' });
       }, 3000);
@@ -130,7 +137,6 @@ export default function OrgUnitUsersView({
         type: 'error'
       });
       
-      // Auto-hide error notification after 3 seconds
       setTimeout(() => {
         setNotification({ show: false, message: '', type: 'error' });
       }, 3000);
@@ -142,7 +148,6 @@ export default function OrgUnitUsersView({
   const unassignUserFromOrg = async (userId) => {
     setIsRemovingUser(true);
     try {
-      // Call API to unassign user from organization
       const response = await fetch(`http://localhost:8000/api/users/${userId}/`, {
         method: 'PATCH',
         headers: {
@@ -156,30 +161,24 @@ export default function OrgUnitUsersView({
         throw new Error('Failed to unassign user from organization');
       }
 
-      // Update local state
       const updatedUser = await response.json();
-      console.log('User unassigned successfully:', updatedUser);
       
-      // Refresh user list to reflect the change in real-time
       if (onRefreshUsers) {
         await onRefreshUsers();
       }
       
-      // Show success notification
       setNotification({
         show: true,
         message: `${updatedUser.first_name || updatedUser.firstName} ${updatedUser.last_name || updatedUser.lastName} has been removed successfully!`,
         type: 'success'
       });
       
-      // Auto-hide notification after 3 seconds
+      setShowRemoveConfirm(false);
+      setUserToRemove(null);
+      
       setTimeout(() => {
         setNotification({ show: false, message: '', type: 'success' });
       }, 3000);
-      
-      // Close modal after successful refresh
-      setShowRemoveConfirm(false);
-      setUserToRemove(null);
     } catch (error) {
       console.error('Error unassigning user:', error);
       setNotification({
@@ -188,7 +187,6 @@ export default function OrgUnitUsersView({
         type: 'error'
       });
       
-      // Auto-hide error notification after 3 seconds
       setTimeout(() => {
         setNotification({ show: false, message: '', type: 'error' });
       }, 3000);
@@ -197,87 +195,11 @@ export default function OrgUnitUsersView({
     }
   };
 
-  const renderOrgTree = (orgs, level = 0) => {
-    return orgs.map(org => {
-      const hasChildren = org.children && org.children.length > 0;
-      const memberCount = getOrgMemberCount(org.org_id);
-      const isSelected = selectedOrgId === org.org_id;
-      const paddingLeft = level * 20;
-      
-      return (
-        <div key={org.org_id} className="w-full">
-          <button
-            onClick={() => setSelectedOrgId(org.org_id)}
-            className={`w-full px-3 py-2 rounded-lg transition-all text-left ${
-              isSelected
-                ? 'bg-indigo-100 border-2 border-indigo-500'
-                : 'hover:bg-gray-100 border border-transparent'
-            }`}
-            title={org.org_name}
-            style={{ paddingLeft: `calc(0.75rem + ${paddingLeft}px)` }}
-          >
-            <div className="flex items-center justify-between min-w-0">
-              <div className="min-w-0">
-                <p className="font-semibold text-gray-800 text-sm truncate">{org.org_name}</p>
-                <p className="text-xs text-gray-500">{memberCount} member{memberCount !== 1 ? 's' : ''}</p>
-              </div>
-            </div>
-          </button>
-          
-          {hasChildren && (
-            <div className="space-y-1 mt-1">
-              {renderOrgTree(org.children, level + 1)}
-            </div>
-          )}
-        </div>
-      );
-    });
-  };
-
-  // Get users for selected organization
-  const selectedOrgUsers = useMemo(() => {
-    if (!selectedOrgId) return [];
-    
-    let users = userList.filter(user => user.org === selectedOrgId);
-    
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      users = users.filter(user =>
-        user.id.toLowerCase().includes(query) ||
-        user.firstName?.toLowerCase().includes(query) ||
-        user.lastName?.toLowerCase().includes(query) ||
-        user.middle_name?.toLowerCase().includes(query) ||
-        user.email?.toLowerCase().includes(query)
-      );
-    }
-    
-    return users;
-  }, [selectedOrgId, userList, searchQuery]);
-
-  const getSelectedOrgName = () => {
-    if (!selectedOrgId) return '';
-    
-    const findOrgName = (orgs) => {
-      for (const org of orgs) {
-        if (org.org_id === selectedOrgId) {
-          return org.org_name;
-        }
-        if (org.children && org.children.length > 0) {
-          const found = findOrgName(org.children);
-          if (found) return found;
-        }
-      }
-      return '';
-    };
-    
-    return findOrgName(orgTree) || '';
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     } catch {
       return 'N/A';
     }
@@ -291,7 +213,7 @@ export default function OrgUnitUsersView({
 
   return (
     <div className="space-y-6">
-      {/* Success/Error Notification Toast */}
+      {/* Notification */}
       {notification.show && (
         <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white flex items-center gap-3 z-40 animate-in fade-in slide-in-from-top-4 ${
           notification.type === 'success' 
@@ -307,147 +229,193 @@ export default function OrgUnitUsersView({
         </div>
       )}
 
+      {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-800">Users by Organization</h2>
-        <p className="text-sm text-gray-600 mt-1">View and manage users within organizations</p>
+        <h2 className="text-2xl font-bold text-gray-800">
+          {userRole === 'admin' ? `Users within ${getOrgName()}` : 'Users by Organization'}
+        </h2>
+        <p className="text-sm text-gray-600 mt-1">
+          {userRole === 'admin' 
+            ? `View and manage users in your organization`
+            : 'View and manage users within organizations'}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Organizations List */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-md p-4">
-            <h3 className="font-semibold text-gray-800 mb-4">Organizations</h3>
-            {orgTree.length === 0 ? (
-              <div className="text-center py-8">
-                <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No organizations found</p>
-              </div>
-            ) : (
-              <div className="space-y-1 max-h-[600px] overflow-y-auto">
-                {renderOrgTree(orgTree)}
-              </div>
+      {/* Organization Card */}
+      {userRole === 'admin' && viewingOrganization && (
+        <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-indigo-500">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Briefcase className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-800">{viewingOrganization.org_name}</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {viewingOrganization.org_type ? `Type: ${viewingOrganization.org_type}` : 'Organization details'}
+              </p>
+              {viewingOrganization.org_desc && (
+                <p className="text-sm text-gray-500 mt-2">{viewingOrganization.org_desc}</p>
+              )}
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold text-indigo-600">{organizationUsers.length}</p>
+              <p className="text-xs text-gray-500 mt-1">member{organizationUsers.length !== 1 ? 's' : ''}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Users List Container */}
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        {/* Toolbar */}
+        <div className="p-6 border-b">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Members</h3>
+              <p className="text-sm text-gray-500 mt-1">Total: {filteredUsers.length} member{filteredUsers.length !== 1 ? 's' : ''}</p>
+            </div>
+            {userRole === 'admin' && (
+              <button
+                onClick={() => setShowAddMemberModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" />
+                Add Member
+              </button>
             )}
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Search by name, ID, or email..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
           </div>
         </div>
 
-        {/* Members List */}
-        <div className="lg:col-span-3">
-          {!selectedOrgId ? (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg mb-2">Select an Organization</p>
-              <p className="text-gray-400 text-sm">
-                Choose an organization from the left to view its members
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow-md">
-              {/* Header */}
-              <div className="p-6 border-b">
-                <div className="mb-4 flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-800">
-                      Members of {getSelectedOrgName()}
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Total: {selectedOrgUsers.length} member{selectedOrgUsers.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowAddMemberModal(true)}
-                    className="ml-4 flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors whitespace-nowrap"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add Member</span>
-                  </button>
-                </div>
-
-                {/* Search */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by name, ID, or email..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Members Grid */}
-              <div className="p-6">
-                {selectedOrgUsers.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500 text-lg mb-2">No members found</p>
-                    <p className="text-gray-400 text-sm">
-                      {searchQuery 
-                        ? 'Try adjusting your search criteria'
-                        : 'No users assigned to this organization'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {selectedOrgUsers.map(user => (
-                      <div 
-                        key={user.id}
-                        className="p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all bg-white"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-4 flex-1 min-w-0">
-                            {/* Avatar */}
-                            <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                              {getInitials(user)}
-                            </div>
-
-                            {/* User Info */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-baseline gap-1 mb-1">
-                                <p className="text-xs font-medium text-gray-600">({user.id})</p>
-                              </div>
-                              <p className="font-semibold text-gray-800 text-sm leading-tight">
-                                {user.firstName} {user.middle_name && `${user.middle_name} `}{user.lastName}{user.suffix && ` ${user.suffix}`}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1 truncate">
-                                {user.email}
-                              </p>
-                              <div className="mt-3 pt-3 border-t border-gray-200">
-                                <p className="text-xs text-gray-600 font-medium">
-                                  Member since {formatDate(user.joinedAt)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Remove Button */}
-                          <button
-                            onClick={() => {
-                              setUserToRemove(user);
-                              setShowRemoveConfirm(true);
-                            }}
-                            className="ml-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                            title="Remove from organization"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+        {/* Users Table */}
+        {filteredUsers.length === 0 ? (
+          <div className="p-12 text-center">
+            <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg mb-2">No members found</p>
+            <p className="text-gray-400 text-sm">
+              {searchQuery 
+                ? 'Try adjusting your search criteria'
+                : 'No users assigned to this organization'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {paginatedUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                          {getInitials(user)}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {user.firstName} {user.middle_name && `${user.middle_name} `}{user.lastName}{user.suffix && ` ${user.suffix}`}
+                          </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+                    </td>
+
+                    <td className="px-6 py-4 text-sm">
+                      <span className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                        {user.id}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {user.email}
+                    </td>
+
+                    <td className="px-6 py-4 text-sm">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                        user.role === 'admin' || user.role_type === 'admin'
+                          ? 'bg-blue-100 text-blue-800'
+                          : user.role === 'user' || user.role_type === 'user'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-purple-100 text-purple-800'
+                      }`}>
+                        {user.role || user.role_type || 'User'}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {formatDate(user.joinedAt || user.joined_at)}
+                    </td>
+
+                    <td className="px-6 py-4 text-sm text-right">
+                      {userRole === 'admin' && (user.role_type === 'user' || user.role === 'user') && (
+                        <button
+                          onClick={() => {
+                            setUserToRemove(user);
+                            setShowRemoveConfirm(true);
+                          }}
+                          className="inline-flex items-center gap-2 px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Unassign from organization"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span className="text-xs font-medium">Unassign</span>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Pagination - Outside the box */}
+      {filteredUsers.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={Math.ceil(filteredUsers.length / rowsPerPage)}
+          startIndex={(currentPage - 1) * rowsPerPage}
+          endIndex={Math.min(currentPage * rowsPerPage, filteredUsers.length)}
+          rowsPerPage={rowsPerPage}
+          totalRecords={filteredUsers.length}
+          onPageChange={setCurrentPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(Number(e.target.value));
+            setCurrentPage(1);
+          }}
+          onFirstPage={() => setCurrentPage(1)}
+          onLastPage={() => setCurrentPage(Math.ceil(filteredUsers.length / rowsPerPage))}
+          onPreviousPage={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+          onNextPage={() => setCurrentPage(prev => Math.min(Math.ceil(filteredUsers.length / rowsPerPage), prev + 1))}
+        />
+      )}
 
       {/* Add Member Modal */}
       {showAddMemberModal && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={(e) => {
-            // Close modal only if clicking on the backdrop, not the modal itself
             if (e.target === e.currentTarget) {
               setShowAddMemberModal(false);
               setMemberSearchQuery('');
@@ -461,12 +429,13 @@ export default function OrgUnitUsersView({
             <div className="p-6 border-b flex items-center justify-between sticky top-0 bg-white">
               <div>
                 <h3 className="text-xl font-bold text-gray-800">Add Member</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  Add to {getSelectedOrgName()}
-                </p>
+                <p className="text-sm text-gray-500 mt-1">Add to {getOrgName()}</p>
               </div>
               <button
-                onClick={() => setShowAddMemberModal(false)}
+                onClick={() => {
+                  setShowAddMemberModal(false);
+                  setMemberSearchQuery('');
+                }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 ✕
@@ -474,7 +443,6 @@ export default function OrgUnitUsersView({
             </div>
 
             <div className="p-6 space-y-4">
-              {/* Search Field */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -486,7 +454,6 @@ export default function OrgUnitUsersView({
                 />
               </div>
 
-              {/* Users List */}
               <div className="space-y-2">
                 {unassignedUsers.length === 0 ? (
                   <div className="text-center py-8">
@@ -519,7 +486,7 @@ export default function OrgUnitUsersView({
                         <button
                           onClick={() => assignUserToOrg(user.id)}
                           disabled={isAddingUser}
-                          className="ml-4 px-3 py-1 bg-indigo-500 text-white text-sm rounded-lg hover:bg-indigo-600 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="ml-4 px-3 py-1 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isAddingUser ? 'Adding...' : 'Add'}
                         </button>
@@ -545,7 +512,7 @@ export default function OrgUnitUsersView({
         </div>
       )}
 
-      {/* Remove Member Confirmation Modal */}
+      {/* Remove Member Modal */}
       {showRemoveConfirm && userToRemove && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
@@ -560,9 +527,9 @@ export default function OrgUnitUsersView({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 border-b">
-              <h3 className="text-lg font-bold text-gray-800">Remove Member?</h3>
+              <h3 className="text-lg font-bold text-gray-800">Unassign Member?</h3>
               <p className="text-sm text-gray-500 mt-2">
-                You are about to unassign <span className="font-semibold">{userToRemove.firstName} {userToRemove.lastName}</span> from <span className="font-semibold">{getSelectedOrgName()}</span>.
+                You are about to unassign <span className="font-semibold">{userToRemove.firstName} {userToRemove.lastName}</span> from <span className="font-semibold">{getOrgName()}</span>.
               </p>
             </div>
 
@@ -586,9 +553,9 @@ export default function OrgUnitUsersView({
               <button
                 onClick={() => unassignUserFromOrg(userToRemove.id)}
                 disabled={isRemovingUser}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isRemovingUser ? 'Removing...' : 'Remove'}
+                {isRemovingUser ? 'Unassigning...' : 'Unassign'}
               </button>
             </div>
           </div>

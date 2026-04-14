@@ -1,6 +1,6 @@
 import { Search, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import AdminPagination from './AdminPagination';
+import Pagination from '../../components/Pagination';
 
 // Helper function to truncate text
 const truncateText = (text, maxLength = 50) => {
@@ -239,7 +239,7 @@ export default function AdminLogAudits({
       </div>
 
       {/* Pagination Controls */}
-      <AdminPagination
+      <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
         startIndex={startIndex}

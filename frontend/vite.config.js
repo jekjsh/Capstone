@@ -11,6 +11,14 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 1200, // Suppress warnings for chunks under 1200kb
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['lucide-react', 'react-toastify'],
+        },
+      },
+    },
   },
 })

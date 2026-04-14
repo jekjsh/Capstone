@@ -15,8 +15,8 @@ class AuditLogSerializer(serializers.ModelSerializer):
 
 
 class NotificationSerializer(serializers.ModelSerializer):
-    recipient_name = serializers.StringRelatedField(source='recipient_user', read_only=True)
-    actor_name = serializers.StringRelatedField(source='actor_user', read_only=True)
+    recipient_name = serializers.CharField(source='recipient_user.user_id', read_only=True, allow_null=True)
+    actor_name = serializers.CharField(source='actor_user.user_id', read_only=True, allow_null=True)
     doc_name = serializers.CharField(source='doc.doc_name', read_only=True, allow_null=True)
     
     class Meta:

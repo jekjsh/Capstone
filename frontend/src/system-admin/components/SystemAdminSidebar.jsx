@@ -1,6 +1,5 @@
-import { LayoutDashboard, Users, ClipboardList, Building2, Palette, Hash, ChevronDown, FileStack } from 'lucide-react';
-import { useState } from 'react';
-import { getRoleDisplayName } from '../../utils/roleMapper';
+import { LayoutDashboard, Users, ClipboardList, Building2, Palette, Hash, UserPlus } from 'lucide-react';
+import SharedSidebar from '../../components/SharedSidebar';
 
 export default function SystemAdminSidebar({ 
   sidebarOpen, 
@@ -12,8 +11,6 @@ export default function SystemAdminSidebar({
   onConfigureUserId,
   pendingRequestsCount = 0
 }) {
-  const [expandedGroups, setExpandedGroups] = useState({});
-
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'organization', label: 'Organization', icon: Building2 },
@@ -27,123 +24,22 @@ export default function SystemAdminSidebar({
         { id: 'org-users', label: 'Users by Organization' }
       ]
     },
-    { id: 'requests', label: 'Requests', icon: FileStack },
+    { id: 'requests', label: 'Requests', icon: UserPlus, ...(pendingRequestsCount > 0 && { badgeCount: pendingRequestsCount }) },
     { id: 'audit-logs', label: 'Audit Logs', icon: ClipboardList }
   ];
 
-  const settingsItems = [
-    { id: 'customize', label: 'Customize System', icon: Palette, onClick: onCustomize },
-    { id: 'user-id-format', label: 'User ID Format', icon: Hash, onClick: onConfigureUserId }
-  ];
-
   return (
-    <div 
-      className={`${sidebarOpen ? 'w-64' : 'w-0'} text-white transition-all duration-300 flex flex-col overflow-hidden`}
-      style={{
-        backgroundColor: 'var(--sidebar-color, #3B82F6)',
-      }}
-    >
-      {/* Profile Section at Top */}
-      <div className="p-4 border-b border-white border-opacity-20">
-        <div className="flex items-center justify-center h-10">
-          {sidebarOpen && (
-            <p className="text-xs opacity-75 truncate">{getRoleDisplayName(currentUser?.role) || 'IS Manager'}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 py-4">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isExpanded = expandedGroups[item.id];
-          
-          if (item.isGroup) {
-            const isGroupActive = item.children?.some(child => activeSection === child.id);
-            
-            return (
-              <div key={item.id}>
-                {/* Group Parent Item */}
-                <button
-                  onClick={() => setExpandedGroups(prev => ({
-                    ...prev,
-                    [item.id]: !isExpanded
-                  }))}
-                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-white hover:bg-opacity-20 transition-colors ${
-                    isGroupActive ? 'bg-white bg-opacity-20' : ''
-                  }`}
-                >
-                  <Icon className="w-5 h-5 flex-shrink-0" />
-                  {sidebarOpen && (
-                    <>
-                      <span className="flex-1 text-left">{item.label}</span>
-                      <ChevronDown 
-                        className={`w-4 h-4 flex-shrink-0 transition-transform ${
-                          isExpanded ? 'transform rotate-180' : ''
-                        }`}
-                      />
-                    </>
-                  )}
-                </button>
-                
-                {/* Group Children */}
-                {sidebarOpen && isExpanded && item.children?.map((child) => (
-                  <button
-                    key={child.id}
-                    onClick={() => setActiveSection(child.id)}
-                    className={`w-full flex items-center gap-3 px-8 py-3 hover:bg-white hover:bg-opacity-20 transition-colors ${
-                      activeSection === child.id ? 'bg-white bg-opacity-20 border-l-4 border-white' : 'border-l-4 border-transparent'
-                    }`}
-                  >
-                    {child.label}
-                  </button>
-                ))}
-              </div>
-            );
-          }
-          
-          // Regular items
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveSection(item.id)}
-              className={`w-full flex items-center justify-between px-4 py-3 hover:bg-white hover:bg-opacity-20 transition-colors ${
-                activeSection === item.id ? 'bg-white bg-opacity-20 border-l-4 border-white' : ''
-              }`}
-            >
-              <span className="flex items-center gap-3">
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                {sidebarOpen && <span>{item.label}</span>}
-              </span>
-              {item.id === 'requests' && pendingRequestsCount > 0 && sidebarOpen && (
-                <span className="bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center">
-                  {pendingRequestsCount}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Settings Section at Bottom */}
-      <div className="border-t border-white border-opacity-20 py-2">
-        {sidebarOpen && <p className="text-xs font-semibold px-4 py-2 opacity-60">SYSTEM SETTINGS</p>}
-        {settingsItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              onClick={item.onClick}
-              className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-white hover:bg-opacity-20 transition-colors ${
-                item.isDanger ? 'text-red-200 hover:bg-red-500 hover:bg-opacity-20' : ''
-              }`}
-            >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              {sidebarOpen && <span className="text-sm">{item.label}</span>}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <SharedSidebar
+      sidebarOpen={sidebarOpen}
+      setSidebarOpen={setSidebarOpen}
+      menuItems={menuItems}
+      activeSection={activeSection}
+      setActiveSection={setActiveSection}
+      currentUser={currentUser}
+      defaultExpandedGroups={{ personnel: true }}
+      expandedStateKey="systemAdmin.sidebar.expandedGroups"
+      onCustomize={onCustomize}
+      onConfigureUserId={onConfigureUserId}
+    />
   );
 }
