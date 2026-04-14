@@ -17,6 +17,7 @@ export default function SystemAdminUserManagement({
   getFilteredUsers,
   handleMenuClick,
   setShowAddUserModal,
+  canAddUser = true,
   openMenuUserId
 }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -149,13 +150,24 @@ export default function SystemAdminUserManagement({
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">User Management</h2>
-        <button 
+        <button
           onClick={() => setShowAddUserModal(true)}
-          className="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-colors"
+          disabled={!canAddUser}
+          className={`px-4 py-2 rounded-lg transition-colors ${
+            canAddUser
+              ? 'bg-indigo-500 text-white hover:bg-indigo-600'
+              : 'bg-gray-300 text-gray-600 cursor-not-allowed'
+          }`}
         >
           + Add New User
         </button>
       </div>
+
+      {!canAddUser && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          User creation is locked. Configure an active User ID format first.
+        </div>
+      )}
 
       <div className="bg-white p-4 rounded-lg shadow-md space-y-4">
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">

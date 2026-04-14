@@ -18,7 +18,7 @@ import EditProfileModal from '../components/EditProfileModal';
 import RequestApprovalModal from './components/RequestApprovalModal';
 import { UserActionMenu, EditPasswordModal } from '../admin/component/AdminModals';
 import SystemAdminVerificationModal from './components/SystemAdminVerificationModal';
-import { userAPI, documentAPI, auditLogAPI, organizationAPI, sessionAPI, authAPI } from '../services/api';
+import { userAPI, auditLogAPI, organizationAPI, sessionAPI, authAPI, idFormatAPI } from '../services/api';
 
 export default function SystemAdminMainFrame({ 
   currentUser = { name: 'System Administrator', role: 'System Admin' }, 
@@ -141,6 +141,8 @@ export default function SystemAdminMainFrame({
     approved: 0,
     denied: 0,
   });
+  const [hasActiveUserIdFormat, setHasActiveUserIdFormat] = useState(null);
+  const [showIdFormatRequiredNotice, setShowIdFormatRequiredNotice] = useState(false);
 
   // Data states
   const [userList, setUserList] = useState([]);
@@ -148,7 +150,6 @@ export default function SystemAdminMainFrame({
   const [auditLogs, setAuditLogs] = useState([]);
   const [organizationTree, setOrganizationTree] = useState([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
   // Subscribe to dataStore changes
@@ -235,26 +236,29 @@ export default function SystemAdminMainFrame({
     fetchUsers();
   }, [dataStore]);
 
-  // Fetch documents from backend
-  useEffect(() => {
-    const fetchDocuments = async () => {
-      try {
-        setIsLoadingDocuments(true);
-        const data = await documentAPI.getAll();
-        setDocumentList(data);
-      } catch (error) {
-        console.error('Failed to load documents:', error);
-        if (dataStore) {
-          const fallbackData = dataStore.getAllDocuments();
-          setDocumentList(fallbackData);
-        }
-      } finally {
-        setIsLoadingDocuments(false);
-      }
-    };
+  const checkActiveUserIdFormat = async () => {
+    try {
+      const formats = await idFormatAPI.getAll();
+      const list = Array.isArray(formats) ? formats : (formats.results || []);
+      const hasActive = list.some((fmt) => fmt?.is_active);
+      setHasActiveUserIdFormat(hasActive);
+      return hasActive;
+    } catch (error) {
+      console.error('Failed to check User ID format configuration:', error);
+      setHasActiveUserIdFormat(false);
+      return false;
+    }
+  };
 
-    fetchDocuments();
-  }, [dataStore]);
+  useEffect(() => {
+    checkActiveUserIdFormat();
+  }, []);
+
+  useEffect(() => {
+    if (!showUserIdFormatModal) {
+      checkActiveUserIdFormat();
+    }
+  }, [showUserIdFormatModal]);
 
   // Helper function to transform API user data from snake_case to camelCase
   const transformUsers = (apiData) => {
@@ -441,8 +445,8 @@ export default function SystemAdminMainFrame({
         if (showEditPasswordModal === true) {
           const user = userList.find(u => u.id === editingUserId || u.user_index === editingUserId);
           if (user) {
-            // Generate new password: lastName.toUpperCase() + "123!"
-            const newPassword = (user.last_name || user.lastName || 'USER').toUpperCase() + '123!';
+            // Generate new password from surname without spaces (e.g., Dela Cruz -> DELACRUZ123!)
+            const newPassword = (user.last_name || user.lastName || 'USER').replace(/\s+/g, '').toUpperCase() + '123!';
             
             try {
               // Update user password
@@ -520,18 +524,6 @@ export default function SystemAdminMainFrame({
     } catch (error) {
       console.error('Failed to update password:', error);
       setErrors({ submit: 'Failed to update password: ' + (error.message || 'Unknown error') });
-    }
-  };
-
-  const handleDeleteDocument = async (docId) => {
-    if (window.confirm('Are you sure you want to delete this document?')) {
-      try {
-        await documentAPI.delete(docId);
-        setDocumentList(documentList.filter(d => d.id !== docId));
-      } catch (error) {
-        console.error('Failed to delete document:', error);
-        alert('Failed to delete document');
-      }
     }
   };
 
@@ -623,7 +615,12 @@ export default function SystemAdminMainFrame({
     }
   };
 
-  const handleAddNewUser = () => {
+  const handleAddNewUser = async () => {
+    const hasFormat = await checkActiveUserIdFormat();
+    if (!hasFormat) {
+      setShowIdFormatRequiredNotice(true);
+      return;
+    }
     setIsEditMode(false);
     setEditingUser(null);
     setEditingUserId(null);
@@ -720,6 +717,7 @@ export default function SystemAdminMainFrame({
               getFilteredUsers={getFilteredUsers}
               handleMenuClick={handleMenuClick}
               setShowAddUserModal={handleAddNewUser}
+              canAddUser={hasActiveUserIdFormat !== false}
               openMenuUserId={openMenuUserId}
             />
           )}
@@ -873,6 +871,7 @@ export default function SystemAdminMainFrame({
         onClose={() => setShowUserIdFormatModal(false)}
         dataStore={dataStore}
         onSave={() => setShowUserIdFormatModal(false)}
+        lockUntilConfigured={hasActiveUserIdFormat === false}
       />
 
       <RequestApprovalModal
@@ -888,6 +887,29 @@ export default function SystemAdminMainFrame({
         onApprove={handleApproveRequest}
         onReject={handleRejectRequest}
       />
+
+      {showIdFormatRequiredNotice && (
+        <div className="fixed inset-0 bg-black/35 flex items-center justify-center z-[70] p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900">User ID Format Required</h3>
+            <p className="mt-3 text-gray-700">
+              Configure an active User ID format first before creating users.
+            </p>
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowIdFormatRequiredNotice(false);
+                  setShowUserIdFormatModal(true);
+                }}
+                className="w-full rounded-lg bg-slate-800 text-white py-2.5 font-medium hover:bg-slate-900"
+              >
+                Configure Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

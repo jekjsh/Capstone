@@ -51,7 +51,7 @@ export default function RequestApprovalModal({
   // Generate temporary password from surname
   useEffect(() => {
     if (request?.last_name) {
-      const surname = request.last_name.toUpperCase();
+      const surname = request.last_name.replace(/\s+/g, '').toUpperCase();
       setTempPassword(`${surname}123!`);
     }
   }, [request]);
@@ -423,7 +423,7 @@ export default function RequestApprovalModal({
                 <strong>Format:</strong> {idFormat ? getFormatHint(idFormat, selectedRole === 'admin' ? 'Admin' : 'User') : 'Not configured'}
               </p>
               <p className="mt-1 text-xs text-gray-700">
-                <strong>Temporary Password:</strong> {tempPassword} (Capitalized surname + 123!)
+                <strong>Temporary Password:</strong> {tempPassword} (capitalized surname with spaces removed + 123!)
               </p>
             </div>
             <div className="mt-6">

@@ -1,0 +1,85 @@
+flowchart LR
+  %% Domain-grouped table map for cleaner ERD-style visualization
+
+  subgraph AUTH[Auth and Identity]
+    ORG[organizations\nPK org_id\nFK parent_org]
+    USR[users\nPK user_index\nFK org]
+    UCR[user_creation_requests\nPK request_id\nFK org, reviewed_by, claimed_by]
+    IDF[id_format\nPK format_id]
+  end
+
+  subgraph DOCS[Documents Domain]
+    FOL[folders\nPK folder_id\nFK owning_org, created_by_user, user_index, parent_folder, org]
+    DOC[documents\nPK doc_id\nFK owning_org, uploaded_by_user, user_index, folder]
+    DSH[document_shares\nPK share_id\nFK doc, shared_by_user, shared_to_user]
+    FSH[folder_shares\nPK share_id\nFK folder, shared_by_org, shared_with_org]
+    OCR[ocr_data\nPK ocr_id\nFK doc one_to_one]
+    CAT[categories\nPK category_id\nFK user_index, org]
+    DCAT[document_categories\nPK doc_category_id\nFK doc, category]
+  end
+
+  subgraph OPS[Monitoring and Notifications]
+    AUD[audit_logs\nPK log_id\nFK user_index]
+    NOTIF[notifications\nPK notif_id\nFK recipient_user, actor_user, doc]
+  end
+
+  subgraph ARC[Archive and Retention]
+    FARC[folder_archive\nPK archive_id\nFK owning_org\nsource_folder_id]
+    DARC[document_archive\nPK archive_id\nFK owning_org\nsource_doc_id]
+  end
+
+  subgraph SYS[System Config]
+    THM[system_themes\nPK sys_id]
+  end
+
+  %% Core org hierarchy
+  ORG -->|parent_org| ORG
+
+  %% Auth
+  ORG -->|org| USR
+  ORG -->|org| UCR
+  USR -->|reviewed_by| UCR
+  USR -->|claimed_by| UCR
+
+  %% Folders
+  ORG -->|owning_org| FOL
+  ORG -->|org_legacy| FOL
+  USR -->|created_by_user| FOL
+  USR -->|user_index_legacy| FOL
+  FOL -->|parent_folder| FOL
+
+  %% Documents
+  ORG -->|owning_org| DOC
+  USR -->|uploaded_by_user| DOC
+  USR -->|user_index_legacy| DOC
+  FOL -->|folder| DOC
+
+  %% Shares
+  DOC -->|doc| DSH
+  USR -->|shared_by_user| DSH
+  USR -->|shared_to_user| DSH
+
+  FOL -->|folder| FSH
+  ORG -->|shared_by_org| FSH
+  ORG -->|shared_with_org| FSH
+
+  %% OCR and categories
+  DOC -->|1:1 doc| OCR
+  USR -->|user_index| CAT
+  ORG -->|org| CAT
+  DOC -->|doc| DCAT
+  CAT -->|category| DCAT
+
+  %% Monitoring
+  USR -->|user_index| AUD
+  USR -->|recipient_user| NOTIF
+  USR -->|actor_user| NOTIF
+  DOC -->|doc| NOTIF
+
+  %% Archive
+  ORG -->|owning_org| FARC
+  ORG -->|owning_org| DARC
+
+  %% Isolated table (no FK)
+  IDF
+  THM

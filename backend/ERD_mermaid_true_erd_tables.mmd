@@ -1,0 +1,229 @@
+erDiagram
+  organizations {
+    int org_id PK
+    int parent_org FK
+    string org_name
+    string org_desc
+    string org_code
+    string org_type
+  }
+
+  users {
+    int user_index PK
+    int org FK
+    string user_id UK
+    string first_name
+    string middle_name
+    string last_name
+    string suffix
+    string user_pos
+    string user_contact
+    date user_birthdate
+    string email_add UK
+    string role_type
+    datetime joined_at
+    bool is_active
+    bool is_staff
+  }
+
+  user_creation_requests {
+    string request_id PK
+    int org FK
+    int reviewed_by FK
+    int claimed_by FK
+    string status
+    datetime created_at
+    string created_by
+    datetime reviewed_at
+    datetime claimed_at
+    string assigned_user_id
+    string denial_reason
+  }
+
+  id_format {
+    int format_id PK
+    string prefix
+    string admin_separator
+    string user_separator
+    int segment1_len
+    int segment2_len
+    int segment3_len
+    bool is_active
+  }
+
+  folders {
+    int folder_id PK
+    int owning_org FK
+    int created_by_user FK
+    int user_index FK
+    int parent_folder FK
+    int org FK
+    string folder_name
+    string folder_path
+    string folder_color
+    bool is_deleted
+    datetime deleted_at
+    bool is_archived
+    datetime archived_at
+    datetime created_at
+    datetime updated_at
+  }
+
+  documents {
+    int doc_id PK
+    int owning_org FK
+    int uploaded_by_user FK
+    int user_index FK
+    int folder FK
+    string doc_name
+    string doc_desc
+    string doc_path
+    string doc_file
+    bool is_deleted
+    datetime deleted_at
+    bool is_archived
+    datetime archived_at
+    datetime doc_uploaded
+    datetime updated_at
+  }
+
+  document_shares {
+    int share_id PK
+    int doc FK
+    int shared_by_user FK
+    int shared_to_user FK
+    string share_msg
+    datetime share_timestamp
+  }
+
+  folder_shares {
+    int share_id PK
+    int folder FK
+    int shared_by_org FK
+    int shared_with_org FK
+    string share_msg
+    datetime created_at
+  }
+
+  ocr_data {
+    int ocr_id PK
+    int doc FK
+    string ocr_extract
+  }
+
+  categories {
+    int category_id PK
+    int user_index FK
+    int org FK
+    string category_name
+    string category_desc
+    bool is_active
+    datetime created_at
+    datetime updated_at
+  }
+
+  document_categories {
+    int doc_category_id PK
+    int doc FK
+    int category FK
+    datetime added_at
+  }
+
+  folder_archive {
+    int archive_id PK
+    string archive_batch_id
+    int source_folder_id
+    int owning_org FK
+    string folder_name
+    datetime deleted_at
+    datetime archived_at
+    json snapshot
+  }
+
+  document_archive {
+    int archive_id PK
+    string archive_batch_id
+    int source_doc_id
+    int owning_org FK
+    string doc_name
+    string doc_desc
+    string doc_path
+    string doc_file_path
+    datetime deleted_at
+    datetime archived_at
+    json snapshot
+  }
+
+  audit_logs {
+    int log_id PK
+    int user_index FK
+    datetime audit_timestamp
+    string audit_action
+    string audit_desc
+    string audit_status
+  }
+
+  notifications {
+    int notif_id PK
+    int recipient_user FK
+    int actor_user FK
+    int doc FK
+    string notif_msg
+    bool is_read
+    datetime created_at
+  }
+
+  system_themes {
+    int sys_id PK
+    string sys_name
+    string sys_abbr
+    string sys_logo
+    string sys_backg
+    string sidebar_color
+    bool is_theme_active
+    datetime created_at
+    datetime updated_at
+  }
+
+  organizations ||--o{ organizations : parent_org
+
+  organizations ||--o{ users : org
+
+  organizations ||--o{ user_creation_requests : org
+  users ||--o{ user_creation_requests : reviewed_by
+  users ||--o{ user_creation_requests : claimed_by
+
+  organizations ||--o{ folders : owning_org
+  organizations ||--o{ folders : org_legacy
+  users ||--o{ folders : created_by_user
+  users ||--o{ folders : user_index_legacy
+  folders ||--o{ folders : parent_folder
+
+  organizations ||--o{ documents : owning_org
+  users ||--o{ documents : uploaded_by_user
+  users ||--o{ documents : user_index_legacy
+  folders ||--o{ documents : folder
+
+  documents ||--o{ document_shares : doc
+  users ||--o{ document_shares : shared_by_user
+  users ||--o{ document_shares : shared_to_user
+
+  folders ||--o{ folder_shares : folder
+  organizations ||--o{ folder_shares : shared_by_org
+  organizations ||--o{ folder_shares : shared_with_org
+
+  documents ||--|| ocr_data : doc
+
+  users ||--o{ categories : user_index
+  organizations ||--o{ categories : org
+  documents ||--o{ document_categories : doc
+  categories ||--o{ document_categories : category
+
+  organizations ||--o{ folder_archive : owning_org
+  organizations ||--o{ document_archive : owning_org
+
+  users ||--o{ audit_logs : user_index
+
+  users ||--o{ notifications : recipient_user
+  users ||--o{ notifications : actor_user
+  documents ||--o{ notifications : doc

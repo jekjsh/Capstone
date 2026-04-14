@@ -35,6 +35,11 @@ export default function SystemAdminAddUserModal({
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [successNotice, setSuccessNotice] = useState({
+    isOpen: false,
+    title: '',
+    lines: []
+  });
   const defaultSuffixOptions = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V', 'Esq.', 'PhD'];
   const suffixOptions = defaultSuffixOptions.includes(formData.suffix)
     ? defaultSuffixOptions
@@ -154,7 +159,8 @@ export default function SystemAdminAddUserModal({
 
   // Generate password from last name
   const generatePassword = (lastName) => {
-    return (lastName || 'USER').toUpperCase() + '123!';
+    const normalizedSurname = (lastName || 'USER').replace(/\s+/g, '').toUpperCase();
+    return normalizedSurname + '123!';
   };
 
   // Normalize role type to lowercase format expected by backend
@@ -254,10 +260,15 @@ export default function SystemAdminAddUserModal({
       
       // Notify parent
       onUserAdded();
-      alert(`User created successfully!\\nDefault password: ${password}\\nRemind them to change password ASAP!`);
-      onClose();
-      // Refresh page to show new user in list
-      window.location.reload();
+      setSuccessNotice({
+        isOpen: true,
+        title: 'User Created',
+        lines: [
+          'User created successfully.',
+          `Default password: ${password}`,
+          'Remind them to change password ASAP.'
+        ]
+      });
     } catch (error) {
       console.error('Failed to create user:', error);
       setErrors({
@@ -392,6 +403,7 @@ export default function SystemAdminAddUserModal({
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
@@ -628,6 +640,44 @@ export default function SystemAdminAddUserModal({
           </div>
       </div>
     </div>
+    {successNotice.isOpen && (
+      <div className="fixed inset-0 bg-black/35 flex items-center justify-center z-[60] p-4">
+        <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl border border-gray-200 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <h3 className="text-xl font-semibold text-gray-900">{successNotice.title}</h3>
+            <button
+              type="button"
+              onClick={() => {
+                setSuccessNotice({ isOpen: false, title: '', lines: [] });
+                onClose();
+              }}
+              className="text-gray-400 hover:text-gray-600"
+              aria-label="Close notification"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="mt-3 space-y-2 text-gray-700">
+            {successNotice.lines.map((line, idx) => (
+              <p key={idx}>{line}</p>
+            ))}
+          </div>
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                setSuccessNotice({ isOpen: false, title: '', lines: [] });
+                onClose();
+              }}
+              className="w-full rounded-lg bg-slate-800 text-white font-medium py-2.5 hover:bg-slate-900 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

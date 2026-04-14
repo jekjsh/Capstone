@@ -133,11 +133,11 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
               className="bg-blue-50 border-l-4 border-blue-500 transition-colors duration-200"
             >
               {/* Request Header */}
-              <div className="p-4 hover:bg-opacity-75 transition-colors">
+              <div className="px-4 py-3 hover:bg-opacity-75 transition-colors">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="text-base font-semibold text-gray-900 leading-tight">
                         User Creation Request
                       </h3>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
@@ -148,24 +148,28 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
                         {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                       </span>
                     </div>
-                    <div className="grid grid-cols-4 gap-4 text-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
                       <div>
-                        <p className="text-gray-500">Request ID</p>
-                        <p className="font-medium text-gray-900">{request.request_id}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Requester</p>
-                        <p className="font-medium text-gray-900">{request.created_by}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Date</p>
-                        <p className="font-medium text-gray-900">
-                          {new Date(request.created_at).toLocaleDateString()}
+                        <p className="text-xs text-gray-600">
+                          Request ID: <span className="font-semibold text-gray-900">{request.request_id}</span>
                         </p>
                       </div>
                       <div>
-                        <p className="text-gray-500">Email</p>
-                        <p className="font-medium text-gray-900">{request.email_add}</p>
+                        <p className="text-xs text-gray-600 truncate">
+                          Requester: <span className="font-semibold text-gray-900">{request.created_by}</span>
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-600">
+                          Date: <span className="font-semibold text-gray-900">
+                          {new Date(request.created_at).toLocaleDateString()}
+                          </span>
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-600 truncate">
+                          Email: <span className="font-semibold text-gray-900">{request.email_add}</span>
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -173,12 +177,12 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
                   {/* Expand/Collapse Button */}
                   <button
                     onClick={() => toggleExpand(request.request_id)}
-                    className="ml-4 p-2 hover:bg-white hover:bg-opacity-50 rounded-lg transition-colors"
+                    className="ml-4 p-1.5 hover:bg-white hover:bg-opacity-50 rounded-lg transition-colors"
                   >
                     {expandedRequestId === request.request_id ? (
-                      <ChevronUp className="w-6 h-6 text-gray-600" />
+                      <ChevronUp className="w-5 h-5 text-gray-600" />
                     ) : (
-                      <ChevronDown className="w-6 h-6 text-gray-600" />
+                      <ChevronDown className="w-5 h-5 text-gray-600" />
                     )}
                   </button>
                 </div>

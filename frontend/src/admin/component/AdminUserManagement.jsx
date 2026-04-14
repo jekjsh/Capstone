@@ -13,8 +13,7 @@ export default function AdminUserManagement({
   getFilteredUsers,
   handleViewUser,
   handleEditUser,
-  handleDeleteUser,
-  setShowAddUserModal
+  handleDeleteUser
 }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -54,12 +53,6 @@ export default function AdminUserManagement({
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">User Management</h2>
-        <button 
-          onClick={() => setShowAddUserModal(true)}
-          className="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-colors"
-        >
-          + Add New User
-        </button>
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow-md space-y-4">
@@ -143,7 +136,7 @@ export default function AdminUserManagement({
                 <tr>
                   <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
                     {userList.length === 0 
-                      ? "No users found. Click 'Add New User' to create one."
+                      ? "No users found. Account creation is handled by System Admin via User Creation Requests."
                       : "No users match your search criteria. Try adjusting your filters."}
                   </td>
                 </tr>

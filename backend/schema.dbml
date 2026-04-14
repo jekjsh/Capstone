@@ -1,0 +1,211 @@
+Table organizations {
+  org_id int [pk, increment]
+  parent_org int [ref: > organizations.org_id, null]
+  org_name varchar(255)
+  org_desc text [null]
+  org_code varchar(50)
+  org_type varchar(100)
+}
+
+Table users {
+  user_index int [pk, increment]
+  org int [ref: > organizations.org_id, null]
+  user_id varchar(50) [unique]
+  first_name varchar(100)
+  middle_name varchar(100) [null]
+  last_name varchar(100)
+  suffix varchar(20) [null]
+  user_pos varchar(255) [null]
+  user_contact varchar(20) [null]
+  user_birthdate date [null]
+  email_add varchar(254) [unique]
+  role_type varchar(50)
+  joined_at datetime [null]
+  is_active boolean
+  is_staff boolean
+}
+
+Table user_creation_requests {
+  request_id varchar(50) [pk]
+  first_name varchar(100)
+  middle_name varchar(100) [null]
+  last_name varchar(100)
+  suffix varchar(50) [null]
+  email_add varchar(254) [unique]
+  user_pos varchar(255)
+  user_contact varchar(20) [null]
+  user_birthdate date [null]
+  org int [ref: > organizations.org_id]
+  status varchar(20)
+  created_at datetime
+  created_by varchar(254)
+  reviewed_by int [ref: > users.user_index, null]
+  reviewed_at datetime [null]
+  claimed_by int [ref: > users.user_index, null]
+  claimed_at datetime [null]
+  assigned_user_id varchar(50) [null]
+  denial_reason text [null]
+}
+
+Table id_format {
+  format_id int [pk, increment]
+  prefix varchar(20)
+  admin_separator varchar(5)
+  user_separator varchar(5)
+  segment1_len int
+  segment2_len int
+  segment3_len int [null]
+  is_active boolean
+}
+
+Table folders {
+  folder_id int [pk, increment]
+  owning_org int [ref: > organizations.org_id]
+  created_by_user int [ref: > users.user_index, null]
+  user_index int [ref: > users.user_index]
+  parent_folder int [ref: > folders.folder_id, null]
+  org int [ref: > organizations.org_id, null]
+  folder_name varchar(255)
+  folder_path varchar(500) [null]
+  folder_color varchar(20)
+  is_deleted boolean
+  deleted_at datetime [null]
+  is_archived boolean
+  archived_at datetime [null]
+  created_at datetime
+  updated_at datetime
+}
+
+Table documents {
+  doc_id int [pk, increment]
+  owning_org int [ref: > organizations.org_id]
+  uploaded_by_user int [ref: > users.user_index, null]
+  user_index int [ref: > users.user_index]
+  folder int [ref: > folders.folder_id, null]
+  doc_name varchar(255)
+  doc_desc text [null]
+  doc_path varchar(500) [null]
+  doc_file varchar(500) [null]
+  is_deleted boolean
+  deleted_at datetime [null]
+  is_archived boolean
+  archived_at datetime [null]
+  doc_uploaded datetime
+  updated_at datetime
+}
+
+Table document_shares {
+  share_id int [pk, increment]
+  doc int [ref: > documents.doc_id]
+  shared_by_user int [ref: > users.user_index]
+  shared_to_user int [ref: > users.user_index]
+  share_msg text [null]
+  share_timestamp datetime
+}
+
+Table folder_shares {
+  share_id int [pk, increment]
+  folder int [ref: > folders.folder_id]
+  shared_by_org int [ref: > organizations.org_id, null]
+  shared_with_org int [ref: > organizations.org_id, null]
+  share_msg text [null]
+  created_at datetime
+
+  Indexes {
+    (folder, shared_with_org) [unique]
+  }
+}
+
+Table ocr_data {
+  ocr_id int [pk, increment]
+  doc int [ref: - documents.doc_id, unique]
+  ocr_extract text
+}
+
+Table categories {
+  category_id int [pk, increment]
+  user_index int [ref: > users.user_index]
+  org int [ref: > organizations.org_id, null]
+  category_name varchar(255)
+  category_desc text [null]
+  is_active boolean
+  created_at datetime
+  updated_at datetime
+}
+
+Table document_categories {
+  doc_category_id int [pk, increment]
+  doc int [ref: > documents.doc_id]
+  category int [ref: > categories.category_id]
+  added_at datetime
+
+  Indexes {
+    (doc, category) [unique]
+  }
+}
+
+Table folder_archive {
+  archive_id int [pk, increment]
+  archive_batch_id varchar(36) [null]
+  source_folder_id int
+  owning_org int [ref: > organizations.org_id, null]
+  folder_name varchar(255)
+  deleted_at datetime [null]
+  archived_at datetime
+  snapshot json
+
+  Indexes {
+    source_folder_id
+    archive_batch_id
+  }
+}
+
+Table document_archive {
+  archive_id int [pk, increment]
+  archive_batch_id varchar(36) [null]
+  source_doc_id int
+  owning_org int [ref: > organizations.org_id, null]
+  doc_name varchar(255)
+  doc_desc text [null]
+  doc_path varchar(500) [null]
+  doc_file_path varchar(500) [null]
+  deleted_at datetime [null]
+  archived_at datetime
+  snapshot json
+
+  Indexes {
+    source_doc_id
+    archive_batch_id
+  }
+}
+
+Table audit_logs {
+  log_id int [pk, increment]
+  user_index int [ref: > users.user_index, null]
+  audit_timestamp datetime
+  audit_action varchar(100)
+  audit_desc text
+  audit_status varchar(50)
+}
+
+Table notifications {
+  notif_id int [pk, increment]
+  recipient_user int [ref: > users.user_index]
+  actor_user int [ref: > users.user_index]
+  doc int [ref: > documents.doc_id, null]
+  notif_msg varchar(255)
+  is_read boolean
+  created_at datetime
+}
+
+Table system_themes {
+  sys_id int [pk, increment]
+  sys_name varchar(255)
+  sys_abbr varchar(50)
+  sys_logo varchar(500) [null]
+  sys_backg varchar(500) [null]
+  sidebar_color varchar(7)
+  is_theme_active boolean
+  created_at datetime
+  updated_at datetime
+}

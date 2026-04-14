@@ -6,7 +6,8 @@ export default function SystemAdminIDFormatter({
   show, 
   onClose, 
   dataStore,
-  onSave 
+  onSave,
+  lockUntilConfigured = false
 }) {
   const [format, setFormat] = useState({
     prefix: 'TUPM',
@@ -317,8 +318,8 @@ export default function SystemAdminIDFormatter({
     <div 
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
       onClick={(e) => {
-        // Close only if clicking the backdrop, not the modal content
-        if (e.target === e.currentTarget) onClose();
+        // Close on backdrop click only when formatter is not locked by missing required config.
+        if (!lockUntilConfigured && e.target === e.currentTarget) onClose();
       }}
     >
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -327,9 +328,11 @@ export default function SystemAdminIDFormatter({
             <h2 className="text-2xl font-bold text-gray-800">User ID Format Configuration</h2>
             <p className="text-sm text-gray-500">Customize how User IDs are generated in your organization</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="w-6 h-6" />
-          </button>
+          {!lockUntilConfigured && (
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="w-6 h-6" />
+            </button>
+          )}
         </div>
 
         <div className="p-6 space-y-6">
