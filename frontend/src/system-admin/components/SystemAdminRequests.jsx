@@ -7,6 +7,8 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedRequestId, setExpandedRequestId] = useState(null);
+  const [showApprovedSection, setShowApprovedSection] = useState(false);
+  const [showDeniedSection, setShowDeniedSection] = useState(false);
 
   // Fetch requests on component mount
   useEffect(() => {
@@ -82,6 +84,201 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
     onOpenRequestModal(request, 'preview');
   };
 
+  const getNormalizedStatus = (status) => {
+    if (status === 'approved') return 'approved';
+    if (status === 'pending') return 'pending';
+    if (status === 'denied' || status === 'rejected') return 'denied';
+    return 'other';
+  };
+
+  const pendingRequests = requests.filter((request) => getNormalizedStatus(request.status) === 'pending');
+  const approvedRequests = requests.filter((request) => getNormalizedStatus(request.status) === 'approved');
+  const deniedRequests = requests.filter((request) => getNormalizedStatus(request.status) === 'denied');
+
+  const renderRequestCard = (request) => (
+    <div
+      key={request.request_id}
+      id={`request-row-${request.request_id}`}
+      className="bg-blue-50 border-l-4 border-blue-500 transition-colors duration-200"
+    >
+      {/* Request Header */}
+      <div className="px-4 py-3 hover:bg-opacity-75 transition-colors">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-1">
+              <h3 className="text-base font-semibold text-gray-900 leading-tight">
+                User Creation Request
+              </h3>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                request.status === 'pending' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                request.status === 'approved' ? 'bg-green-100 text-green-800 border border-green-300' :
+                'bg-red-100 text-red-800 border border-red-300'
+              }`}>
+                {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+              <div>
+                <p className="text-xs text-gray-600">
+                  Request ID: <span className="font-semibold text-gray-900">{request.request_id}</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 truncate">
+                  Requester: <span className="font-semibold text-gray-900">{request.created_by}</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600">
+                  Date: <span className="font-semibold text-gray-900">
+                  {new Date(request.created_at).toLocaleDateString()}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 truncate">
+                  Email: <span className="font-semibold text-gray-900">{request.email_add}</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Expand/Collapse Button */}
+          <button
+            onClick={() => toggleExpand(request.request_id)}
+            className="ml-4 p-1.5 hover:bg-white hover:bg-opacity-50 rounded-lg transition-colors"
+          >
+            {expandedRequestId === request.request_id ? (
+              <ChevronUp className="w-5 h-5 text-gray-600" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-600" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded Details */}
+      {expandedRequestId === request.request_id && (
+        <div className="border-t border-gray-200 p-4 bg-white bg-opacity-50">
+          <div className="grid grid-cols-3 gap-6 mb-6">
+            {/* Requester Info */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Requester Information</h4>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="text-sm font-medium text-gray-900">{request.created_by}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Request Details */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Request Details</h4>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs text-gray-500">First Name</p>
+                  <p className="text-sm font-medium text-gray-900">{request.first_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Middle Name</p>
+                  <p className="text-sm font-medium text-gray-900">{request.middle_name || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Last Name</p>
+                  <p className="text-sm font-medium text-gray-900">{request.last_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Suffix</p>
+                  <p className="text-sm font-medium text-gray-900">{request.suffix || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="text-sm font-medium text-gray-900">{request.email_add}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Position</p>
+                  <p className="text-sm font-medium text-gray-900">{request.user_pos}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Organization</p>
+                  <p className="text-sm font-medium text-gray-900">{request.org_name} ({request.org_code})</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Status Info */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Status</h4>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs text-gray-500">Current Status</p>
+                  <p className={`text-sm font-semibold py-1 px-2 rounded w-fit ${
+                    request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                    request.status === 'approved' ? 'bg-green-100 text-green-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {request.status.toUpperCase()}
+                  </p>
+                </div>
+                {request.assigned_user_id && (
+                  <div>
+                    <p className="text-xs text-gray-500">Assigned User ID</p>
+                    <p className="text-sm font-medium text-gray-900">{request.assigned_user_id}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          {request.status === 'pending' && (
+            <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
+              <button
+                onClick={() => handlePreview(request)}
+                className="px-4 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium"
+              >
+                Preview
+              </button>
+              <button
+                onClick={() => handleReject(request)}
+                className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium"
+              >
+                Reject
+              </button>
+              <button
+                onClick={() => handleApprove(request)}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+              >
+                Approve
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderRequestSection = (title, sectionRequests, accentClass) => (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${accentClass}`}>
+          {sectionRequests.length}
+        </span>
+      </div>
+      {sectionRequests.length === 0 ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-4 text-sm text-gray-500">
+          No {title.toLowerCase()} requests.
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden divide-y divide-gray-200">
+          {sectionRequests.map(renderRequestCard)}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -125,171 +322,69 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
         </div>
       ) : (
         !isLoading && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          {requests.map((request) => (
-            <div
-              key={request.request_id}
-              id={`request-row-${request.request_id}`}
-              className="bg-blue-50 border-l-4 border-blue-500 transition-colors duration-200"
-            >
-              {/* Request Header */}
-              <div className="px-4 py-3 hover:bg-opacity-75 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="text-base font-semibold text-gray-900 leading-tight">
-                        User Creation Request
-                      </h3>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        request.status === 'pending' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
-                        request.status === 'approved' ? 'bg-green-100 text-green-800 border border-green-300' :
-                        'bg-red-100 text-red-800 border border-red-300'
-                      }`}>
-                        {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
-                      <div>
-                        <p className="text-xs text-gray-600">
-                          Request ID: <span className="font-semibold text-gray-900">{request.request_id}</span>
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-600 truncate">
-                          Requester: <span className="font-semibold text-gray-900">{request.created_by}</span>
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-600">
-                          Date: <span className="font-semibold text-gray-900">
-                          {new Date(request.created_at).toLocaleDateString()}
-                          </span>
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-600 truncate">
-                          Email: <span className="font-semibold text-gray-900">{request.email_add}</span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Expand/Collapse Button */}
-                  <button
-                    onClick={() => toggleExpand(request.request_id)}
-                    className="ml-4 p-1.5 hover:bg-white hover:bg-opacity-50 rounded-lg transition-colors"
-                  >
-                    {expandedRequestId === request.request_id ? (
-                      <ChevronUp className="w-5 h-5 text-gray-600" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5 text-gray-600" />
-                    )}
-                  </button>
+          <div className="space-y-6">
+            {renderRequestSection('Pending', pendingRequests, 'bg-yellow-100 text-yellow-800 border border-yellow-300')}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-900">Approved</h2>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-300">
+                    {approvedRequests.length}
+                  </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowApprovedSection((prev) => !prev)}
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                >
+                  {showApprovedSection ? 'Hide' : 'Show'}
+                  {showApprovedSection ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
               </div>
 
-              {/* Expanded Details */}
-              {expandedRequestId === request.request_id && (
-                <div className="border-t border-gray-200 p-4 bg-white bg-opacity-50">
-                  <div className="grid grid-cols-3 gap-6 mb-6">
-                    {/* Requester Info */}
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Requester Information</h4>
-                      <div className="space-y-2">
-                        <div>
-                          <p className="text-xs text-gray-500">Email</p>
-                          <p className="text-sm font-medium text-gray-900">{request.created_by}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Request Details */}
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Request Details</h4>
-                      <div className="space-y-2">
-                        <div>
-                          <p className="text-xs text-gray-500">First Name</p>
-                          <p className="text-sm font-medium text-gray-900">{request.first_name}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Middle Name</p>
-                          <p className="text-sm font-medium text-gray-900">{request.middle_name || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Last Name</p>
-                          <p className="text-sm font-medium text-gray-900">{request.last_name}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Suffix</p>
-                          <p className="text-sm font-medium text-gray-900">{request.suffix || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Email</p>
-                          <p className="text-sm font-medium text-gray-900">{request.email_add}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Position</p>
-                          <p className="text-sm font-medium text-gray-900">{request.user_pos}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Organization</p>
-                          <p className="text-sm font-medium text-gray-900">{request.org_name} ({request.org_code})</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Status Info */}
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Status</h4>
-                      <div className="space-y-2">
-                        <div>
-                          <p className="text-xs text-gray-500">Current Status</p>
-                          <p className={`text-sm font-semibold py-1 px-2 rounded w-fit ${
-                            request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            request.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {request.status.toUpperCase()}
-                          </p>
-                        </div>
-                        {request.assigned_user_id && (
-                          <div>
-                            <p className="text-xs text-gray-500">Assigned User ID</p>
-                            <p className="text-sm font-medium text-gray-900">{request.assigned_user_id}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+              {showApprovedSection && (
+                approvedRequests.length === 0 ? (
+                  <div className="bg-white rounded-lg border border-gray-200 p-4 text-sm text-gray-500">
+                    No approved requests.
                   </div>
-
-                  {/* Action Buttons */}
-                  {request.status === 'pending' && (
-                    <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
-                      <button
-                        onClick={() => handlePreview(request)}
-                        className="px-4 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium"
-                      >
-                        Preview
-                      </button>
-                      <button
-                        onClick={() => handleReject(request)}
-                        className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium"
-                      >
-                        Reject
-                      </button>
-                      <button
-                        onClick={() => handleApprove(request)}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-                      >
-                        Approve
-                      </button>
-                    </div>
-                  )}
-                </div>
+                ) : (
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden divide-y divide-gray-200">
+                    {approvedRequests.map(renderRequestCard)}
+                  </div>
+                )
               )}
             </div>
-          ))}
-        </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-900">Denied</h2>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-300">
+                    {deniedRequests.length}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDeniedSection((prev) => !prev)}
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                >
+                  {showDeniedSection ? 'Hide' : 'Show'}
+                  {showDeniedSection ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+              </div>
+
+              {showDeniedSection && (
+                deniedRequests.length === 0 ? (
+                  <div className="bg-white rounded-lg border border-gray-200 p-4 text-sm text-gray-500">
+                    No denied requests.
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden divide-y divide-gray-200">
+                    {deniedRequests.map(renderRequestCard)}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
         )
       )}
 
