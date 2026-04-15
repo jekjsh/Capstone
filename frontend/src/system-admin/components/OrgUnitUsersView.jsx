@@ -1,6 +1,21 @@
 import { Users, Search, Briefcase, Plus, Trash2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
+const ORG_TYPE_COLORS = {
+  board: { bg: 'bg-[#FEF08A]', border: 'border-[#FDE047]', text: 'text-[#854D0E]', badge: 'bg-[#FDE68A] text-[#854D0E] border-[#FDE047]' },
+  administrator: { bg: 'bg-[#D1FAE5]', border: 'border-[#6EE7B7]', text: 'text-[#065F46]', badge: 'bg-[#A7F3D0] text-[#065F46] border-[#6EE7B7]' },
+  office: { bg: 'bg-[#E0F2FE]', border: 'border-[#7DD3FC]', text: 'text-[#075985]', badge: 'bg-[#BAE6FD] text-[#075985] border-[#7DD3FC]' },
+  department: { bg: 'bg-[#FFE4E6]', border: 'border-[#FDA4AF]', text: 'text-[#9F1239]', badge: 'bg-[#FECDD3] text-[#9F1239] border-[#FDA4AF]' },
+  division: { bg: 'bg-[#EDE9FE]', border: 'border-[#C4B5FD]', text: 'text-[#5B21B6]', badge: 'bg-[#DDD6FE] text-[#5B21B6] border-[#C4B5FD]' }
+};
+
+const DEFAULT_ORG_TYPE_COLOR = {
+  bg: 'bg-slate-50',
+  border: 'border-slate-300',
+  text: 'text-slate-800',
+  badge: 'bg-slate-100 text-slate-700 border-slate-200'
+};
+
 export default function OrgUnitUsersView({ 
   organizationTree, 
   userList,
@@ -16,6 +31,18 @@ export default function OrgUnitUsersView({
   const [isRemovingUser, setIsRemovingUser] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+
+  const getOrgTypeColor = (orgType) => {
+    const normalized = (orgType || '').trim().toLowerCase();
+
+    if (normalized === 'board') return ORG_TYPE_COLORS.board;
+    if (normalized === 'administrator') return ORG_TYPE_COLORS.administrator;
+    if (normalized.includes('office') || normalized.includes('deput')) return ORG_TYPE_COLORS.office;
+    if (normalized === 'department') return ORG_TYPE_COLORS.department;
+    if (normalized === 'division') return ORG_TYPE_COLORS.division;
+
+    return DEFAULT_ORG_TYPE_COLOR;
+  };
 
   // Build organization tree from flat list
   const orgTree = useMemo(() => {
@@ -59,6 +86,12 @@ export default function OrgUnitUsersView({
     
     return roots;
   }, [organizations]);
+
+  const totalOrgUnits = useMemo(() => organizations.length || 0, [organizations]);
+  const totalAssignedUsers = useMemo(
+    () => userList.filter((u) => !!u.org && u.role_type !== 'system_admin').length,
+    [userList]
+  );
 
   const getOrgMemberCount = (orgId) => {
     return userList.filter(u => u.org === orgId).length;
@@ -202,30 +235,34 @@ export default function OrgUnitUsersView({
       const hasChildren = org.children && org.children.length > 0;
       const memberCount = getOrgMemberCount(org.org_id);
       const isSelected = selectedOrgId === org.org_id;
-      const paddingLeft = level * 20;
+      const paddingLeft = level * 12;
+      const color = getOrgTypeColor(org.org_type);
       
       return (
         <div key={org.org_id} className="w-full">
           <button
             onClick={() => setSelectedOrgId(org.org_id)}
-            className={`w-full px-3 py-2 rounded-lg transition-all text-left ${
+            className={`w-full px-3 py-2 rounded-lg transition-all text-left border ${
               isSelected
-                ? 'bg-indigo-100 border-2 border-indigo-500'
-                : 'hover:bg-gray-100 border border-transparent'
+                ? `${color.bg} ${color.border} ring-1 ring-indigo-300`
+                : `${color.bg} ${color.border} hover:brightness-95`
             }`}
             title={org.org_name}
             style={{ paddingLeft: `calc(0.75rem + ${paddingLeft}px)` }}
           >
             <div className="flex items-center justify-between min-w-0">
               <div className="min-w-0">
-                <p className="font-semibold text-gray-800 text-sm truncate">{org.org_name}</p>
-                <p className="text-xs text-gray-500">{memberCount} member{memberCount !== 1 ? 's' : ''}</p>
+                <p className={`font-semibold text-sm truncate ${color.text}`}>{org.org_name}</p>
+                <p className="text-xs text-gray-500 truncate">{org.org_code || 'No code'}</p>
               </div>
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ml-2 flex-shrink-0 ${color.badge}`}>
+                {memberCount}
+              </span>
             </div>
           </button>
           
           {hasChildren && (
-            <div className="space-y-1 mt-1">
+            <div className="ml-4 pl-3 border-l border-slate-200 space-y-1 mt-1">
               {renderOrgTree(org.children, level + 1)}
             </div>
           )}
@@ -289,6 +326,17 @@ export default function OrgUnitUsersView({
     return (first + last).toUpperCase();
   };
 
+  const getRoleBorderClass = (roleType) => {
+    switch ((roleType || '').toLowerCase()) {
+      case 'admin':
+        return 'border-violet-500 hover:border-violet-600';
+      case 'user':
+        return 'border-[#22C55E] hover:border-[#16A34A]';
+      default:
+        return 'border-gray-200 hover:border-gray-300';
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Success/Error Notification Toast */}
@@ -298,29 +346,41 @@ export default function OrgUnitUsersView({
             ? 'bg-green-500' 
             : 'bg-red-500'
         }`}>
-          {notification.type === 'success' ? (
-            <span className="text-lg">✓</span>
-          ) : (
-            <span className="text-lg">✕</span>
-          )}
+          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-white/20 border border-white/40 text-sm font-bold">
+            {notification.type === 'success' ? '✓' : '!'}
+          </span>
           <p className="font-medium text-sm">{notification.message}</p>
         </div>
       )}
 
       <div>
-        <h2 className="text-2xl font-bold text-gray-800">Users by Organization</h2>
-        <p className="text-sm text-gray-600 mt-1">View and manage users within organizations</p>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-2xl font-bold text-gray-800">Users by Organization Units</h2>
+          <p className="text-sm text-gray-600 mt-1">View and manage users within organization units</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium border border-slate-200 text-slate-700">
+              {totalOrgUnits} organization unit{totalOrgUnits !== 1 ? 's' : ''}
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium border border-slate-200 text-slate-700">
+              {totalAssignedUsers} assigned member{totalAssignedUsers !== 1 ? 's' : ''}
+            </div>
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium border border-slate-200 text-slate-700">
+              {unassignedUsers.length} unassigned member{unassignedUsers.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Organizations List */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-md p-4">
-            <h3 className="font-semibold text-gray-800 mb-4">Organizations</h3>
+        <div className="lg:col-span-2">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <h3 className="font-semibold text-gray-800 mb-1">Organization Units</h3>
+            <p className="text-xs text-gray-500 mb-4">Select a unit to view and manage members.</p>
             {orgTree.length === 0 ? (
               <div className="text-center py-8">
                 <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No organizations found</p>
+                <p className="text-sm text-gray-500">No organization units found</p>
               </div>
             ) : (
               <div className="space-y-1 max-h-[600px] overflow-y-auto">
@@ -333,15 +393,15 @@ export default function OrgUnitUsersView({
         {/* Members List */}
         <div className="lg:col-span-3">
           {!selectedOrgId ? (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
               <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg mb-2">Select an Organization</p>
+              <p className="text-gray-500 text-lg mb-2">Select an Organization Unit</p>
               <p className="text-gray-400 text-sm">
-                Choose an organization from the left to view its members
+                Choose an organization unit from the left to view its members
               </p>
             </div>
           ) : (
-            <div className="bg-white rounded-lg shadow-md">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
               {/* Header */}
               <div className="p-6 border-b">
                 <div className="mb-4 flex items-start justify-between">
@@ -375,7 +435,7 @@ export default function OrgUnitUsersView({
                 </div>
               </div>
 
-              {/* Members Grid */}
+              {/* Members List */}
               <div className="p-6">
                 {selectedOrgUsers.length === 0 ? (
                   <div className="text-center py-12">
@@ -388,50 +448,39 @@ export default function OrgUnitUsersView({
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="space-y-2">
                     {selectedOrgUsers.map(user => (
                       <div 
                         key={user.id}
-                        className="p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all bg-white"
+                        className={`flex items-center justify-between gap-3 p-3 rounded-lg border transition-all duration-150 bg-white hover:bg-slate-50/70 ${getRoleBorderClass(user.role_type)}`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-4 flex-1 min-w-0">
-                            {/* Avatar */}
-                            <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                              {getInitials(user)}
-                            </div>
-
-                            {/* User Info */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-baseline gap-1 mb-1">
-                                <p className="text-xs font-medium text-gray-600">({user.id})</p>
-                              </div>
-                              <p className="font-semibold text-gray-800 text-sm leading-tight">
-                                {user.firstName} {user.middle_name && `${user.middle_name} `}{user.lastName}{user.suffix && ` ${user.suffix}`}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1 truncate">
-                                {user.email}
-                              </p>
-                              <div className="mt-3 pt-3 border-t border-gray-200">
-                                <p className="text-xs text-gray-600 font-medium">
-                                  Member since {formatDate(user.joinedAt)}
-                                </p>
-                              </div>
-                            </div>
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                            {getInitials(user)}
                           </div>
 
-                          {/* Remove Button */}
-                          <button
-                            onClick={() => {
-                              setUserToRemove(user);
-                              setShowRemoveConfirm(true);
-                            }}
-                            className="ml-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                            title="Remove from organization"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-gray-800 text-sm truncate">
+                              {user.firstName} {user.middle_name && `${user.middle_name} `}{user.lastName}{user.suffix && ` ${user.suffix}`}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">{user.id} • {user.email}</p>
+                          </div>
+
+                          <div className="hidden md:block text-xs text-gray-500 whitespace-nowrap">
+                            Member since {formatDate(user.joinedAt)}
+                          </div>
                         </div>
+
+                        <button
+                          onClick={() => {
+                            setUserToRemove(user);
+                            setShowRemoveConfirm(true);
+                          }}
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                          title="Remove from organization"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     ))}
                   </div>

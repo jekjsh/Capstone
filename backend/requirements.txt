@@ -9,4 +9,12 @@ sqlparse
 psycopg2-binary
 python-dotenv
 pillow
-
+pytesseract
+pdf2image
+opencv-python-headless
+scikit-image
+deskew
+rapidfuzz
+deskew
+scikit-image
+rapidfuzz

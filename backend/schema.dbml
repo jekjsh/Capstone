@@ -68,6 +68,7 @@ Table folders {
   folder_name varchar(255)
   folder_path varchar(500) [null]
   folder_color varchar(20)
+  folder_category int [ref: > categories.category_id, null]
   is_deleted boolean
   deleted_at datetime [null]
   is_archived boolean

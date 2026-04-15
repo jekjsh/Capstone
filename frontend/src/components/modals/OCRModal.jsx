@@ -6,6 +6,8 @@ export default function OCRModal({
   uploadedFile, 
   ocrText, 
   setOcrText, 
+  ocrMode = 'fast',
+  setOcrMode,
   isProcessingOCR, 
   onFileUpload, 
   onProcessOCR, 
@@ -13,17 +15,56 @@ export default function OCRModal({
 }) {
   if (!show) return null;
 
+  const isValidOcrFile = (file) => {
+    if (!file) return false;
+
+    const fileType = String(file.type || '').toLowerCase();
+    const fileName = String(file.name || '').toLowerCase();
+
+    const isImage = fileType.startsWith('image/') || /\.(png|jpe?g|gif|bmp|webp|tiff?)$/.test(fileName);
+    const isPdf = fileType === 'application/pdf' || fileName.endsWith('.pdf');
+
+    return isImage || isPdf;
+  };
+
+  const handleProcessClick = () => {
+    if (!isValidOcrFile(uploadedFile)) {
+      alert('OCR only accepts PDF and image files.');
+      return;
+    }
+
+    onProcessOCR();
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Extract Text with OCR</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="w-6 h-6" />
-          </button>
+        <div className="mb-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-gray-800">Extract Text with OCR</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium leading-relaxed text-amber-900">
+            Note: Pytesseract doesn&apos;t guarantee 100% accuracy and may not give clear results, and may not work correctly on dark or blurry documents.
+          </p>
         </div>
         
         <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">OCR Mode</label>
+            <select
+              value={ocrMode}
+              onChange={(e) => setOcrMode && setOcrMode(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              disabled={isProcessingOCR}
+            >
+              <option value="fast">Fast (Tesseract, recommended default)</option>
+              <option value="high_precision">High Precision (Tesseract, slower)</option>
+            </select>
+          </div>
+
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-indigo-500 transition-colors">
             <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600 mb-4">Upload an image or PDF document for OCR processing</p>
@@ -49,7 +90,7 @@ export default function OCRModal({
 
           {uploadedFile && (
             <button
-              onClick={onProcessOCR}
+              onClick={handleProcessClick}
               disabled={isProcessingOCR}
               className="w-full bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
@@ -100,7 +141,7 @@ export default function OCRModal({
             disabled={!ocrText}
             className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Create Document from OCR
+            Extract as text file
           </button>
         </div>
       </div>

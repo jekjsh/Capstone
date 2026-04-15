@@ -11,6 +11,7 @@ export default function FolderCard({
   onDeleteClick,
   onShareClick,
   onRenameClick,
+  onAddCategories,
   showDeleteButton = true,
 }) {
   const iconColorClasses = {
@@ -40,6 +41,11 @@ export default function FolderCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
             <h3 className="font-bold text-gray-800 line-clamp-1 select-none">{folder.folder_name}</h3>
+            {folder.folder_category_name && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                {folder.folder_category_name}
+              </span>
+            )}
             {isShared && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
                 {sharedLabel}
@@ -69,6 +75,7 @@ export default function FolderCard({
               hideShareOption={true}
               onShare={() => onShareClick?.(folder)}
               onRename={() => onRenameClick?.(folder.folder_id)}
+              onAddCategories={() => onAddCategories?.(folder)}
               onDelete={() => onDeleteClick?.(folder.folder_id)}
             />
           </>

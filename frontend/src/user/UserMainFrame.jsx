@@ -8,14 +8,17 @@ import EditProfileModal from '../components/EditProfileModal';
 import FileManagement from '../components/FileManagement';
 import Category from '../components/Category';
 import Sidebar from './Components/Sidebar';
-import { documentAPI, organizationAPI, userAPI, auditLogAPI, folderAPI, tagAPI, organizationShareAPI, authAPI, documentShareAPI, folderShareAPI, getAccessToken, categoryAPI } from '../services/api';
+import { documentAPI, organizationAPI, userAPI, auditLogAPI, folderAPI, tagAPI, organizationShareAPI, authAPI, documentShareAPI, folderShareAPI, getAccessToken, categoryAPI, ocrAPI } from '../services/api';
 import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 import CreateFolderModal from '../components/modals/CreateFolderModal';
 import EditFolderModal from '../components/modals/EditFolderModal';
 import MoveToFolderModal from '../components/modals/MoveToFolderModal';
 import DocumentViewerModal from '../components/modals/DocumentViewerModal';
 import DocumentHistoryModal from '../components/modals/DocumentHistoryModal';
 import UploadDocumentModal from '../components/modals/UploadDocumentModal';
+import RenameDetectedDocumentsModal from '../components/modals/RenameDetectedDocumentsModal';
+import CategoryMatchConfirmationModal from '../components/modals/CategoryMatchConfirmationModal';
 import OCRModal from '../components/modals/OCRModal';
 import PersonalInfoFormModal from '../components/modals/PersonalInfoFormModal';
 import SaveOptionsModal from '../components/modals/SaveOptionsModal';
@@ -24,6 +27,7 @@ import ShareDocumentModal from '../components/modals/ShareDocumentModal';
 import ShareFolderModal from '../components/modals/ShareFolderModal';
 import RenameDocumentModal from '../components/modals/RenameDocumentModal';
 import AddDocumentCategoriesModal from '../components/modals/AddDocumentCategoriesModal';
+import AddFolderCategoryModal from '../components/modals/AddFolderCategoryModal';
 import SharedDocuments from './Components/SharedDocuments';
 import Notifications from './Components/Notifications';
 import RecycleBin from '../components/RecycleBin';
@@ -301,8 +305,15 @@ export default function UserMainFrame({
   const [uploadedDocFiles, setUploadedDocFiles] = useState([]);
   const [uploadPreviews, setUploadPreviews] = useState([]);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
+  const [uploadFileNames, setUploadFileNames] = useState([]);
+  const [showRenameDetectedModal, setShowRenameDetectedModal] = useState(false);
+  const [showCategoryMatchConfirmModal, setShowCategoryMatchConfirmModal] = useState(false);
+  const [detectedUploadItems, setDetectedUploadItems] = useState([]);
+  const [isDetectingUploads, setIsDetectingUploads] = useState(false);
+  const [isSubmittingDetectedUpload, setIsSubmittingDetectedUpload] = useState(false);
   const [ocrText, setOcrText] = useState('');
   const [isProcessingOCR, setIsProcessingOCR] = useState(false);
+  const [ocrMode, setOcrMode] = useState('fast');
   const [showAddFieldModal, setShowAddFieldModal] = useState(false);
   const [showPersonalInfoForm, setShowPersonalInfoForm] = useState(false);
   const [showSaveOptionsModal, setShowSaveOptionsModal] = useState(false);
@@ -317,6 +328,7 @@ export default function UserMainFrame({
   const [filterFormat, setFilterFormat] = useState('all');
   const [filterByTag, setFilterByTag] = useState({});
   const [uploadTagValues, setUploadTagValues] = useState({});
+  const [autoCategorizeUploads, setAutoCategorizeUploads] = useState(false);
 
   const [personalInfo, setPersonalInfo] = useState({
     fullName: '',
@@ -355,6 +367,8 @@ const [newField, setNewField] = useState({
   const [selectedDocForOrgShare, setSelectedDocForOrgShare] = useState(null);
   const [showAddCategoriesModal, setShowAddCategoriesModal] = useState(false);
   const [documentForCategories, setDocumentForCategories] = useState(null);
+  const [showAddFolderCategoryModal, setShowAddFolderCategoryModal] = useState(false);
+  const [folderForCategory, setFolderForCategory] = useState(null);
   const [userCategories, setUserCategories] = useState([]);
 
   const refreshSharedDocuments = async () => {
@@ -1407,16 +1421,28 @@ const handlePermanentDeleteFolder = async (folderId) => {
     }
   };
 
-  const handleProcessOCR = () => {
+  const handleProcessOCR = async () => {
     if (!uploadedFile) {
       alert('Please upload a file first');
       return;
     }
     setIsProcessingOCR(true);
-    setTimeout(() => {
-      setOcrText(`[OCR Extracted Text from ${uploadedFile.name}]\n\nThis is a simulated OCR result. In a real implementation, this would contain the actual text extracted from the uploaded image or PDF document using OCR technology.\n\nSample extracted content:\n- Name: John Doe\n- Address: 123 Main Street\n- Date: November 11, 2025\n- Document Type: Official Record`);
+    try {
+      const result = await ocrAPI.extractText(uploadedFile, {
+        engine: 'tesseract',
+        mode: ocrMode,
+        lang: 'eng',
+      });
+      setOcrText(result.text || '');
+      if (!result.text) {
+        alert('OCR completed but no readable text was found in the file.');
+      }
+    } catch (error) {
+      console.error('Failed to process OCR:', error);
+      alert(`OCR failed: ${error.message}`);
+    } finally {
       setIsProcessingOCR(false);
-    }, 2000);
+    }
   };
 
   
@@ -1425,40 +1451,38 @@ const handlePermanentDeleteFolder = async (folderId) => {
       alert('Please process OCR first');
       return;
     }
-    const doc = {
-      id: Date.now().toString(),
-      title: `OCR Document - ${uploadedFile.name}`,
-      description: 'Document created from OCR extraction',
-      customFieldValues: {},
-      personalInfo: {},
-      format: 'ocr',
-      folderId: currentFolder,
-      ocrContent: ocrText,
-      createdAt: new Date().toLocaleString(),
-      createdBy: currentUser.id 
-    };
-    
-    
-    if (dataStore) {
-      dataStore.addDocument(doc);
 
-       addAuditLog(
-        'OCR Document Created',
-        `${doc.title} - Extracted from ${uploadedFile.name}`,
-        'Success'
-      );
-    }
+    const sourceName = uploadedFile?.name || 'ocr-result';
+    const baseName = sourceName.replace(/\.[^/.]+$/, '');
+    const outputName = `${baseName}-ocr.txt`;
+
+    const textBlob = new Blob([ocrText], { type: 'text/plain;charset=utf-8' });
+    const downloadUrl = URL.createObjectURL(textBlob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = outputName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(downloadUrl);
+
+    addAuditLog(
+      'OCR Text Extracted',
+      `Extracted OCR text file from ${sourceName}`,
+      'Success'
+    );
     
     setShowOCRModal(false);
     setUploadedFile(null);
     setOcrText('');
-    alert('Document created from OCR text!');
+    alert(`Extracted text saved as ${outputName}`);
   };
 
   const handleDocumentFileUpload = (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
       setUploadedDocFiles(files);
+      setUploadFileNames(files.map((file) => file.name));
       setCurrentPreviewIndex(0);
       
       const previews = [];
@@ -1556,8 +1580,10 @@ const handlePermanentDeleteFolder = async (folderId) => {
   const removeFileFromUpload = (index) => {
     const newFiles = uploadedDocFiles.filter((_, i) => i !== index);
     const newPreviews = uploadPreviews.filter((_, i) => i !== index);
+    const newNames = uploadFileNames.filter((_, i) => i !== index);
     setUploadedDocFiles(newFiles);
     setUploadPreviews(newPreviews);
+    setUploadFileNames(newNames);
     
     if (currentPreviewIndex >= newFiles.length && newFiles.length > 0) {
       setCurrentPreviewIndex(newFiles.length - 1);
@@ -1566,28 +1592,196 @@ const handlePermanentDeleteFolder = async (folderId) => {
     }
   };
 
+  const buildSuggestedUploadNameFromCategory = (fileName, detectedCategoryName) => {
+    const originalName = String(fileName || 'file');
+    const extensionMatch = originalName.match(/(\.[^.]+)$/);
+    const extension = extensionMatch ? extensionMatch[1] : '';
+
+    const userLastName =
+      loggedInUser?.last_name ||
+      loggedInUser?.full_data?.last_name ||
+      currentUser?.last_name ||
+      'user';
+
+    const safeLastName = String(userLastName).trim().replace(/\s+/g, '_');
+    const safeCategory = String(detectedCategoryName || 'category').trim().replace(/\s+/g, '_');
+    return `${safeLastName}_${safeCategory}${extension}`;
+  };
+
+  const pickBestCategoryFromDetectedText = (fileName, extractedText, categories = []) => {
+    const combined = `${String(fileName || '')} ${String(extractedText || '')}`.toLowerCase();
+    if (!combined.trim() || !Array.isArray(categories) || categories.length === 0) {
+      return { category: null, confidence: 0 };
+    }
+
+    let bestMatch = null;
+    let bestScore = 0;
+    let bestPercent = 0;
+
+    categories.forEach((category) => {
+      const categoryName = String(category?.category_name || '').toLowerCase().trim();
+      const categoryDesc = String(category?.category_desc || '').toLowerCase().trim();
+      if (!categoryName && !categoryDesc) return;
+
+      const categoryText = `${categoryName} ${categoryDesc}`.trim();
+      if (!categoryText) return;
+
+      let score = 0;
+      if (categoryName && combined.includes(categoryName)) score += categoryName.length + 5;
+      if (categoryDesc && combined.includes(categoryDesc)) score += categoryDesc.length + 3;
+
+      const words = categoryText.split(/\s+/).filter(Boolean);
+      words.forEach((word) => {
+        if (word.length >= 3 && combined.includes(word)) score += word.length;
+      });
+
+      const maxScore =
+        (categoryName ? categoryName.length + 5 : 0) +
+        (categoryDesc ? categoryDesc.length + 3 : 0) +
+        words.reduce((sum, word) => (word.length >= 3 ? sum + word.length : sum), 0);
+      const percent = maxScore > 0 ? Math.min(100, Math.round((score / maxScore) * 100)) : 0;
+
+      if (score > bestScore || (score === bestScore && percent > bestPercent)) {
+        bestScore = score;
+        bestPercent = percent;
+        bestMatch = category;
+      }
+    });
+
+    return {
+      category: bestScore > 0 ? bestMatch : null,
+      confidence: bestScore > 0 ? bestPercent : 0,
+    };
+  };
+
   
-  const handleUploadDocument = async () => {
+  const splitNameAndExtension = (fullName) => {
+    const lastDot = String(fullName || '').lastIndexOf('.');
+    if (lastDot <= 0) return { base: String(fullName || ''), extension: '' };
+    return {
+      base: String(fullName || '').slice(0, lastDot),
+      extension: String(fullName || '').slice(lastDot),
+    };
+  };
+
+  const hasOcrDetectableFiles = (files = []) => {
+    const ocrFileRegex = /\.(pdf|png|jpe?g|bmp|gif|webp|tiff?)$/i;
+    return files.some((file) => ocrFileRegex.test(file?.name || ''));
+  };
+
+  const runDetectionForUploads = async () => {
+    if (!autoCategorizeUploads || uploadedDocFiles.length === 0) return;
+
+    setIsDetectingUploads(true);
+    try {
+      const ocrFileRegex = /\.(pdf|png|jpe?g|bmp|gif|webp|tiff?)$/i;
+
+      const extractDetectionTextFromFile = async (file, isOcrFile) => {
+        const lowerName = String(file?.name || '').toLowerCase();
+
+        if (isOcrFile) {
+          try {
+            const result = await ocrAPI.extractText(file, {
+              engine: 'tesseract',
+              mode: 'fast',
+              lang: 'eng',
+            });
+            return result?.text || '';
+          } catch (error) {
+            console.error('Detection OCR failed for file:', file.name, error);
+            return '';
+          }
+        }
+
+        if (lowerName.endsWith('.docx')) {
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            return result?.value || '';
+          } catch (error) {
+            console.error('DOCX detection text extraction failed:', file.name, error);
+            return '';
+          }
+        }
+
+        if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+            const extracted = workbook.SheetNames.map((sheetName) => {
+              const sheet = workbook.Sheets[sheetName];
+              return XLSX.utils.sheet_to_csv(sheet || {});
+            }).join('\n');
+            return extracted || '';
+          } catch (error) {
+            console.error('Excel detection text extraction failed:', file.name, error);
+            return '';
+          }
+        }
+
+        if (lowerName.endsWith('.txt')) {
+          try {
+            return await file.text();
+          } catch (error) {
+            console.error('TXT detection text extraction failed:', file.name, error);
+            return '';
+          }
+        }
+
+        return '';
+      };
+
+      const detected = await Promise.all(
+        uploadedDocFiles.map(async (file, index) => {
+          const isOcrFile = ocrFileRegex.test(file.name || '');
+          const extractedText = await extractDetectionTextFromFile(file, isOcrFile);
+
+          const predicted = pickBestCategoryFromDetectedText(file.name, extractedText, userCategories);
+          const predictedCategory = predicted.category;
+
+          return {
+            fileName: file.name,
+            finalName: buildSuggestedUploadNameFromCategory(file.name, predictedCategory?.category_name || 'category'),
+            extractedText,
+            isOcrFile,
+            predictedCategoryName: predictedCategory?.category_name || '',
+            predictedMatchPercent: predicted.confidence || 0,
+          };
+        })
+      );
+
+      setDetectedUploadItems(detected);
+      setShowCategoryMatchConfirmModal(true);
+    } finally {
+      setIsDetectingUploads(false);
+    }
+  };
+
+  const performUploadDocument = async (namesOverride = null) => {
     if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
       alert('Please select at least one file to upload');
       return;
     }
     
     try {
-      const uploadPromises = uploadedDocFiles.map(async (file) => {
+      const uploadPromises = uploadedDocFiles.map(async (file, index) => {
         try {
+          const resolvedDocName = ((namesOverride || uploadFileNames)[index] || file.name || '').trim() || file.name;
+
           // Upload file using multipart form data
           const uploadedDoc = await documentAPI.uploadFiles(
             [file],
-            file.name,
+            resolvedDocName,
             'Uploaded document',
-            currentFolder
+            currentFolder,
+            undefined,
+            { autoCategorize: autoCategorizeUploads }
           );
-          
+
           // Audit log
           addAuditLog(
             'Document Uploaded',
-            `${file.name} (${(file.size / 1024).toFixed(2)} KB)`,
+            `${resolvedDocName} (${(file.size / 1024).toFixed(2)} KB)`,
             'Success'
           );
           
@@ -1609,15 +1803,61 @@ const handlePermanentDeleteFolder = async (folderId) => {
       setFolders(allFolders);
       
       setShowUploadDocumentModal(false);
+      setShowCategoryMatchConfirmModal(false);
+      setShowRenameDetectedModal(false);
       setUploadedDocFiles([]);
       setUploadPreviews([]);
+      setUploadFileNames([]);
+      setDetectedUploadItems([]);
       setCurrentPreviewIndex(0);
       setUploadTagValues({});
+      setAutoCategorizeUploads(false);
       alert(`${uploadedDocs.length} document${uploadedDocs.length > 1 ? 's' : ''} uploaded successfully!`);
     } catch (error) {
       console.error('Failed to upload documents:', error);
       alert(`Failed to upload documents: ${error.message}`);
     }
+  };
+
+  const handleUploadDocument = async () => {
+    if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
+      alert('Please select at least one file to upload');
+      return;
+    }
+
+    if (autoCategorizeUploads) {
+      await runDetectionForUploads();
+      return;
+    }
+
+    await performUploadDocument();
+  };
+
+  const handleChangeDetectedUploadName = (index, newBaseName) => {
+    const file = uploadedDocFiles[index];
+    if (!file) return;
+
+    const { extension } = splitNameAndExtension(file.name);
+    const safeBase = String(newBaseName || '').trim();
+    const nextName = safeBase ? `${safeBase}${extension}` : file.name;
+
+    setDetectedUploadItems((prev) => prev.map((item, i) => (i === index ? { ...item, finalName: nextName } : item)));
+  };
+
+  const handleConfirmDetectedUpload = async () => {
+    setIsSubmittingDetectedUpload(true);
+    try {
+      const confirmedNames = detectedUploadItems.map((item, index) => item.finalName || uploadedDocFiles[index]?.name || 'file');
+      setUploadFileNames(confirmedNames);
+      await performUploadDocument(confirmedNames);
+    } finally {
+      setIsSubmittingDetectedUpload(false);
+    }
+  };
+
+  const handleProceedFromCategoryConfirm = () => {
+    setShowCategoryMatchConfirmModal(false);
+    setShowRenameDetectedModal(true);
   };
 
   const getFilteredAndSortedDocuments = () => {
@@ -1886,6 +2126,11 @@ const handlePermanentDeleteFolder = async (folderId) => {
     setShowAddCategoriesModal(true);
   };
 
+  const openAddFolderCategoryModal = (folder) => {
+    setFolderForCategory(folder);
+    setShowAddFolderCategoryModal(true);
+  };
+
   const handleRenameDocument = async (renameData) => {
     try {
       const document = userDocuments.find(doc => doc.doc_id === renameData.documentId || doc.id === renameData.documentId);
@@ -2130,11 +2375,17 @@ const handleSaveToMyDocuments = (document, source) => {
       <UploadDocumentModal
         show={showUploadDocumentModal}
         onClose={() => { 
+          if (isDetectingUploads) return;
           setShowUploadDocumentModal(false); 
+          setShowCategoryMatchConfirmModal(false);
+          setShowRenameDetectedModal(false);
           setUploadedDocFiles([]); 
           setUploadPreviews([]); 
+          setUploadFileNames([]);
+          setDetectedUploadItems([]);
           setCurrentPreviewIndex(0); 
           setUploadTagValues({});
+          setAutoCategorizeUploads(false);
         }}
         uploadedDocFiles={uploadedDocFiles}
         uploadPreviews={uploadPreviews}
@@ -2146,6 +2397,41 @@ const handleSaveToMyDocuments = (document, source) => {
         customFields={customFields}
         uploadTagValues={uploadTagValues}
         setUploadTagValues={setUploadTagValues}
+        autoCategorizeEnabled={autoCategorizeUploads}
+        setAutoCategorizeEnabled={(enabled) => {
+          setAutoCategorizeUploads(enabled);
+          setUploadFileNames(uploadedDocFiles.map((file) => file.name));
+        }}
+        autoCategorizeWarning="Uploads may take a little longer while your files are organized automatically."
+        primaryActionLabel={autoCategorizeUploads ? 'Detect' : 'Upload'}
+        primaryActionLoading={isDetectingUploads}
+        primaryActionLoadingLabel="Detecting documents..."
+        lockInteractionWhenLoading
+        loadingOverlayText="Detection in progress. Please wait until it finishes."
+      />
+
+      <RenameDetectedDocumentsModal
+        show={showRenameDetectedModal}
+        onClose={() => {
+          if (isSubmittingDetectedUpload) return;
+          setShowRenameDetectedModal(false);
+          setDetectedUploadItems([]);
+        }}
+        detectedItems={detectedUploadItems}
+        onChangeName={handleChangeDetectedUploadName}
+        onConfirm={handleConfirmDetectedUpload}
+        isSubmitting={isSubmittingDetectedUpload}
+      />
+
+      <CategoryMatchConfirmationModal
+        show={showCategoryMatchConfirmModal}
+        items={detectedUploadItems}
+        onClose={() => {
+          if (isSubmittingDetectedUpload) return;
+          setShowCategoryMatchConfirmModal(false);
+        }}
+        onConfirm={handleProceedFromCategoryConfirm}
+        isBusy={isSubmittingDetectedUpload}
       />
 
       <OCRModal
@@ -2154,6 +2440,8 @@ const handleSaveToMyDocuments = (document, source) => {
         uploadedFile={uploadedFile}
         ocrText={ocrText}
         setOcrText={setOcrText}
+        ocrMode={ocrMode}
+        setOcrMode={setOcrMode}
         isProcessingOCR={isProcessingOCR}
         onFileUpload={handleFileUpload}
         onProcessOCR={handleProcessOCR}
@@ -2277,8 +2565,45 @@ const handleSaveToMyDocuments = (document, source) => {
         }}
         document={documentForCategories}
         categories={userCategories}
-        onCategoriesUpdated={() => {
-          // Optional: refresh documents or categories list
+        onCategoriesUpdated={async () => {
+          try {
+            const allDocs = await documentAPI.getAll();
+            const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username || doc.uploaded_by_user?.user_id === currentUser.id);
+            setUserDocuments(myDocs);
+
+            if (documentForCategories) {
+              const refreshedDoc = myDocs.find((d) => String(d.doc_id || d.id) === String(documentForCategories.doc_id || documentForCategories.id));
+              if (refreshedDoc) {
+                setDocumentForCategories(refreshedDoc);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to refresh documents after category update:', error);
+          }
+        }}
+      />
+
+      <AddFolderCategoryModal
+        show={showAddFolderCategoryModal}
+        onClose={() => {
+          setShowAddFolderCategoryModal(false);
+          setFolderForCategory(null);
+        }}
+        folder={folderForCategory}
+        categories={userCategories}
+        onCategoryUpdated={async () => {
+          try {
+            const allFolders = await folderAPI.getAll();
+            setFolders(Array.isArray(allFolders) ? allFolders : []);
+            if (folderForCategory) {
+              const refreshed = (allFolders || []).find((f) => String(f.folder_id) === String(folderForCategory.folder_id));
+              if (refreshed) {
+                setFolderForCategory(refreshed);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to refresh folders after category update:', error);
+          }
         }}
       />
 
@@ -2341,6 +2666,7 @@ const handleSaveToMyDocuments = (document, source) => {
               onDeleteFolder={handleDeleteFolder}
               onShareFolder={(folder) => openShareFolderModal(folder)}
               onRenameFolder={handleRenameFolder}
+              onAddFolderCategory={openAddFolderCategoryModal}
               getFolderDocumentCount={getFolderDocumentCount}
             />
           )}

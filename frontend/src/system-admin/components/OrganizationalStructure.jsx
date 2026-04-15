@@ -1,6 +1,24 @@
 import { Plus, Edit, Trash2, ChevronDown, ChevronRight, Building2, Loader, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
+const ORGANIZATION_TYPE_OPTIONS = [
+  'Board',
+  'Administrator',
+  'Office',
+  'Department',
+  'Division'
+];
+
+const ORGANIZATION_TYPE_COLORS = {
+  board: { bg: 'bg-[#FEF08A]', border: 'border-[#FDE047]', icon: 'bg-[#FDE68A]', text: 'text-[#854D0E]' },
+  administrator: { bg: 'bg-[#D1FAE5]', border: 'border-[#6EE7B7]', icon: 'bg-[#A7F3D0]', text: 'text-[#065F46]' },
+  office: { bg: 'bg-[#E0F2FE]', border: 'border-[#7DD3FC]', icon: 'bg-[#BAE6FD]', text: 'text-[#075985]' },
+  department: { bg: 'bg-[#FFE4E6]', border: 'border-[#FDA4AF]', icon: 'bg-[#FECDD3]', text: 'text-[#9F1239]' },
+  division: { bg: 'bg-[#EDE9FE]', border: 'border-[#C4B5FD]', icon: 'bg-[#DDD6FE]', text: 'text-[#5B21B6]' }
+};
+
+const DEFAULT_ORG_TYPE_COLOR = { bg: 'bg-gray-50', border: 'border-gray-300', icon: 'bg-gray-200', text: 'text-gray-700' };
+
 export default function OrganizationalStructure() {
   const [expandedNodes, setExpandedNodes] = useState({});
   const [organizationTree, setOrganizationTree] = useState([]);
@@ -12,6 +30,18 @@ export default function OrganizationalStructure() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ name: '', code: '', type: '', description: '' });
   const [formErrors, setFormErrors] = useState({});
+
+  const getOrgTypeColor = (orgType) => {
+    const normalized = (orgType || '').trim().toLowerCase();
+
+    if (normalized === 'board') return ORGANIZATION_TYPE_COLORS.board;
+    if (normalized === 'administrator') return ORGANIZATION_TYPE_COLORS.administrator;
+    if (normalized.includes('office') || normalized.includes('deput')) return ORGANIZATION_TYPE_COLORS.office;
+    if (normalized === 'department') return ORGANIZATION_TYPE_COLORS.department;
+    if (normalized === 'division') return ORGANIZATION_TYPE_COLORS.division;
+
+    return DEFAULT_ORG_TYPE_COLOR;
+  };
 
   useEffect(() => {
     fetchOrganizations();
@@ -124,10 +154,9 @@ export default function OrganizationalStructure() {
                   }`}
                 >
                   <option value="">Select Type</option>
-                  <option value="Office">Office</option>
-                  <option value="Department">Department</option>
-                  <option value="College">College</option>
-                  <option value="Division">Division</option>
+                  {ORGANIZATION_TYPE_OPTIONS.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
                 </select>
                 {formErrors.type && <p className="text-xs text-red-500 mt-1">{formErrors.type}</p>}
               </div>
@@ -212,6 +241,7 @@ export default function OrganizationalStructure() {
         name: org.org_name,
         code: org.org_code,
         type: org.org_type,
+        description: org.org_desc || '',
         parentOrgId: org.parent_org,
         children: []
       };
@@ -356,7 +386,7 @@ export default function OrganizationalStructure() {
       name: org.name,
       code: org.code,
       type: org.type,
-      description: ''
+      description: org.description || ''
     });
     setFormErrors({});
     setShowModal(true);
@@ -377,17 +407,15 @@ export default function OrganizationalStructure() {
   function renderOrgNode(node, level = 0) {
     const hasChildren = node.children && node.children.length > 0;
     const isExpanded = expandedNodes[node.id];
-
-    const colors = {
-      0: { bg: 'bg-blue-50', border: 'border-blue-300', icon: 'bg-blue-200', text: 'text-blue-700' },
-      1: { bg: 'bg-green-50', border: 'border-green-300', icon: 'bg-green-200', text: 'text-green-700' },
-      2: { bg: 'bg-purple-50', border: 'border-purple-300', icon: 'bg-purple-200', text: 'text-purple-700' }
-    };
-    const color = colors[level] || { bg: 'bg-gray-50', border: 'border-gray-300', icon: 'bg-gray-200', text: 'text-gray-700' };
+    const color = getOrgTypeColor(node.type);
+    const hasDescription = !!node.description?.trim();
 
     return (
       <div key={node.id} className="mb-2">
-        <div className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${color.bg} ${color.border} hover:shadow-md`} style={{ marginLeft: `${level * 32}px` }}>
+        <div
+          className={`group relative flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${color.bg} ${color.border} hover:shadow-md`}
+          style={{ marginLeft: `${level * 32}px` }}
+        >
           {hasChildren ? (
             <button onClick={() => toggleNode(node.id)} className="p-1 hover:bg-white rounded transition-colors">
               {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-600" /> : <ChevronRight className="w-4 h-4 text-gray-600" />}
@@ -414,6 +442,12 @@ export default function OrganizationalStructure() {
               <Trash2 className="w-4 h-4 text-red-600" />
             </button>
           </div>
+
+          {hasDescription && (
+            <div className="pointer-events-none absolute left-4 top-full z-30 mt-2 max-w-xs rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+              {node.description}
+            </div>
+          )}
         </div>
 
         {hasChildren && isExpanded && (

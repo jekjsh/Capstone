@@ -106,7 +106,8 @@ export default function SystemAdminMainFrame({
   const [showUserIdFormatModal, setShowUserIdFormatModal] = useState(false);
   const [showRequestApprovalModal, setShowRequestApprovalModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [requestAction, setRequestAction] = useState(null); // 'preview', 'approve', 'reject'
+  const [requestAction, setRequestAction] = useState(null); // 'claim', 'approve', 'reject'
+  const [requestsRefreshKey, setRequestsRefreshKey] = useState(0);
   const [, forceUpdate] = useState(0);
   
   // User management states
@@ -152,6 +153,56 @@ export default function SystemAdminMainFrame({
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
+  const refreshPendingRequestsCount = async () => {
+    try {
+      const { userCreationRequestAPI } = await import('../services/api');
+      const requests = await userCreationRequestAPI.getAll();
+      const pendingCount = requests.filter(req => req.status === 'pending').length;
+      const approvedCount = requests.filter(req => req.status === 'approved').length;
+      const deniedCount = requests.filter(req => req.status === 'denied' || req.status === 'rejected').length;
+      setPendingRequestsCount(pendingCount);
+      setRequestStatusBreakdown({
+        pending: pendingCount,
+        approved: approvedCount,
+        denied: deniedCount,
+      });
+    } catch (error) {
+      console.error('Failed to fetch requests count:', error);
+    }
+  };
+
+  const refreshAuditLogList = async () => {
+    try {
+      setIsLoadingLogs(true);
+      const data = await auditLogAPI.getAll();
+      const transformedLogs = transformAuditLogs(data);
+      setAuditLogs(transformedLogs);
+    } catch (error) {
+      console.error('Failed to load audit logs:', error);
+      if (dataStore) {
+        const fallbackData = dataStore.getAllAuditLogs();
+        setAuditLogs(fallbackData);
+      } else {
+        setAuditLogs([]);
+      }
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  const refreshOrganizationTree = async () => {
+    try {
+      const data = await organizationAPI.getAll();
+      setOrganizationTree(data);
+    } catch (error) {
+      console.error('Failed to load organization structure:', error);
+      if (dataStore) {
+        const fallbackData = dataStore.getOrganizationTree();
+        setOrganizationTree(fallbackData);
+      }
+    }
+  };
+
   // Subscribe to dataStore changes
   useEffect(() => {
     if (dataStore) {
@@ -188,29 +239,11 @@ export default function SystemAdminMainFrame({
 
   // Fetch pending requests count
   useEffect(() => {
-    const fetchPendingRequestsCount = async () => {
-      try {
-        const { userCreationRequestAPI } = await import('../services/api');
-        const requests = await userCreationRequestAPI.getAll();
-        const pendingCount = requests.filter(req => req.status === 'pending').length;
-        const approvedCount = requests.filter(req => req.status === 'approved').length;
-        const deniedCount = requests.filter(req => req.status === 'denied' || req.status === 'rejected').length;
-        setPendingRequestsCount(pendingCount);
-        setRequestStatusBreakdown({
-          pending: pendingCount,
-          approved: approvedCount,
-          denied: deniedCount,
-        });
-      } catch (error) {
-        console.error('Failed to fetch requests count:', error);
-      }
-    };
-    
     // Fetch immediately
-    fetchPendingRequestsCount();
+    refreshPendingRequestsCount();
     
     // Refresh every 30 seconds
-    const interval = setInterval(fetchPendingRequestsCount, 30000);
+    const interval = setInterval(refreshPendingRequestsCount, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -354,46 +387,40 @@ export default function SystemAdminMainFrame({
 
   // Fetch audit logs from backend
   useEffect(() => {
-    const fetchAuditLogs = async () => {
-      setIsLoadingLogs(true);
-      try {
-        const data = await auditLogAPI.getAll();
-        
-        const transformedLogs = transformAuditLogs(data);
-        setAuditLogs(transformedLogs);
-      } catch (error) {
-        console.error('Failed to load audit logs:', error);
-        if (dataStore) {
-          const fallbackData = dataStore.getAllAuditLogs();
-          setAuditLogs(fallbackData);
-        } else {
-          setAuditLogs([]);
-        }
-      } finally {
-        setIsLoadingLogs(false);
-      }
-    };
-
-    fetchAuditLogs();
+    refreshAuditLogList();
   }, [dataStore]);
 
   // Fetch organization tree from backend
   useEffect(() => {
-    const fetchOrganizationTree = async () => {
-      try {
-        const data = await organizationAPI.getAll();
-        setOrganizationTree(data);
-      } catch (error) {
-        console.error('Failed to load organization structure:', error);
-        if (dataStore) {
-          const fallbackData = dataStore.getOrganizationTree();
-          setOrganizationTree(fallbackData);
-        }
-      }
-    };
-
-    fetchOrganizationTree();
+    refreshOrganizationTree();
   }, [dataStore]);
+
+  // Refresh the active tab data when switching sections, so no page reload is needed.
+  useEffect(() => {
+    if (activeSection === 'dashboard') {
+      refreshUserList();
+      refreshAuditLogList();
+      refreshOrganizationTree();
+      refreshPendingRequestsCount();
+      return;
+    }
+
+    if (activeSection === 'user-management' || activeSection === 'org-users') {
+      refreshUserList();
+      refreshOrganizationTree();
+      return;
+    }
+
+    if (activeSection === 'audit-logs') {
+      refreshAuditLogList();
+      return;
+    }
+
+    if (activeSection === 'requests') {
+      setRequestsRefreshKey(prev => prev + 1);
+      refreshPendingRequestsCount();
+    }
+  }, [activeSection]);
 
   const handleToggleUserStatus = async (userId) => {
     const user = userList.find(u => u.id === userId);
@@ -445,8 +472,9 @@ export default function SystemAdminMainFrame({
         if (showEditPasswordModal === true) {
           const user = userList.find(u => u.id === editingUserId || u.user_index === editingUserId);
           if (user) {
-            // Generate new password from surname without spaces (e.g., Dela Cruz -> DELACRUZ123!)
-            const newPassword = (user.last_name || user.lastName || 'USER').replace(/\s+/g, '').toUpperCase() + '123!';
+            // Generate new password from uppercase last name without spaces (e.g., Dela Cruz -> DELACRUZ123!)
+            const baseLastName = (user.last_name || user.lastName || '').replace(/\s+/g, '').toUpperCase();
+            const newPassword = `${baseLastName || 'USER'}123!`;
             
             try {
               // Update user password
@@ -459,7 +487,7 @@ export default function SystemAdminMainFrame({
               setUserList(users);
               
               // Show success message in modal instead of alert
-              setResetPasswordMessage(`Reset password success!\nPassword format is SURNAME123!\n\nRemind them to change password ASAP!`);
+              setResetPasswordMessage(`Reset password success!\nPassword format is SURNAME123! (uppercase, spaces removed)\n\nRemind them to change password ASAP!`);
               setResetPasswordSuccess(true);
               setAdminVerificationPassword('');
               setPasswordData({ password: '', confirmPassword: '' });
@@ -552,6 +580,14 @@ export default function SystemAdminMainFrame({
     return userList.filter(user => {
       // Defensive checks for required fields
       if (!user || !user.id) return false;
+
+      const normalizedRole = (user.role || '').toString().toLowerCase();
+      const normalizedFilterRole = (userFilterRole || '').toString().toLowerCase();
+      const userOrgId = typeof user.organizationUnitId === 'object'
+        ? (user.organizationUnitId?.org_id || user.organizationUnitId?.id || '')
+        : (user.organizationUnitId || '');
+      const normalizedUserOrgId = userOrgId.toString();
+      const normalizedFilterOrgId = (userFilterOrganization || '').toString();
       
       const matchesSearch = 
         (user.id || '').toLowerCase().includes(userSearchQuery.toLowerCase()) ||
@@ -559,9 +595,9 @@ export default function SystemAdminMainFrame({
         (user.lastName || '').toLowerCase().includes(userSearchQuery.toLowerCase()) ||  
         (user.email || '').toLowerCase().includes(userSearchQuery.toLowerCase());
       
-      const matchesRole = userFilterRole === 'All' || user.role === userFilterRole;
+      const matchesRole = userFilterRole === 'All' || normalizedRole === normalizedFilterRole;
       const matchesStatus = userFilterStatus === 'All' || (user.isActive ? 'Active' : 'Inactive') === userFilterStatus;
-      const matchesOrganization = userFilterOrganization === 'All' || user.organizationUnitId === userFilterOrganization;
+      const matchesOrganization = userFilterOrganization === 'All' || normalizedUserOrgId === normalizedFilterOrgId;
       
       return matchesSearch && matchesRole && matchesStatus && matchesOrganization;
     });
@@ -639,10 +675,12 @@ export default function SystemAdminMainFrame({
       // Success - the API call is handled in RequestApprovalModal
       console.log('Request approved successfully:', requestId);
       setShowRequestApprovalModal(false);
-      // Decrement pending requests count
-      setPendingRequestsCount(prev => Math.max(0, prev - 1));
-      // Refresh requests list when modal is closed
-      // This will be handled by SystemAdminRequests component with refresh button
+      setRequestsRefreshKey(prev => prev + 1);
+      await Promise.all([
+        refreshPendingRequestsCount(),
+        refreshUserList(),
+        refreshAuditLogList(),
+      ]);
     } catch (error) {
       console.error('Error approving request:', error);
     }
@@ -653,13 +691,22 @@ export default function SystemAdminMainFrame({
       // Success - the API call is handled in RequestApprovalModal
       console.log('Request rejected successfully:', requestId, 'Reason:', reason);
       setShowRequestApprovalModal(false);
-      // Decrement pending requests count
-      setPendingRequestsCount(prev => Math.max(0, prev - 1));
-      // Refresh requests list when modal is closed
-      // This will be handled by SystemAdminRequests component with refresh button
+      setRequestsRefreshKey(prev => prev + 1);
+      await Promise.all([
+        refreshPendingRequestsCount(),
+        refreshAuditLogList(),
+      ]);
     } catch (error) {
       console.error('Error rejecting request:', error);
     }
+  };
+
+  const handleRequestClaimed = async () => {
+    setRequestsRefreshKey(prev => prev + 1);
+    await Promise.all([
+      refreshPendingRequestsCount(),
+      refreshAuditLogList(),
+    ]);
   };
 
   return (
@@ -755,6 +802,8 @@ export default function SystemAdminMainFrame({
             <SystemAdminRequests
               onOpenRequestModal={handleOpenRequestModal}
               targetRequestId={targetRequestId}
+              refreshKey={requestsRefreshKey}
+              currentUser={loggedInUser}
             />
           )}
         </div>
@@ -886,6 +935,7 @@ export default function SystemAdminMainFrame({
         currentUser={loggedInUser}
         onApprove={handleApproveRequest}
         onReject={handleRejectRequest}
+        onClaim={handleRequestClaimed}
       />
 
       {showIdFormatRequiredNotice && (

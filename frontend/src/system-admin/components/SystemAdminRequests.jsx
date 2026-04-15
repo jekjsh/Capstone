@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { UserPlus, ChevronDown, ChevronUp, Loader } from 'lucide-react';
 import { userCreationRequestAPI } from '../../services/api';
 
-export default function SystemAdminRequests({ onOpenRequestModal, targetRequestId = null }) {
+export default function SystemAdminRequests({ onOpenRequestModal, targetRequestId = null, refreshKey = 0, currentUser = null }) {
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -13,7 +13,7 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
   // Fetch requests on component mount
   useEffect(() => {
     fetchRequests();
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     if (!targetRequestId || requests.length === 0) {
@@ -80,8 +80,18 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
     onOpenRequestModal(request, 'reject');
   };
 
-  const handlePreview = (request) => {
-    onOpenRequestModal(request, 'preview');
+  const handleClaim = (request) => {
+    onOpenRequestModal(request, 'claim');
+  };
+
+  const currentUserId = currentUser?.user_id || currentUser?.id || null;
+  const currentUserIndex = currentUser?.user_index || currentUser?.full_data?.user_index || null;
+
+  const normalizeId = (value) => (value === null || value === undefined ? '' : String(value).trim().toLowerCase());
+  const isClaimedByCurrentUser = (claimedBy) => {
+    const claimed = normalizeId(claimedBy);
+    if (!claimed) return false;
+    return [currentUserId, currentUserIndex].some((id) => normalizeId(id) === claimed);
   };
 
   const getNormalizedStatus = (status) => {
@@ -234,24 +244,37 @@ export default function SystemAdminRequests({ onOpenRequestModal, targetRequestI
           {/* Action Buttons */}
           {request.status === 'pending' && (
             <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
-              <button
-                onClick={() => handlePreview(request)}
-                className="px-4 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium"
-              >
-                Preview
-              </button>
-              <button
-                onClick={() => handleReject(request)}
-                className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium"
-              >
-                Reject
-              </button>
-              <button
-                onClick={() => handleApprove(request)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-              >
-                Approve
-              </button>
+              {!request.claimed_by && (
+                <button
+                  onClick={() => handleClaim(request)}
+                  className="px-4 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium"
+                >
+                  Claim
+                </button>
+              )}
+
+              {request.claimed_by && isClaimedByCurrentUser(request.claimed_by) && (
+                <>
+                  <button
+                    onClick={() => handleReject(request)}
+                    className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => handleApprove(request)}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                  >
+                    Approve
+                  </button>
+                </>
+              )}
+
+              {request.claimed_by && !isClaimedByCurrentUser(request.claimed_by) && (
+                <p className="text-sm text-amber-700 font-medium self-center">
+                  Claimed by {request.claimed_by_name || request.claimed_by}
+                </p>
+              )}
             </div>
           )}
         </div>

@@ -9,10 +9,11 @@ class FolderSerializer(serializers.ModelSerializer):
     parent_folder_name = serializers.CharField(source='parent_folder.folder_name', read_only=True, allow_null=True)
     document_count = serializers.SerializerMethodField()
     owning_org_name = serializers.CharField(source='owning_org.org_name', read_only=True, allow_null=True)
+    folder_category_name = serializers.CharField(source='folder_category.category_name', read_only=True, allow_null=True)
     
     class Meta:
         model = Folder
-        fields = ['folder_id', 'user_index', 'created_by_user', 'parent_folder', 'parent_folder_name', 'org', 'owning_org', 'owning_org_name', 'folder_name', 'folder_path', 'folder_color', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'created_at', 'updated_at', 'document_count']
+        fields = ['folder_id', 'user_index', 'created_by_user', 'parent_folder', 'parent_folder_name', 'org', 'owning_org', 'owning_org_name', 'folder_name', 'folder_path', 'folder_color', 'folder_category', 'folder_category_name', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'created_at', 'updated_at', 'document_count']
         read_only_fields = ['folder_id', 'user_index', 'created_by_user', 'owning_org', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'created_at', 'updated_at']
     
     def get_document_count(self, obj):
@@ -65,14 +66,17 @@ class DocumentSerializer(serializers.ModelSerializer):
         if not user or not getattr(user, 'is_authenticated', False):
             return False
 
-        user_org_id = getattr(user, 'org_id', None)
-        if user_org_id is None:
+        user_index = getattr(user, 'user_index', None)
+        if user_index is None:
             return False
 
-        if obj.owning_org_id == user_org_id:
+        # Owner-only preview policy: only document owner account can open preview/file.
+        owner_user_index = obj.uploaded_by_user_id or obj.user_index_id
+        if owner_user_index and owner_user_index == user_index:
             return True
 
-        if obj.folder_id and getattr(obj.folder, 'owning_org_id', None) == user_org_id:
+        # Fallback for legacy records missing owner linkage.
+        if not owner_user_index and getattr(obj, 'owning_org_id', None) == getattr(user, 'org_id', None):
             return True
 
         if DocumentShare.objects.filter(doc=obj, shared_to_user=user).exists():

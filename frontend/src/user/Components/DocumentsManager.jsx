@@ -31,9 +31,20 @@ export default function FileManagement({
   onDownloadDocument,
   onPrintDocument,
   onMoveToFolder,
+  onMoveDocumentByDrop = null,
+  enableDocumentDragDrop = false,
+  canDragDocument = () => true,
+  canDropToFolder = () => true,
+  canDropToRoot = () => true,
+  onMoveFolderByDrop = null,
+  enableFolderDragDrop = false,
+  canDragFolder = () => true,
+  canDropFolderToFolder = () => true,
+  canDropFolderToRoot = () => true,
   onShareDocument,
   onRenameDocument,
   onAddCategories,
+  onAddFolderCategory,
   onDeleteFolder,
   onShareFolder,
   onRenameFolder,
@@ -52,6 +63,15 @@ export default function FileManagement({
   const [breadcrumbs, setBreadcrumbs] = useState([]);
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+  const [draggedDocumentId, setDraggedDocumentId] = useState(null);
+  const [draggedDocument, setDraggedDocument] = useState(null);
+  const [draggedFolderId, setDraggedFolderId] = useState(null);
+  const [draggedFolder, setDraggedFolder] = useState(null);
+  const [dragOverTarget, setDragOverTarget] = useState(null);
+
+  const canUseDocumentDragDrop = enableDocumentDragDrop && typeof onMoveDocumentByDrop === 'function';
+  const canUseFolderDragDrop = enableFolderDragDrop && typeof onMoveFolderByDrop === 'function';
+  const ROOT_DROP_TARGET = '__ROOT__';
 
   // Build breadcrumbs when folder changes
   useEffect(() => {
@@ -171,6 +191,17 @@ export default function FileManagement({
     return sharedFolderIdSet.has(String(folderId)) ? 'Shared' : '';
   };
 
+  const getDocumentCategoryBadge = (doc) => {
+    const categories = Array.isArray(doc?.categories) ? doc.categories : [];
+    if (categories.length === 0) return '';
+
+    const firstCategoryName = categories[0]?.category_name || '';
+    if (!firstCategoryName) return '';
+
+    if (categories.length === 1) return firstCategoryName;
+    return `${firstCategoryName} +${categories.length - 1}`;
+  };
+
   const pageTitle = isInFolder ? currentFolderData?.folder_name : 'My Files';
 
   const getOwnerLabel = (item) => {
@@ -223,6 +254,173 @@ export default function FileManagement({
     return timeB - timeA;
   });
 
+  const handleDocumentDragStart = (event, docId) => {
+    if (!canUseDocumentDragDrop) return;
+
+    const sourceDoc = (documentSource || []).find(
+      (doc) => String(doc.doc_id || doc.id) === String(docId)
+    );
+
+    if (!sourceDoc || !canDragDocument(sourceDoc)) {
+      event.preventDefault();
+      return;
+    }
+
+    const normalizedDocId = String(docId);
+    setDraggedDocumentId(normalizedDocId);
+    setDraggedDocument(sourceDoc);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', normalizedDocId);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedDocumentId(null);
+    setDraggedDocument(null);
+    setDraggedFolderId(null);
+    setDraggedFolder(null);
+    setDragOverTarget(null);
+  };
+
+  const isDescendantFolder = (sourceFolderId, candidateTargetFolderId) => {
+    if (!sourceFolderId || !candidateTargetFolderId) return false;
+
+    let current = folders.find((folder) => String(folder.folder_id) === String(candidateTargetFolderId));
+
+    while (current) {
+      if (String(current.folder_id) === String(sourceFolderId)) {
+        return true;
+      }
+
+      if (!current.parent_folder) {
+        return false;
+      }
+
+      current = folders.find((folder) => String(folder.folder_id) === String(current.parent_folder));
+    }
+
+    return false;
+  };
+
+  const handleFolderDragStart = (event, folderId) => {
+    if (!canUseFolderDragDrop) return;
+
+    const sourceFolder = folders.find((folder) => String(folder.folder_id) === String(folderId));
+
+    if (!sourceFolder || !canDragFolder(sourceFolder)) {
+      event.preventDefault();
+      return;
+    }
+
+    const normalizedFolderId = String(folderId);
+    setDraggedFolderId(normalizedFolderId);
+    setDraggedFolder(sourceFolder);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', normalizedFolderId);
+  };
+
+  const handleDragOverTarget = (event, targetId) => {
+    const draggingDocument = canUseDocumentDragDrop && !!draggedDocumentId;
+    const draggingFolder = canUseFolderDragDrop && !!draggedFolderId;
+
+    if (!draggingDocument && !draggingFolder) return;
+
+    if (draggingDocument) {
+      if (targetId === ROOT_DROP_TARGET) {
+        if (!canDropToRoot(draggedDocument)) return;
+      } else {
+        const targetFolder = folders.find((folder) => String(folder.folder_id) === String(targetId));
+        if (!targetFolder || !canDropToFolder(targetFolder, draggedDocument)) return;
+      }
+    }
+
+    if (draggingFolder) {
+      if (targetId === ROOT_DROP_TARGET) {
+        if (!canDropFolderToRoot(draggedFolder)) return;
+      } else {
+        const targetFolder = folders.find((folder) => String(folder.folder_id) === String(targetId));
+        if (!targetFolder) return;
+        if (String(targetFolder.folder_id) === String(draggedFolderId)) return;
+        if (isDescendantFolder(draggedFolderId, targetFolder.folder_id)) return;
+        if (!canDropFolderToFolder(targetFolder, draggedFolder)) return;
+      }
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverTarget(String(targetId));
+  };
+
+  const handleDragLeaveTarget = (targetId) => {
+    if (dragOverTarget === String(targetId)) {
+      setDragOverTarget(null);
+    }
+  };
+
+  const handleDropOnTarget = async (event, targetId) => {
+    const draggingDocument = canUseDocumentDragDrop && !!draggedDocumentId;
+    const draggingFolder = canUseFolderDragDrop && !!draggedFolderId;
+
+    if (!draggingDocument && !draggingFolder) return;
+    event.preventDefault();
+
+    if (draggingDocument) {
+      if (targetId === ROOT_DROP_TARGET) {
+        if (!canDropToRoot(draggedDocument)) {
+          handleDragEnd();
+          return;
+        }
+      } else {
+        const targetFolder = folders.find((folder) => String(folder.folder_id) === String(targetId));
+        if (!targetFolder || !canDropToFolder(targetFolder, draggedDocument)) {
+          handleDragEnd();
+          return;
+        }
+      }
+
+      const destinationFolderId = targetId === ROOT_DROP_TARGET ? null : targetId;
+      await onMoveDocumentByDrop(draggedDocumentId, destinationFolderId);
+      handleDragEnd();
+      return;
+    }
+
+    if (draggingFolder) {
+      if (targetId === ROOT_DROP_TARGET) {
+        if (!canDropFolderToRoot(draggedFolder)) {
+          handleDragEnd();
+          return;
+        }
+      } else {
+        const targetFolder = folders.find((folder) => String(folder.folder_id) === String(targetId));
+        if (!targetFolder) {
+          handleDragEnd();
+          return;
+        }
+
+        if (String(targetFolder.folder_id) === String(draggedFolderId)) {
+          handleDragEnd();
+          return;
+        }
+
+        if (isDescendantFolder(draggedFolderId, targetFolder.folder_id)) {
+          handleDragEnd();
+          return;
+        }
+
+        if (!canDropFolderToFolder(targetFolder, draggedFolder)) {
+          handleDragEnd();
+          return;
+        }
+      }
+
+      const destinationParentFolderId = targetId === ROOT_DROP_TARGET ? null : targetId;
+      await onMoveFolderByDrop(draggedFolderId, destinationParentFolderId);
+      handleDragEnd();
+      return;
+    }
+
+    handleDragEnd();
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Breadcrumb as Main Navigation */}
@@ -233,7 +431,31 @@ export default function FileManagement({
             <div key={crumb.id} className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentFolder(crumb.id)}
-                className="text-black hover:bg-gray-200 rounded px-2 py-1 transition-colors"
+                onDragOver={(event) => {
+                  if (index === 0) {
+                    handleDragOverTarget(event, ROOT_DROP_TARGET);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (index === 0) {
+                    handleDragLeaveTarget(ROOT_DROP_TARGET);
+                  }
+                }}
+                onDrop={(event) => {
+                  if (index === 0) {
+                    handleDropOnTarget(event, ROOT_DROP_TARGET);
+                  }
+                }}
+                className={`text-black hover:bg-gray-200 rounded px-2 py-1 transition-colors ${
+                  index === 0 && dragOverTarget === ROOT_DROP_TARGET
+                    ? 'ring-2 ring-indigo-300 bg-indigo-50'
+                    : ''
+                }`}
+                title={
+                  index === 0 && (canUseDocumentDragDrop || canUseFolderDragDrop)
+                    ? 'Drop here to move to root'
+                    : undefined
+                }
               >
                 {crumb.name}
               </button>
@@ -241,6 +463,14 @@ export default function FileManagement({
             </div>
           ))}
         </div>
+
+        {isInFolder && currentFolderData?.folder_category_name && (
+          <div className="mb-3">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+              Category: {currentFolderData.folder_category_name}
+            </span>
+          </div>
+        )}
         
         {/* Primary actions */}
         <div className="flex flex-wrap items-center gap-3">
@@ -388,7 +618,48 @@ export default function FileManagement({
             </div>
 
             {combinedListItems.map((item) => (
-              <div key={`${item.type}-${item.id}`} className="grid grid-cols-12 px-4 py-4 border-b border-gray-100 last:border-b-0 items-center gap-2 hover:bg-gray-50 group">
+              <div
+                key={`${item.type}-${item.id}`}
+                draggable={
+                  (item.type === 'document' && canUseDocumentDragDrop && canDragDocument(item.data)) ||
+                  (item.type === 'folder' && canUseFolderDragDrop && canDragFolder(item.data))
+                }
+                onDragStart={(event) => {
+                  if (item.type === 'document') {
+                    handleDocumentDragStart(event, item.id);
+                  } else if (item.type === 'folder') {
+                    handleFolderDragStart(event, item.id);
+                  }
+                }}
+                onDragEnd={handleDragEnd}
+                onDragOver={(event) => {
+                  if (item.type === 'folder') {
+                    handleDragOverTarget(event, item.id);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (item.type === 'folder') {
+                    handleDragLeaveTarget(item.id);
+                  }
+                }}
+                onDrop={(event) => {
+                  if (item.type === 'folder') {
+                    handleDropOnTarget(event, item.id);
+                  }
+                }}
+                className={`grid grid-cols-12 px-4 py-4 border-b border-gray-100 last:border-b-0 items-center gap-2 hover:bg-gray-50 group ${
+                  item.type === 'folder' && dragOverTarget === String(item.id)
+                    ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-300'
+                    : ''
+                }`}
+                title={
+                  item.type === 'document' && canUseDocumentDragDrop && canDragDocument(item.data)
+                    ? 'Drag onto a folder to move'
+                    : item.type === 'folder' && canUseFolderDragDrop && canDragFolder(item.data)
+                      ? 'Drag onto another folder to move'
+                      : undefined
+                }
+              >
                 <div
                   className="col-span-6 flex items-center gap-3 min-w-0 cursor-pointer select-none"
                   onDoubleClick={() => {
@@ -409,7 +680,19 @@ export default function FileManagement({
                     {item.type === 'folder' ? <Folder className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                   </span>
                   <div className="min-w-0 flex items-center gap-2 select-none">
-                    <p className="text-base font-semibold text-gray-800 truncate select-none">{item.name}</p>
+                      <p className="text-base font-semibold text-gray-800 truncate select-none">
+                        {item.name}
+                      </p>
+                    {item.type === 'folder' && item.data?.folder_category_name && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                        {item.data.folder_category_name}
+                      </span>
+                    )}
+                    {item.type === 'document' && getDocumentCategoryBadge(item.data) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                        {getDocumentCategoryBadge(item.data)}
+                      </span>
+                    )}
                     {item.isShared && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
                         {item.sharedLabel || 'Shared'}
@@ -437,6 +720,7 @@ export default function FileManagement({
                       hideShareOption={true}
                       onShare={() => onShareFolder(item.data)}
                       onRename={() => onRenameFolder(item.data.folder_id)}
+                      onAddCategories={() => onAddFolderCategory?.(item.data)}
                       onDelete={() => onDeleteFolder(item.data.folder_id)}
                     />
                   ) : (
@@ -466,18 +750,35 @@ export default function FileManagement({
               <h3 className="text-lg font-semibold text-gray-800">Folders</h3>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {subfolders.map((folder) => (
-                  <FolderCard
+                  <div
                     key={folder.folder_id}
-                    folder={folder}
-                    viewMode={viewMode}
-                    docCount={getFolderDocumentCount(folder.folder_id)}
-                    isShared={sharedFolderIdSet.has(String(folder.folder_id))}
-                    sharedLabel={getFolderSharedLabel(folder.folder_id)}
-                    onFolderClick={setCurrentFolder}
-                    onDeleteClick={onDeleteFolder}
-                    onShareClick={onShareFolder}
-                    onRenameClick={onRenameFolder}
-                  />
+                    draggable={canUseFolderDragDrop && canDragFolder(folder)}
+                    onDragStart={(event) => handleFolderDragStart(event, folder.folder_id)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={(event) => handleDragOverTarget(event, folder.folder_id)}
+                    onDragLeave={() => handleDragLeaveTarget(folder.folder_id)}
+                    onDrop={(event) => handleDropOnTarget(event, folder.folder_id)}
+                    className={dragOverTarget === String(folder.folder_id) ? 'rounded-lg ring-2 ring-indigo-300 bg-indigo-50/40' : ''}
+                    title={
+                      (canUseDocumentDragDrop && canDropToFolder(folder, draggedDocument)) ||
+                      (canUseFolderDragDrop && canDropFolderToFolder(folder, draggedFolder))
+                        ? 'Drop to move into this folder'
+                        : undefined
+                    }
+                  >
+                    <FolderCard
+                      folder={folder}
+                      viewMode={viewMode}
+                      docCount={getFolderDocumentCount(folder.folder_id)}
+                      isShared={sharedFolderIdSet.has(String(folder.folder_id))}
+                      sharedLabel={getFolderSharedLabel(folder.folder_id)}
+                      onFolderClick={setCurrentFolder}
+                      onDeleteClick={onDeleteFolder}
+                      onShareClick={onShareFolder}
+                      onRenameClick={onRenameFolder}
+                      onAddCategories={onAddFolderCategory}
+                    />
+                  </div>
                 ))}
               </div>
             </div>
@@ -489,7 +790,14 @@ export default function FileManagement({
               <h3 className="text-lg font-semibold text-gray-800">Files</h3>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {documentsToShow.map((doc) => (
-                  <div key={doc.doc_id} className="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow group p-3 flex items-center gap-3">
+                  <div
+                    key={doc.doc_id}
+                    className="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow group p-3 flex items-center gap-3"
+                    draggable={canUseDocumentDragDrop && canDragDocument(doc)}
+                    onDragStart={(event) => handleDocumentDragStart(event, doc.doc_id || doc.id)}
+                    onDragEnd={handleDragEnd}
+                    title={canUseDocumentDragDrop && canDragDocument(doc) ? 'Drag onto a folder to move' : undefined}
+                  >
                     <button
                       onDoubleClick={() => onOpenDocument(doc)}
                       className="flex-shrink-0 cursor-pointer"
@@ -499,6 +807,11 @@ export default function FileManagement({
                     <div className="flex-1 min-w-0 select-none">
                       <div className="flex items-center gap-2 min-w-0 select-none">
                         <h3 className="text-sm font-bold text-gray-800 line-clamp-1 select-none">{doc.doc_name}</h3>
+                        {getDocumentCategoryBadge(doc) && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                            {getDocumentCategoryBadge(doc)}
+                          </span>
+                        )}
                         {sharedDocumentIdSet.has(String(doc.doc_id || doc.id)) && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
                             {getDocumentSharedLabel(doc.doc_id || doc.id) || 'Shared'}

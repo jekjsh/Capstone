@@ -145,6 +145,13 @@ export default function SystemAdminUserManagement({
   };
   
   const organizationUnits = getAllOrganizationUnits();
+
+  const getRoleLevelDisplayName = (role) => {
+    const normalizedRole = (role || '').toString().toLowerCase();
+    if (normalizedRole === 'admin') return 'Head';
+    if (normalizedRole === 'user') return 'Staff';
+    return getRoleDisplayName(role);
+  };
   
   return (
     <div className="space-y-6">
@@ -187,15 +194,15 @@ export default function SystemAdminUserManagement({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Role</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Role Level</label>
             <select
               value={userFilterRole}
               onChange={(e) => setUserFilterRole(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="All">All Roles</option>
-              <option value="Admin">Admin</option>
-              <option value="User">User</option>
+              <option value="All">All Role Levels</option>
+              <option value="admin">Head</option>
+              <option value="user">Staff</option>
             </select>
           </div>
 
@@ -213,13 +220,13 @@ export default function SystemAdminUserManagement({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Organization</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Organization Unit</label>
             <select
               value={userFilterOrganization}
               onChange={(e) => setUserFilterOrganization(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="All">All Organizations</option>
+              <option value="All">All Organization Units</option>
               {organizationUnits.map(org => (
                 <option key={org.id} value={org.id}>{org.code}</option>
               ))}
@@ -274,9 +281,9 @@ export default function SystemAdminUserManagement({
                   onClick={() => handleSort('role')}
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors"
                 >
-                  Role <SortIndicator field="role" />
+                  Role Level <SortIndicator field="role" />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Organization</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Organization Unit</th>
                 <th 
                   onClick={() => handleSort('status')}
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition-colors"
@@ -297,8 +304,12 @@ export default function SystemAdminUserManagement({
                 </tr>
               ) : (
                 sortedAndPaginatedUsers.map((user) => {
+                  const userOrgId = typeof user.organizationUnitId === 'object'
+                    ? (user.organizationUnitId?.org_id || user.organizationUnitId?.id || '')
+                    : (user.organizationUnitId || '');
+
                   // Find organization code
-                  const orgUnit = organizationUnits.find(org => org.id === user.organizationUnitId);
+                  const orgUnit = organizationUnits.find(org => String(org.id) === String(userOrgId));
                   const orgCode = orgUnit ? orgUnit.code : '';
                   
                   // Format full name with middle initial and suffix
@@ -325,7 +336,7 @@ export default function SystemAdminUserManagement({
                       <td className="px-6 py-4 text-sm text-gray-900">{formatFullName()}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{user.userPos || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{user.email}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{getRoleDisplayName(user.role)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{getRoleLevelDisplayName(user.role)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{orgCode || 'Unassigned'}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${

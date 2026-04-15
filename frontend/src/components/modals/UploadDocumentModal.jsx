@@ -12,16 +12,24 @@ export default function UploadDocumentModal({
   onUpload,
   customFields = [],
   uploadTagValues = {},
-  setUploadTagValues = () => {}
+  setUploadTagValues = () => {},
+  autoCategorizeEnabled = false,
+  setAutoCategorizeEnabled = () => {},
+  autoCategorizeWarning = 'Uploads may take a little longer while your files are organized automatically.',
+  primaryActionLabel = 'Upload',
+  primaryActionLoading = false,
+  primaryActionLoadingLabel = 'Processing...',
+  lockInteractionWhenLoading = false,
+  loadingOverlayText = 'Detecting document details. Please wait...'
 }) {
   if (!show) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 relative">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">Upload Documents</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 disabled:opacity-40" disabled={lockInteractionWhenLoading && primaryActionLoading}>
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -29,22 +37,44 @@ export default function UploadDocumentModal({
         <div className="space-y-6">
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors">
             <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-2">Upload document files (PDF, DOCX, Images, Text, etc.)</p>
+            <p className="text-gray-600 mb-2">Upload document files (PDF, DOCX, XLSX, Images, Text, etc.)</p>
             <p className="text-sm text-gray-500 mb-4">You can select multiple files at once</p>
             <input
               type="file"
               onChange={onFileUpload}
-              accept=".pdf,.doc,.docx,.txt,image/*"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,image/*"
               multiple
+              disabled={lockInteractionWhenLoading && primaryActionLoading}
               className="hidden"
               id="doc-file-upload"
             />
             <label
               htmlFor="doc-file-upload"
-              className="inline-block bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors cursor-pointer"
+              className={`inline-block bg-blue-500 text-white px-6 py-2 rounded-lg transition-colors ${lockInteractionWhenLoading && primaryActionLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600 cursor-pointer'}`}
             >
               Choose Files
             </label>
+          </div>
+
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoCategorizeEnabled}
+                onChange={(e) => setAutoCategorizeEnabled(e.target.checked)}
+                disabled={lockInteractionWhenLoading && primaryActionLoading}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Auto-categorize uploaded documents</p>
+                <p className="text-xs text-gray-600 mt-1">
+                  When enabled, the system will try to place each uploaded document into a matching category.
+                </p>
+              </div>
+            </label>
+            {autoCategorizeEnabled && (
+              <p className="text-xs text-amber-800 mt-3">{autoCategorizeWarning}</p>
+            )}
           </div>
 
           {uploadedDocFiles.length > 0 && (
@@ -79,7 +109,8 @@ export default function UploadDocumentModal({
                           e.stopPropagation();
                           onRemoveFile(index);
                         }}
-                        className="text-red-600 hover:text-red-900 p-1"
+                        disabled={lockInteractionWhenLoading && primaryActionLoading}
+                        className="text-red-600 hover:text-red-900 p-1 disabled:opacity-40"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -249,18 +280,30 @@ export default function UploadDocumentModal({
         <div className="flex gap-3 mt-6">
           <button
             onClick={onClose}
+            disabled={lockInteractionWhenLoading && primaryActionLoading}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={onUpload}
-            disabled={uploadedDocFiles.length === 0}
+            disabled={uploadedDocFiles.length === 0 || primaryActionLoading || (lockInteractionWhenLoading && primaryActionLoading)}
             className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Upload {uploadedDocFiles.length > 0 && `(${uploadedDocFiles.length})`} Document{uploadedDocFiles.length !== 1 ? 's' : ''}
+            {primaryActionLoading
+              ? primaryActionLoadingLabel
+              : `${primaryActionLabel}${uploadedDocFiles.length > 0 ? ` (${uploadedDocFiles.length})` : ''} ${uploadedDocFiles.length !== 1 ? 'Documents' : 'Document'}`}
           </button>
         </div>
+
+        {lockInteractionWhenLoading && primaryActionLoading && (
+          <div className="absolute inset-0 bg-white/85 backdrop-blur-[1px] flex items-center justify-center z-10">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+              <p className="text-sm font-medium text-gray-700">{loadingOverlayText}</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

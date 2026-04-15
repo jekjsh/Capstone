@@ -11,6 +11,7 @@ class Folder(models.Model):
     folder_name = models.CharField(max_length=255)
     folder_path = models.CharField(max_length=500, blank=True, null=True)
     folder_color = models.CharField(max_length=20, default='blue')
+    folder_category = models.ForeignKey('Category', on_delete=models.SET_NULL, null=True, blank=True, related_name='folders')
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)

@@ -162,7 +162,7 @@ export default function ContextMenu({
               className="w-full flex items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 transition-colors border-b border-gray-100 text-sm"
             >
               <Tag className="w-4 h-4" />
-              <span>Add Categories</span>
+              <span>{itemType === 'folder' ? 'Set Category' : 'Add Categories'}</span>
             </button>
           )}
 

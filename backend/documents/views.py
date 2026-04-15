@@ -5,12 +5,17 @@ from rest_framework.exceptions import PermissionDenied
 from django.utils import timezone
 from datetime import datetime
 import uuid
+from os.path import splitext
+import zipfile
+import xml.etree.ElementTree as ET
+import io
 from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory, DocumentArchive, FolderArchive
 from .serializers import DocumentSerializer, DocumentShareSerializer, OcrDataSerializer, FolderSerializer, FolderShareSerializer, CategorySerializer
 from .permissions import IsOrgMember, CanAccessFolder, CanAccessDocument, CanEditDocument, CanShareFolder, CanAccessDocumentShare
 from monitoring.models import AuditLog
 from authenticator.models import CustomUser
 from monitoring.models import Notification
+from .ocr_service import extract_text as extract_ocr_text
 
 
 class FolderViewSet(viewsets.ModelViewSet):
@@ -34,11 +39,30 @@ class FolderViewSet(viewsets.ModelViewSet):
         ).filter(is_archived=False, is_deleted=False).distinct()
     
     def perform_create(self, serializer):
-        serializer.save(
+        parent_folder = serializer.validated_data.get('parent_folder')
+
+        created_folder = serializer.save(
             user_index=self.request.user,
             owning_org=self.request.user.org,
             created_by_user=self.request.user
         )
+
+        # Inherit shares from parent folder when creating a child under the same owner organization.
+        if parent_folder and parent_folder.owning_org_id == self.request.user.org_id:
+            parent_shares = FolderShare.objects.filter(folder=parent_folder)
+
+            for parent_share in parent_shares:
+                if not parent_share.shared_with_org_id:
+                    continue
+
+                FolderShare.objects.get_or_create(
+                    folder=created_folder,
+                    shared_with_org_id=parent_share.shared_with_org_id,
+                    defaults={
+                        'shared_by_org_id': parent_share.shared_by_org_id or self.request.user.org_id,
+                        'share_msg': parent_share.share_msg,
+                    },
+                )
 
     def perform_update(self, serializer):
         instance = self.get_object()
@@ -154,6 +178,60 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         folder.documents.filter(is_archived=False).update(is_archived=True, archived_at=timezone.now())
         return Response({'detail': 'Folder archived successfully.'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
+    def set_category(self, request, pk=None):
+        folder = self.get_object()
+
+        if folder.owning_org_id != request.user.org_id:
+            return Response({'detail': 'Only owner organization can update folder category.'}, status=status.HTTP_403_FORBIDDEN)
+
+        category_id = request.data.get('category_id')
+        if not category_id:
+            return Response({'error': 'category_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            category = Category.objects.get(category_id=category_id, user_index=request.user)
+        except Category.DoesNotExist:
+            return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        folder.folder_category = category
+        folder.save(update_fields=['folder_category', 'updated_at'])
+
+        try:
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Set Folder Category',
+                audit_desc=f"Set category '{category.category_name}' on folder '{folder.folder_name}'",
+                audit_status='Success'
+            )
+        except Exception:
+            pass
+
+        return Response({'message': 'Folder category updated successfully.'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
+    def remove_category(self, request, pk=None):
+        folder = self.get_object()
+
+        if folder.owning_org_id != request.user.org_id:
+            return Response({'detail': 'Only owner organization can update folder category.'}, status=status.HTTP_403_FORBIDDEN)
+
+        previous_name = getattr(folder.folder_category, 'category_name', None)
+        folder.folder_category = None
+        folder.save(update_fields=['folder_category', 'updated_at'])
+
+        try:
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Remove Folder Category',
+                audit_desc=f"Removed category '{previous_name or 'None'}' from folder '{folder.folder_name}'",
+                audit_status='Success'
+            )
+        except Exception:
+            pass
+
+        return Response({'message': 'Folder category removed successfully.'}, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated, IsOrgMember, CanAccessFolder])
     def documents(self, request, pk=None):
@@ -471,6 +549,173 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 'updated_at': document.updated_at.isoformat() if document.updated_at else None,
             },
         )
+
+    def _build_unique_doc_name(self, requested_name, folder, owning_org):
+        """Return a non-conflicting document name like file(1).ext when needed."""
+        candidate_name = (requested_name or '').strip()
+        if not candidate_name:
+            candidate_name = 'Untitled'
+
+        existing_names = set(
+            Document.objects.filter(
+                owning_org=owning_org,
+                folder=folder,
+                is_archived=False,
+                is_deleted=False,
+            ).values_list('doc_name', flat=True)
+        )
+
+        if candidate_name not in existing_names:
+            return candidate_name
+
+        name_root, extension = splitext(candidate_name)
+        counter = 1
+
+        while True:
+            numbered_name = f"{name_root}({counter}){extension}"
+            if numbered_name not in existing_names:
+                return numbered_name
+            counter += 1
+
+    def _parse_bool(self, value):
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+    def _is_ocr_supported_file(self, file_name):
+        name = (file_name or '').lower()
+        return any(name.endswith(ext) for ext in ['.pdf', '.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tif', '.tiff'])
+
+    def _score_category_match(self, category_name, category_desc, text_blob):
+        if (not category_name and not category_desc) or not text_blob:
+            return 0
+
+        category_name = (category_name or '').lower().strip()
+        category_desc = (category_desc or '').lower().strip()
+        text_blob = text_blob.lower()
+        if not category_name and not category_desc:
+            return 0
+
+        category_text = f"{category_name} {category_desc}".strip()
+        if not category_text:
+            return 0
+
+        score = 0
+        if category_name and category_name in text_blob:
+            score += len(category_name) + 5
+        if category_desc and category_desc in text_blob:
+            score += len(category_desc) + 3
+
+        for word in category_text.split():
+            if len(word) >= 3 and word in text_blob:
+                score += len(word)
+
+        return score
+
+    def _extract_text_from_office_like_file(self, document):
+        if not document.doc_file:
+            return ''
+
+        file_name = getattr(document.doc_file, 'name', '').lower()
+
+        try:
+            document.doc_file.open('rb')
+            raw_bytes = document.doc_file.read() or b''
+        except Exception:
+            return ''
+        finally:
+            try:
+                document.doc_file.close()
+            except Exception:
+                pass
+
+        if not raw_bytes:
+            return ''
+
+        if file_name.endswith('.txt'):
+            try:
+                return raw_bytes.decode('utf-8', errors='ignore')
+            except Exception:
+                return ''
+
+        if file_name.endswith('.docx') or file_name.endswith('.xlsx'):
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
+                    extracted = []
+                    if file_name.endswith('.docx'):
+                        xml_names = [name for name in zf.namelist() if name.startswith('word/') and name.endswith('.xml')]
+                    else:
+                        xml_names = [name for name in zf.namelist() if name.startswith('xl/') and name.endswith('.xml')]
+
+                    for xml_name in xml_names:
+                        try:
+                            root = ET.fromstring(zf.read(xml_name))
+                            for elem in root.iter():
+                                if elem.text and elem.text.strip():
+                                    extracted.append(elem.text.strip())
+                        except Exception:
+                            continue
+
+                return ' '.join(extracted)
+            except Exception:
+                return ''
+
+        return ''
+
+    def _pick_best_category(self, owning_org_id, text_blob):
+        if not text_blob:
+            return None
+
+        categories = Category.objects.filter(org_id=owning_org_id, is_active=True)
+        best_category = None
+        best_score = 0
+
+        for category in categories:
+            score = self._score_category_match(category.category_name, category.category_desc, text_blob)
+            if score > best_score:
+                best_score = score
+                best_category = category
+
+        return best_category if best_score > 0 else None
+
+    def _run_auto_categorization(self, document):
+        request = self.request
+        if not self._parse_bool(request.data.get('auto_categorize')):
+            return
+
+        source_text = f"{document.doc_name or ''} {document.doc_desc or ''}".strip()
+
+        office_text = self._extract_text_from_office_like_file(document)
+        if office_text:
+            source_text = f"{source_text} {office_text}".strip()
+
+        if document.doc_file and self._is_ocr_supported_file(getattr(document.doc_file, 'name', '')):
+            try:
+                document.doc_file.open('rb')
+                ocr_result = extract_ocr_text(document.doc_file.file, engine='tesseract', mode='fast', lang='eng')
+                ocr_text = (ocr_result or {}).get('text', '') or ''
+                if ocr_text.strip():
+                    OcrData.objects.update_or_create(
+                        doc=document,
+                        defaults={'ocr_extract': ocr_text}
+                    )
+                    source_text = f"{source_text} {ocr_text}".strip()
+            except Exception:
+                # OCR failures should never block upload.
+                pass
+            finally:
+                try:
+                    document.doc_file.close()
+                except Exception:
+                    pass
+
+        matched_category = self._pick_best_category(document.owning_org_id, source_text)
+        if not matched_category:
+            return
+
+        DocumentCategory.objects.get_or_create(doc=document, category=matched_category)
     
     def get_queryset(self):
         user = self.request.user
@@ -497,6 +742,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         folder = serializer.validated_data.get('folder')
         user_org = self.request.user.org
         target_owning_org = user_org
+        requested_doc_name = serializer.validated_data.get('doc_name')
 
         if folder is not None:
             has_folder_access = (
@@ -511,10 +757,41 @@ class DocumentViewSet(viewsets.ModelViewSet):
             if folder.owning_org_id != user_org.org_id:
                 target_owning_org = folder.owning_org
 
-        serializer.save(
+        document = serializer.save(
             user_index=self.request.user,
             owning_org=target_owning_org,
-            uploaded_by_user=self.request.user
+            uploaded_by_user=self.request.user,
+            doc_name=self._build_unique_doc_name(requested_doc_name, folder, target_owning_org),
+        )
+
+        self._run_auto_categorization(document)
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        user_org = self.request.user.org
+        target_folder = serializer.validated_data.get('folder', instance.folder)
+
+        if 'folder' in serializer.validated_data:
+            if instance.owning_org_id != user_org.org_id:
+                raise PermissionDenied('You can only move documents owned by your organization.')
+
+            if target_folder is not None:
+                has_folder_access = (
+                    target_folder.owning_org_id == user_org.org_id or
+                    FolderShare.objects.filter(folder=target_folder, shared_with_org=user_org).exists()
+                )
+                if not has_folder_access:
+                    raise PermissionDenied('You can only move documents to folders owned by your org or shared to your org.')
+
+        target_owning_org = user_org
+        if target_folder is not None and target_folder.owning_org_id != user_org.org_id:
+            target_owning_org = target_folder.owning_org
+
+        requested_doc_name = serializer.validated_data.get('doc_name', instance.doc_name)
+
+        serializer.save(
+            owning_org=target_owning_org,
+            doc_name=self._build_unique_doc_name(requested_doc_name, target_folder, target_owning_org),
         )
     
     def create(self, request, *args, **kwargs):
@@ -579,6 +856,12 @@ class DocumentViewSet(viewsets.ModelViewSet):
         try:
             document = self.get_object()
             doc_id = getattr(document, 'doc_id', self.kwargs.get('pk', 'unknown'))
+
+            if document.owning_org_id != request.user.org_id:
+                return Response(
+                    {'detail': 'Only the owner organization can delete this document.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
             document.is_deleted = True
             document.deleted_at = timezone.now()
@@ -979,6 +1262,24 @@ class OcrDataViewSet(viewsets.ModelViewSet):
         )
         
         return (docs_owned_by_org | docs_in_org_folders | docs_in_shared_folders).distinct()
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOrgMember], url_path='extract-text')
+    def extract_text(self, request):
+        uploaded_file = request.FILES.get('file')
+        if uploaded_file is None:
+            return Response({'detail': 'No file uploaded. Use field name "file".'}, status=status.HTTP_400_BAD_REQUEST)
+
+        engine = (request.data.get('engine') or 'tesseract').strip().lower()
+        mode = (request.data.get('mode') or 'fast').strip().lower()
+        lang = (request.data.get('lang') or 'eng').strip() or 'eng'
+
+        try:
+            result = extract_ocr_text(uploaded_file, engine=engine, mode=mode, lang=lang)
+            return Response(result, status=status.HTTP_200_OK)
+        except RuntimeError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({'detail': f'OCR extraction failed: {str(exc)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):

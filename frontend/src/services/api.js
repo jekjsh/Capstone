@@ -446,7 +446,7 @@ export const documentAPI = {
   },
   
   // Upload files (multipart form data)
-  uploadFiles: async (files, docName, docDesc, folderId, onProgress) => {
+  uploadFiles: async (files, docName, docDesc, folderId, onProgress, options = {}) => {
     const formData = new FormData();
     
     // Add the first file as doc_file (one document = one file)
@@ -460,6 +460,9 @@ export const documentAPI = {
     }
     if (folderId) {
       formData.append('folder', folderId);
+    }
+    if (options && typeof options.autoCategorize !== 'undefined') {
+      formData.append('auto_categorize', options.autoCategorize ? 'true' : 'false');
     }
     
     const token = localStorage.getItem('access_token');
@@ -488,7 +491,7 @@ export const documentAPI = {
   // Update document
   update: async (id, data) => {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${id}/`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
     if (!response.ok) {
@@ -600,6 +603,45 @@ export const documentAPI = {
       throw new Error('Failed to fetch document history');
     }
     return await response.json();
+  },
+};
+
+export const ocrAPI = {
+  extractText: async (file, options = {}) => {
+    if (!file) {
+      throw new Error('No file provided for OCR extraction');
+    }
+
+    const {
+      engine = 'tesseract',
+      mode = 'fast',
+      lang = 'eng',
+    } = options;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('engine', engine);
+    formData.append('mode', mode);
+    formData.append('lang', lang);
+
+    const token = getAccessToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/ocr-data/extract-text/`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.detail || 'Failed to extract OCR text');
+    }
+
+    return payload;
   },
 };
 
@@ -840,7 +882,7 @@ export const folderAPI = {
   // Update a folder
   update: async (folderId, data) => {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
     if (!response.ok) {
@@ -860,6 +902,31 @@ export const folderAPI = {
       throw new Error(error.detail || 'Failed to delete folder');
     }
     return response.ok ? { success: true } : await response.json();
+  },
+
+  // Set a single category on a folder
+  setCategory: async (folderId, categoryId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/set_category/`, {
+      method: 'POST',
+      body: JSON.stringify({ category_id: categoryId }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || error.error || 'Failed to set folder category');
+    }
+    return await response.json();
+  },
+
+  // Remove category from a folder
+  removeCategory: async (folderId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/remove_category/`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || error.error || 'Failed to remove folder category');
+    }
+    return await response.json();
   },
 
   // Share a folder
@@ -1319,8 +1386,8 @@ export const userCreationRequestAPI = {
     return await response.json();
   },
 
-  // Approve a user creation request (public - no auth required)
-  approve: async (requestId, assignedUserId) => {
+  // Approve a user creation request (requires claimer identity)
+  approve: async (requestId, assignedUserId, roleType = 'user', reviewerUserId) => {
     const response = await fetch(
       `${API_BASE_URL}/api/user-creation-requests/${requestId}/approve/`,
       {
@@ -1328,7 +1395,11 @@ export const userCreationRequestAPI = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ assigned_user_id: assignedUserId }),
+        body: JSON.stringify({
+          assigned_user_id: assignedUserId,
+          role_type: roleType,
+          reviewer_user_id: reviewerUserId,
+        }),
       }
     );
     if (!response.ok) {
@@ -1338,8 +1409,8 @@ export const userCreationRequestAPI = {
     return await response.json();
   },
 
-  // Deny a user creation request (public - no auth required)
-  deny: async (requestId, denialReason) => {
+  // Deny a user creation request (requires claimer identity)
+  deny: async (requestId, denialReason, reviewerUserId) => {
     const response = await fetch(
       `${API_BASE_URL}/api/user-creation-requests/${requestId}/deny/`,
       {
@@ -1347,7 +1418,10 @@ export const userCreationRequestAPI = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ denial_reason: denialReason }),
+        body: JSON.stringify({
+          denial_reason: denialReason,
+          reviewer_user_id: reviewerUserId,
+        }),
       }
     );
     if (!response.ok) {

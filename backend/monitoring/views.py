@@ -2,9 +2,12 @@ from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
+from django.contrib.auth import get_user_model
 from .models import AuditLog, Notification
 from .serializers import AuditLogSerializer, NotificationSerializer
 from authenticator.models import UserCreationRequest
+
+User = get_user_model()
 
 
 class AuditLogViewSet(viewsets.ModelViewSet):
@@ -63,9 +66,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def generate_notifications(self, request):
-        """Sync notifications for pending user creation requests (system admin/admin only)."""
+        """Sync notifications for pending user creation requests (system-level only)."""
         user = request.user
-        if not (user.is_superuser or user.role_type in ['system_admin', 'admin']):
+        if not (user.is_superuser or user.role_type == 'system_admin'):
             return Response({'detail': 'Not authorized to generate notifications.'}, status=status.HTTP_403_FORBIDDEN)
 
         pending_requests = UserCreationRequest.objects.filter(status='pending')
@@ -97,6 +100,24 @@ class NotificationViewSet(viewsets.ModelViewSet):
                 created_count += 1
 
         return Response({'created': created_count})
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def cleanup_user_creation_notifications(self, request):
+        """Remove user-creation request notifications from all non-system-level recipients."""
+        user = request.user
+        if not (user.is_superuser or user.role_type == 'system_admin'):
+            return Response({'detail': 'Not authorized to perform cleanup.'}, status=status.HTTP_403_FORBIDDEN)
+
+        non_system_user_ids = User.objects.exclude(
+            Q(is_superuser=True) | Q(role_type='system_admin')
+        ).values_list('pk', flat=True)
+
+        deleted_count, _ = Notification.objects.filter(
+            recipient_user_id__in=non_system_user_ids,
+            notif_msg__startswith='New user creation request '
+        ).delete()
+
+        return Response({'deleted': deleted_count})
     
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def mark_as_read(self, request, pk=None):

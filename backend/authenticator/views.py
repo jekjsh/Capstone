@@ -698,6 +698,19 @@ class UserCreationRequestViewSet(ModelViewSet):
                 {'detail': 'Request must be claimed before approval.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        reviewer_user_id = request.data.get('reviewer_user_id')
+        if not reviewer_user_id:
+            return Response(
+                {'detail': 'reviewer_user_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user_creation_request.claimed_by.user_id != reviewer_user_id:
+            return Response(
+                {'detail': 'Only the admin who claimed this request can approve it.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Verify organization exists
         if not user_creation_request.org:
@@ -712,6 +725,13 @@ class UserCreationRequestViewSet(ModelViewSet):
             if not assigned_user_id:
                 return Response(
                     {'detail': 'assigned_user_id is required.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            role_type = request.data.get('role_type', 'user')
+            if role_type not in ['user', 'admin']:
+                return Response(
+                    {'detail': 'role_type must be either "user" or "admin".'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
@@ -735,7 +755,7 @@ class UserCreationRequestViewSet(ModelViewSet):
                 user_contact=user_creation_request.user_contact,
                 user_birthdate=user_creation_request.user_birthdate,
                 org=user_creation_request.org,
-                role_type='user',
+                role_type=role_type,
                 is_active=True
             )
             
@@ -796,6 +816,19 @@ class UserCreationRequestViewSet(ModelViewSet):
                 {'detail': 'Request must be claimed before denial.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        reviewer_user_id = request.data.get('reviewer_user_id')
+        if not reviewer_user_id:
+            return Response(
+                {'detail': 'reviewer_user_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user_creation_request.claimed_by.user_id != reviewer_user_id:
+            return Response(
+                {'detail': 'Only the admin who claimed this request can deny it.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         try:
             # Get the denial reason from request data
@@ -830,7 +863,7 @@ class UserCreationRequestViewSet(ModelViewSet):
         except Exception as e:
             # Log the failed denial
             AuditLog.objects.create(
-                user_index=request.user,
+                user_index=user_creation_request.claimed_by,
                 audit_action='Deny User Creation Request',
                 audit_desc=f"Failed to deny user creation request {request_id}: {str(e)}",
                 audit_status='Failed'
@@ -874,21 +907,55 @@ class UserRegistrationRequestView(generics.CreateAPIView):
                     {'detail': 'A registration request with this email is already pending.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            # Create a mutable copy of request data with created_by field
-            data = dict(request.data)
-            data['created_by'] = data.get('email_add')
-            
-            # Create the serializer with the modified data
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
+
+            denied_request = UserCreationRequest.objects.filter(
+                email_add=email,
+                status='denied'
+            ).order_by('-created_at').first()
+
+            if denied_request:
+                # Re-open denied request using validated latest submitted data.
+                data = dict(request.data)
+                data['created_by'] = data.get('email_add')
+                serializer = self.get_serializer(denied_request, data=data)
+                serializer.is_valid(raise_exception=True)
+                validated = serializer.validated_data
+
+                denied_request.first_name = validated.get('first_name', denied_request.first_name)
+                denied_request.middle_name = validated.get('middle_name', denied_request.middle_name)
+                denied_request.last_name = validated.get('last_name', denied_request.last_name)
+                denied_request.suffix = validated.get('suffix', denied_request.suffix)
+                denied_request.user_pos = validated.get('user_pos', denied_request.user_pos)
+                denied_request.user_contact = validated.get('user_contact', denied_request.user_contact)
+                denied_request.user_birthdate = validated.get('user_birthdate', denied_request.user_birthdate)
+                denied_request.org = validated.get('org', organization)
+                denied_request.created_by = validated.get('created_by', email)
+                denied_request.status = 'pending'
+                denied_request.claimed_by = None
+                denied_request.claimed_at = None
+                denied_request.reviewed_by = None
+                denied_request.reviewed_at = None
+                denied_request.assigned_user_id = None
+                denied_request.denial_reason = ''
+                denied_request.save()
+
+                created_request = denied_request
+                headers = {}
+            else:
+                # Create a mutable copy of request data with created_by field
+                data = dict(request.data)
+                data['created_by'] = data.get('email_add')
+
+                # Create the serializer with the modified data
+                serializer = self.get_serializer(data=data)
+                serializer.is_valid(raise_exception=True)
+                self.perform_create(serializer)
+                headers = self.get_success_headers(serializer.data)
+                created_request = serializer.instance
 
             # Notify system admins that a new user creation request is waiting for review.
-            created_request = serializer.instance
             admin_users = User.objects.filter(is_active=True).filter(
-                Q(is_superuser=True) | Q(role_type='system_admin') | Q(role_type='admin')
+                Q(is_superuser=True) | Q(role_type='system_admin')
             ).distinct()
             for admin_user in admin_users:
                 Notification.objects.get_or_create(
@@ -911,7 +978,7 @@ class UserRegistrationRequestView(generics.CreateAPIView):
             return Response(
                 {
                     'detail': 'Registration request submitted successfully. Please coordinate with the IS Manager for activation.',
-                    'request_id': serializer.data.get('request_id')
+                    'request_id': created_request.request_id
                 },
                 status=status.HTTP_201_CREATED,
                 headers=headers

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, AlertCircle, Lock, Unlock, XCircle } from 'lucide-react';
+import { X, AlertCircle, Lock, Unlock } from 'lucide-react';
 import { validateUserId, getFormatHint } from '../../utils/idFormatValidator';
 import { userCreationRequestAPI, idFormatAPI, userAPI } from '../../services/api';
 
@@ -7,9 +7,10 @@ export default function RequestApprovalModal({
   isOpen, 
   onClose, 
   request, 
-  action, // 'preview', 'approve', 'reject'
+  action, // 'claim', 'approve', 'reject'
   onApprove,
   onReject,
+  onClaim,
   currentUser = null,
   isLoading: externalIsLoading = false
 }) {
@@ -20,14 +21,37 @@ export default function RequestApprovalModal({
   const [selectedRole, setSelectedRole] = useState('user');
   const [selectedRoleError, setSelectedRoleError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isClaimed, setIsClaimed] = useState(request?.claimed_by ? true : false);
+  const [claimInfo, setClaimInfo] = useState({
+    claimed_by: request?.claimed_by || null,
+    claimed_by_name: request?.claimed_by_name || null,
+    claimed_at: request?.claimed_at || null,
+  });
   const [claimedError, setClaimedError] = useState('');
+  const [claimSuccessMessage, setClaimSuccessMessage] = useState('');
   const [idFormat, setIdFormat] = useState(null);
   const [tempPassword, setTempPassword] = useState('');
   const [userIdAvailable, setUserIdAvailable] = useState(null); // null = not checked, true = available, false = not available
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [userIdFormatValid, setUserIdFormatValid] = useState(null); // null = not checked, true = valid, false = invalid
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  const currentUserId = currentUser?.user_id || currentUser?.id || null;
+  const currentUserIndex = currentUser?.user_index || currentUser?.full_data?.user_index || null;
+  const normalizeId = (value) => (value === null || value === undefined ? '' : String(value).trim().toLowerCase());
+  const isClaimed = !!claimInfo.claimed_by;
+  const isClaimedByCurrentUser = isClaimed && [currentUserId, currentUserIndex].some(
+    (id) => normalizeId(id) === normalizeId(claimInfo.claimed_by)
+  );
+  const isClaimedByOtherUser = isClaimed && !isClaimedByCurrentUser;
+
+  useEffect(() => {
+    setClaimInfo({
+      claimed_by: request?.claimed_by || null,
+      claimed_by_name: request?.claimed_by_name || null,
+      claimed_at: request?.claimed_at || null,
+    });
+    setClaimedError('');
+    setClaimSuccessMessage('');
+  }, [request]);
 
   // Load ID format and generate temporary password on mount
   useEffect(() => {
@@ -135,16 +159,25 @@ export default function RequestApprovalModal({
   const handleClaim = async () => {
     setIsLoading(true);
     setClaimedError('');
+    setClaimSuccessMessage('');
     try {
       // Use the current user's user_id to claim the request
-      if (!currentUser?.user_id) {
+      if (!currentUserId) {
         setClaimedError('Unable to identify current user');
         return;
       }
       
-      await userCreationRequestAPI.claim(request.request_id, currentUser.user_id);
-      setIsClaimed(true);
-      setShowSuccessModal(true);
+      const result = await userCreationRequestAPI.claim(request.request_id, currentUserId);
+      const claimedRequest = result?.request || {};
+      setClaimInfo({
+        claimed_by: claimedRequest.claimed_by || currentUserId,
+        claimed_by_name: claimedRequest.claimed_by_name || currentUser?.name || currentUserId,
+        claimed_at: claimedRequest.claimed_at || new Date().toISOString(),
+      });
+      setClaimSuccessMessage('Request claimed successfully. You can now approve or reject it.');
+      if (onClaim) {
+        await onClaim(request.request_id);
+      }
     } catch (error) {
       setClaimedError(error.message || 'Failed to claim request');
     } finally {
@@ -153,6 +186,11 @@ export default function RequestApprovalModal({
   };
 
   const handleApprove = async () => {
+    if (!isClaimedByCurrentUser) {
+      setAssignedUserIdError('You must claim this request first.');
+      return;
+    }
+
     if (!assignedUserId.trim()) {
       setAssignedUserIdError('Please enter a User ID');
       return;
@@ -185,7 +223,7 @@ export default function RequestApprovalModal({
     
     setIsLoading(true);
     try {
-      await userCreationRequestAPI.approve(request.request_id, assignedUserId, selectedRole);
+      await userCreationRequestAPI.approve(request.request_id, assignedUserId, selectedRole, currentUserId);
       if (onApprove) {
         await onApprove(request.request_id);
       }
@@ -199,6 +237,11 @@ export default function RequestApprovalModal({
 
 
   const handleReject = async () => {
+    if (!isClaimedByCurrentUser) {
+      setRejectionReasonError('You must claim this request first.');
+      return;
+    }
+
     if (!rejectionReason.trim()) {
       setRejectionReasonError('Please provide a reason for rejection');
       return;
@@ -206,7 +249,7 @@ export default function RequestApprovalModal({
     
     setIsLoading(true);
     try {
-      await userCreationRequestAPI.deny(request.request_id, rejectionReason);
+      await userCreationRequestAPI.deny(request.request_id, rejectionReason, currentUserId);
       if (onReject) {
         await onReject(request.request_id, rejectionReason);
       }
@@ -224,9 +267,10 @@ export default function RequestApprovalModal({
         return 'Approve Request';
       case 'reject':
         return 'Reject Request';
-      case 'preview':
+      case 'claim':
+        return 'Claim Request';
       default:
-        return 'Preview Request';
+        return 'Request Details';
     }
   };
 
@@ -236,6 +280,8 @@ export default function RequestApprovalModal({
         return 'bg-green-50 border-green-200';
       case 'reject':
         return 'bg-red-50 border-red-200';
+      case 'claim':
+        return 'bg-blue-50 border-blue-200';
       default:
         return 'bg-blue-50 border-blue-200';
     }
@@ -261,38 +307,45 @@ export default function RequestApprovalModal({
           </button>
         </div>
 
-        {/* Claim Status - Show for approve/reject actions */}
-        {(action === 'approve' || action === 'reject') && (
-          <div className={`rounded-lg p-4 mb-6 border ${
-            isClaimed 
-              ? 'bg-green-50 border-green-200' 
+        {/* Claim Status */}
+        <div className={`rounded-lg p-4 mb-6 border ${
+          isClaimedByCurrentUser
+            ? 'bg-green-50 border-green-200'
+            : isClaimedByOtherUser
+              ? 'bg-amber-50 border-amber-200'
               : 'bg-yellow-50 border-yellow-200'
-          }`}>
-            <div className="flex items-center gap-3 mb-3">
-              {isClaimed ? (
-                <Unlock className="w-5 h-5 text-green-600" />
-              ) : (
-                <Lock className="w-5 h-5 text-yellow-600" />
-              )}
-              <h3 className={`font-semibold ${isClaimed ? 'text-green-900' : 'text-yellow-900'}`}>
-                {isClaimed ? 'Request Claimed' : 'Request Not Claimed'}
-              </h3>
-            </div>
-            {request.claimed_by ? (
-              <p className={`text-sm ${isClaimed ? 'text-green-800' : 'text-yellow-800'}`}>
-                This request is being reviewed by <strong>{request.claimed_by_name}</strong> since{' '}
-                {new Date(request.claimed_at).toLocaleString()}
-              </p>
+        }`}>
+          <div className="flex items-center gap-3 mb-3">
+            {isClaimedByCurrentUser ? (
+              <Unlock className="w-5 h-5 text-green-600" />
             ) : (
-              <p className="text-sm text-yellow-800">
-                Click "Claim Request" below to lock this request for your review. Only you will be able to approve or reject it.
-              </p>
+              <Lock className="w-5 h-5 text-yellow-600" />
             )}
-            {claimedError && (
-              <p className="text-sm text-red-600 mt-2">{claimedError}</p>
-            )}
+            <h3 className={`font-semibold ${isClaimedByCurrentUser ? 'text-green-900' : 'text-yellow-900'}`}>
+              {isClaimedByCurrentUser
+                ? 'Claimed By You'
+                : isClaimedByOtherUser
+                  ? 'Claimed By Another Reviewer'
+                  : 'Not Claimed Yet'}
+            </h3>
           </div>
-        )}
+          {isClaimed ? (
+            <p className={`text-sm ${isClaimedByCurrentUser ? 'text-green-800' : 'text-amber-800'}`}>
+              This request is being reviewed by <strong>{claimInfo.claimed_by_name || claimInfo.claimed_by}</strong>
+              {claimInfo.claimed_at ? ` since ${new Date(claimInfo.claimed_at).toLocaleString()}` : ''}.
+            </p>
+          ) : (
+            <p className="text-sm text-yellow-800">
+              Claim this request first. Approve and reject actions are only enabled for the admin who claimed it.
+            </p>
+          )}
+          {claimSuccessMessage && (
+            <p className="text-sm text-green-700 mt-2">{claimSuccessMessage}</p>
+          )}
+          {claimedError && (
+            <p className="text-sm text-red-600 mt-2">{claimedError}</p>
+          )}
+        </div>
 
         {/* Request Summary */}
         <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
@@ -348,7 +401,7 @@ export default function RequestApprovalModal({
         {/* Request Details */}
         <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Applicant Information</h3>
-          
+
           <div className="grid grid-cols-2 gap-6">
             <div>
               <p className="text-xs text-gray-500 font-medium">First Name</p>
@@ -397,7 +450,7 @@ export default function RequestApprovalModal({
                   type="text"
                   value={assignedUserId}
                   onChange={(e) => handleUserIdChange(e.target.value)}
-                  placeholder={idFormat ? getFormatHint(idFormat, selectedRole === 'admin' ? 'Admin' : 'User') : "Enter the new User ID for this user"}
+                  placeholder={idFormat ? getFormatHint(idFormat, selectedRole === 'admin' ? 'Admin' : 'User') : 'Enter the new User ID for this user'}
                   className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 transition-colors ${
                     assignedUserIdError
                       ? 'border-red-500 focus:ring-red-500'
@@ -452,7 +505,8 @@ export default function RequestApprovalModal({
               <p className="mt-2 text-xs text-gray-700">
                 <strong>Selected Role:</strong> {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
               </p>
-            </div>          </div>
+            </div>
+          </div>
         )}
 
         {/* Rejection Reason Section (only for reject action) */}
@@ -510,17 +564,7 @@ export default function RequestApprovalModal({
             Cancel
           </button>
 
-          {action === 'preview' && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Close
-            </button>
-          )}
-
-          {(action === 'approve' || action === 'reject') && !isClaimed && (
+          {action === 'claim' && !isClaimed && (
             <button
               type="button"
               onClick={handleClaim}
@@ -532,22 +576,32 @@ export default function RequestApprovalModal({
             </button>
           )}
 
-          {action === 'reject' && isClaimed && (
+          {action === 'claim' && isClaimedByCurrentUser && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Claimed
+            </button>
+          )}
+
+          {action === 'reject' && (
             <button
               type="button"
               onClick={handleReject}
-              disabled={isLoading || externalIsLoading || !rejectionReason.trim()}
+              disabled={isLoading || externalIsLoading || !isClaimedByCurrentUser || !rejectionReason.trim()}
               className="px-6 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
             >
               {isLoading || externalIsLoading ? 'Rejecting...' : 'Reject Request'}
             </button>
           )}
 
-          {action === 'approve' && isClaimed && (
+          {action === 'approve' && (
             <button
               type="button"
               onClick={handleApprove}
-              disabled={isLoading || externalIsLoading || userIdAvailable !== true || checkingAvailability || !assignedUserId.trim() || !selectedRole}
+              disabled={isLoading || externalIsLoading || !isClaimedByCurrentUser || userIdAvailable !== true || checkingAvailability || !assignedUserId.trim() || !selectedRole}
               className="px-6 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
             >
               {isLoading || externalIsLoading ? 'Approving...' : 'Approve Request'}
@@ -555,36 +609,6 @@ export default function RequestApprovalModal({
           )}
         </div>
       </div>
-
-      {/* Success Modal */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-8 max-w-sm w-full mx-4">
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Success!</h2>
-              <p className="text-gray-600 mb-6">
-                Request claimed successfully. You have this request locked for review.
-              </p>
-              <button
-                onClick={() => {
-                  setShowSuccessModal(false);
-                  onClose();
-                }}
-                className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

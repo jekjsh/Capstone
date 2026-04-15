@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Lock, User, Briefcase, Building2, AlertCircle, ChevronLeft } from 'lucide-react';
+import { Mail, Briefcase, Building2, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react';
 import { authAPI, organizationAPI } from './services/api';
 import './LoginForm.css';
 
@@ -106,58 +106,41 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
 
   return (
     <>
-      {/* Error Alert Popup */}
-      {showError && (
+      {/* Status Alert Popup */}
+      {(showError || showSuccess) && (
         <div className="fixed inset-0 flex items-center justify-center z-50">
           <div 
             className="absolute inset-0 bg-black bg-opacity-50"
-            onClick={() => setShowError(false)}
+            onClick={() => {
+              setShowError(false);
+              setShowSuccess(false);
+            }}
           />
-          <div className="bg-red-500 rounded-lg shadow-2xl w-full max-w-md p-6 relative z-10 alert-popup-in">
+          <div className={`${showSuccess ? 'bg-green-500' : 'bg-red-500'} rounded-lg shadow-2xl w-full max-w-md p-6 relative z-10 alert-popup-in`}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <AlertCircle className="w-5 h-5" />
-                Error
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/20 border border-white/40">
+                  {showSuccess ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                </span>
+                {showSuccess ? 'Success!' : 'Error'}
               </h3>
               <button
-                onClick={() => setShowError(false)}
+                onClick={() => {
+                  setShowError(false);
+                  setShowSuccess(false);
+                }}
                 className="text-white hover:text-gray-200 text-2xl leading-none"
               >
                 ×
               </button>
             </div>
-            <p className="text-white mb-6">{errorMessage}</p>
+            <p className="text-white mb-6">{showSuccess ? successMessage : errorMessage}</p>
             <button
-              onClick={() => setShowError(false)}
-              className="w-full bg-white text-red-500 py-2 rounded font-medium hover:bg-gray-100 transition-all"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Success Alert Popup */}
-      {showSuccess && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div 
-            className="absolute inset-0 bg-black bg-opacity-50"
-            onClick={() => setShowSuccess(false)}
-          />
-          <div className="bg-green-500 rounded-lg shadow-2xl w-full max-w-md p-6 relative z-10 alert-popup-in">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-white">Success!</h3>
-              <button
-                onClick={() => setShowSuccess(false)}
-                className="text-white hover:text-gray-200 text-2xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-            <p className="text-white mb-6">{successMessage}</p>
-            <button
-              onClick={() => setShowSuccess(false)}
-              className="w-full bg-white text-green-600 py-2 rounded font-medium hover:bg-gray-100 transition-all"
+              onClick={() => {
+                setShowError(false);
+                setShowSuccess(false);
+              }}
+              className={`w-full bg-white ${showSuccess ? 'text-green-600' : 'text-red-500'} py-2 rounded font-medium hover:bg-gray-100 transition-all`}
             >
               Close
             </button>

@@ -18,12 +18,16 @@ import DocumentHistoryModal from '../components/modals/DocumentHistoryModal';
 import OCRModal from '../components/modals/OCRModal';
 import CreateFolderModal from '../components/modals/CreateFolderModal';
 import UploadDocumentModal from '../components/modals/UploadDocumentModal';
+import RenameDetectedDocumentsModal from '../components/modals/RenameDetectedDocumentsModal';
+import CategoryMatchConfirmationModal from '../components/modals/CategoryMatchConfirmationModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import EditProfileModal from '../components/EditProfileModal';
 import UserProfileViewModal from '../components/UserProfileViewModal';
 import ShareDocumentModal from '../components/modals/ShareDocumentModal';
 import ShareFolderModal from '../components/modals/ShareFolderModal';
 import RenameDocumentModal from '../components/modals/RenameDocumentModal';
+import AddDocumentCategoriesModal from '../components/modals/AddDocumentCategoriesModal';
+import AddFolderCategoryModal from '../components/modals/AddFolderCategoryModal';
 import SharedDocuments from '../user/Components/SharedDocuments';
 import Notifications from '../user/Components/Notifications';
 import { 
@@ -37,7 +41,9 @@ import AdminAllDocumentsView from './component/AdminAllDocumentsView';
 import Category from '../components/Category';
 import FileManagement from '../components/FileManagement';
 import RecycleBin from '../components/RecycleBin';
-import { organizationAPI, userAPI, auditLogAPI, documentAPI, documentShareAPI, folderAPI, folderShareAPI, systemSettingsAPI, organizationShareAPI, sessionAPI, authAPI, getAccessToken } from '../services/api';
+import { organizationAPI, userAPI, auditLogAPI, documentAPI, documentShareAPI, folderAPI, folderShareAPI, systemSettingsAPI, organizationShareAPI, sessionAPI, authAPI, getAccessToken, ocrAPI, categoryAPI } from '../services/api';
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 
 export default function Mainframe({ 
   currentUser = { name: 'Administrator', role: 'Admin' }, 
@@ -125,6 +131,11 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const [adminDocumentToShare, setAdminDocumentToShare] = useState(null);
   const [adminFolderToShare, setAdminFolderToShare] = useState(null);
   const [adminDocumentToRename, setAdminDocumentToRename] = useState(null);
+  const [showAdminAddCategoriesModal, setShowAdminAddCategoriesModal] = useState(false);
+  const [adminDocumentForCategories, setAdminDocumentForCategories] = useState(null);
+  const [showAdminAddFolderCategoryModal, setShowAdminAddFolderCategoryModal] = useState(false);
+  const [adminFolderForCategory, setAdminFolderForCategory] = useState(null);
+  const [adminCategories, setAdminCategories] = useState([]);
   const [adminShareUsers, setAdminShareUsers] = useState([]);
   const [adminNewFolderName, setAdminNewFolderName] = useState('');
   const [adminNewFolderColor, setAdminNewFolderColor] = useState('blue');
@@ -132,9 +143,17 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const [adminUploadPreviews, setAdminUploadPreviews] = useState([]);
   const [adminCurrentPreviewIndex, setAdminCurrentPreviewIndex] = useState(0);
   const [adminUploadTagValues, setAdminUploadTagValues] = useState({});
+  const [adminUploadFileNames, setAdminUploadFileNames] = useState([]);
+  const [adminAutoCategorizeUploads, setAdminAutoCategorizeUploads] = useState(false);
+  const [showAdminRenameDetectedModal, setShowAdminRenameDetectedModal] = useState(false);
+  const [showAdminCategoryMatchConfirmModal, setShowAdminCategoryMatchConfirmModal] = useState(false);
+  const [adminDetectedUploadItems, setAdminDetectedUploadItems] = useState([]);
+  const [isAdminDetectingUploads, setIsAdminDetectingUploads] = useState(false);
+  const [isAdminSubmittingDetectedUpload, setIsAdminSubmittingDetectedUpload] = useState(false);
   const [adminUploadedOCRFile, setAdminUploadedOCRFile] = useState(null);
   const [adminOcrText, setAdminOcrText] = useState('');
   const [adminIsProcessingOCR, setAdminIsProcessingOCR] = useState(false);
+  const [adminOcrMode, setAdminOcrMode] = useState('fast');
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [adminFilterFormat, setAdminFilterFormat] = useState('all');
   const [adminSortBy, setAdminSortBy] = useState('date-desc');
@@ -743,6 +762,7 @@ const [viewingDocument, setViewingDocument] = useState(null);
   };
   
   const adminOrgCode = findOrganizationCodeById(loggedInUser?.full_data?.org || loggedInUser?.org);
+  const adminOrgId = loggedInUser?.full_data?.org || loggedInUser?.org;
   const adminFilesLabel = `${adminOrgCode || 'Organization'} Files`;
 
   const menuItems = [
@@ -826,6 +846,20 @@ const [viewingDocument, setViewingDocument] = useState(null);
     const intervalId = setInterval(refreshAdminData, 5000);
     return () => clearInterval(intervalId);
   }, [activeSection]);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const categories = await categoryAPI.getAll();
+        setAdminCategories(Array.isArray(categories) ? categories : []);
+      } catch (error) {
+        console.error('Failed to fetch admin categories:', error);
+        setAdminCategories([]);
+      }
+    };
+
+    fetchCategories();
+  }, []);
 
   const renderOrgUnitOptions = (nodes, level = 0, parentPath = '', index = 0) => {
     const options = [];
@@ -1738,6 +1772,97 @@ const openAdminRenameDocumentModal = (doc) => {
   setShowAdminRenameDocumentModal(true);
 };
 
+const openAdminAddCategoriesModal = (doc) => {
+  setAdminDocumentForCategories(doc);
+  setShowAdminAddCategoriesModal(true);
+};
+
+const openAdminAddFolderCategoryModal = (folder) => {
+  setAdminFolderForCategory(folder);
+  setShowAdminAddFolderCategoryModal(true);
+};
+
+const refreshAdminFileLists = async () => {
+  const [updatedDocs, updatedFolders] = await Promise.all([
+    documentAPI.getAll(),
+    folderAPI.getAll(),
+  ]);
+  setAdminDocuments(Array.isArray(updatedDocs) ? updatedDocs : []);
+  setDocuments(Array.isArray(updatedDocs) ? updatedDocs : []);
+  setDocumentList(Array.isArray(updatedDocs) ? updatedDocs : []);
+  setAdminFolders(Array.isArray(updatedFolders) ? updatedFolders : []);
+};
+
+const handleAdminMoveDocumentByDrop = async (docId, targetFolderId) => {
+  const normalizedDocId = Number.isNaN(Number(docId)) ? docId : Number(docId);
+  const normalizedTargetFolderId = targetFolderId == null
+    ? null
+    : (Number.isNaN(Number(targetFolderId)) ? targetFolderId : Number(targetFolderId));
+
+  const sourceDoc = (adminDocuments || []).find(
+    (doc) => String(doc.doc_id || doc.id) === String(normalizedDocId)
+  );
+
+  if (!sourceDoc) return;
+  if (String(sourceDoc.folder ?? '') === String(normalizedTargetFolderId ?? '')) return;
+
+  try {
+    await documentAPI.update(normalizedDocId, {
+      folder: normalizedTargetFolderId,
+    });
+
+    await refreshAdminFileLists();
+
+    const targetFolderName = normalizedTargetFolderId == null
+      ? 'root'
+      : ((adminFolders || []).find((folder) => String(folder.folder_id) === String(normalizedTargetFolderId))?.folder_name || 'selected folder');
+
+    addAuditLog(
+      'Move Document',
+      `Admin moved document ${(sourceDoc.doc_name || normalizedDocId)} to ${targetFolderName}`,
+      'Success'
+    );
+  } catch (error) {
+    console.error('Failed to move document by drag and drop:', error);
+    alert(`Failed to move document: ${error.message}`);
+  }
+};
+
+const handleAdminMoveFolderByDrop = async (folderId, targetParentFolderId) => {
+  const normalizedFolderId = Number.isNaN(Number(folderId)) ? folderId : Number(folderId);
+  const normalizedTargetParentFolderId = targetParentFolderId == null
+    ? null
+    : (Number.isNaN(Number(targetParentFolderId)) ? targetParentFolderId : Number(targetParentFolderId));
+
+  const sourceFolder = (adminFolders || []).find(
+    (folder) => String(folder.folder_id) === String(normalizedFolderId)
+  );
+
+  if (!sourceFolder) return;
+  if (String(sourceFolder.parent_folder ?? '') === String(normalizedTargetParentFolderId ?? '')) return;
+
+  try {
+    await folderAPI.update(normalizedFolderId, {
+      parent_folder: normalizedTargetParentFolderId,
+    });
+
+    await refreshAdminFileLists();
+
+    const targetFolderName = normalizedTargetParentFolderId == null
+      ? 'root'
+      : ((adminFolders || []).find((folder) => String(folder.folder_id) === String(normalizedTargetParentFolderId))?.folder_name || 'selected folder');
+
+    addAuditLog(
+      'Move Folder',
+      `Admin moved folder ${(sourceFolder.folder_name || normalizedFolderId)} to ${targetFolderName}`,
+      'Success'
+    );
+  } catch (error) {
+    console.error('Failed to move folder by drag and drop:', error);
+    alert(`Failed to move folder: ${error.message}`);
+  }
+};
+
 const handleAdminRenameDocument = async (renameData) => {
   await documentAPI.update(renameData.documentId, {
     doc_name: renameData.newName,
@@ -1907,6 +2032,7 @@ const handleAdminDocumentFileUpload = async (event) => {
 
   setAdminUploadedDocFiles((prev) => [...prev, ...files]);
   setAdminUploadPreviews((prev) => [...prev, ...previews]);
+  setAdminUploadFileNames((prev) => [...prev, ...files.map((file) => file.name)]);
   if (adminUploadedDocFiles.length === 0) setAdminCurrentPreviewIndex(0);
 };
 
@@ -1918,17 +2044,192 @@ const removeAdminFileFromUpload = (index) => {
 
   const nextFiles = adminUploadedDocFiles.filter((_, i) => i !== index);
   const nextPreviews = adminUploadPreviews.filter((_, i) => i !== index);
+  const nextNames = adminUploadFileNames.filter((_, i) => i !== index);
   setAdminUploadedDocFiles(nextFiles);
   setAdminUploadPreviews(nextPreviews);
+  setAdminUploadFileNames(nextNames);
   setAdminCurrentPreviewIndex((prev) => Math.max(0, Math.min(prev, nextFiles.length - 1)));
 };
 
-const handleAdminUploadDocument = async () => {
+const buildSuggestedUploadNameFromCategory = (fileName, detectedCategoryName) => {
+  const originalName = String(fileName || 'file');
+  const extensionMatch = originalName.match(/(\.[^.]+)$/);
+  const extension = extensionMatch ? extensionMatch[1] : '';
+
+  const userLastName =
+    loggedInUser?.last_name ||
+    loggedInUser?.full_data?.last_name ||
+    currentUser?.last_name ||
+    'user';
+
+  const safeLastName = String(userLastName).trim().replace(/\s+/g, '_');
+  const safeCategory = String(detectedCategoryName || 'category').trim().replace(/\s+/g, '_');
+  return `${safeLastName}_${safeCategory}${extension}`;
+};
+
+const pickBestCategoryFromDetectedText = (fileName, extractedText, categories = []) => {
+  const combined = `${String(fileName || '')} ${String(extractedText || '')}`.toLowerCase();
+  if (!combined.trim() || !Array.isArray(categories) || categories.length === 0) {
+    return { category: null, confidence: 0 };
+  }
+
+  let bestMatch = null;
+  let bestScore = 0;
+  let bestPercent = 0;
+
+  categories.forEach((category) => {
+    const categoryName = String(category?.category_name || '').toLowerCase().trim();
+    const categoryDesc = String(category?.category_desc || '').toLowerCase().trim();
+    if (!categoryName && !categoryDesc) return;
+
+    const categoryText = `${categoryName} ${categoryDesc}`.trim();
+    if (!categoryText) return;
+
+    let score = 0;
+    if (categoryName && combined.includes(categoryName)) score += categoryName.length + 5;
+    if (categoryDesc && combined.includes(categoryDesc)) score += categoryDesc.length + 3;
+
+    const words = categoryText.split(/\s+/).filter(Boolean);
+    words.forEach((word) => {
+      if (word.length >= 3 && combined.includes(word)) score += word.length;
+    });
+
+    const maxScore =
+      (categoryName ? categoryName.length + 5 : 0) +
+      (categoryDesc ? categoryDesc.length + 3 : 0) +
+      words.reduce((sum, word) => (word.length >= 3 ? sum + word.length : sum), 0);
+    const percent = maxScore > 0 ? Math.min(100, Math.round((score / maxScore) * 100)) : 0;
+
+    if (score > bestScore || (score === bestScore && percent > bestPercent)) {
+      bestScore = score;
+      bestPercent = percent;
+      bestMatch = category;
+    }
+  });
+
+  return {
+    category: bestScore > 0 ? bestMatch : null,
+    confidence: bestScore > 0 ? bestPercent : 0,
+  };
+};
+
+const splitNameAndExtension = (fullName) => {
+  const lastDot = String(fullName || '').lastIndexOf('.');
+  if (lastDot <= 0) return { base: String(fullName || ''), extension: '' };
+  return {
+    base: String(fullName || '').slice(0, lastDot),
+    extension: String(fullName || '').slice(lastDot),
+  };
+};
+
+const hasOcrDetectableFiles = (files = []) => {
+  const ocrFileRegex = /\.(pdf|png|jpe?g|bmp|gif|webp|tiff?)$/i;
+  return files.some((file) => ocrFileRegex.test(file?.name || ''));
+};
+
+const runAdminDetectionForUploads = async () => {
+  if (!adminAutoCategorizeUploads || adminUploadedDocFiles.length === 0) return;
+
+  setIsAdminDetectingUploads(true);
+  try {
+    const ocrFileRegex = /\.(pdf|png|jpe?g|bmp|gif|webp|tiff?)$/i;
+
+    const extractDetectionTextFromFile = async (file, isOcrFile) => {
+      const lowerName = String(file?.name || '').toLowerCase();
+
+      if (isOcrFile) {
+        try {
+          const result = await ocrAPI.extractText(file, {
+            engine: 'tesseract',
+            mode: 'fast',
+            lang: 'eng',
+          });
+          return result?.text || '';
+        } catch (error) {
+          console.error('Admin detection OCR failed for file:', file.name, error);
+          return '';
+        }
+      }
+
+      if (lowerName.endsWith('.docx')) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          return result?.value || '';
+        } catch (error) {
+          console.error('Admin DOCX detection text extraction failed:', file.name, error);
+          return '';
+        }
+      }
+
+      if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const extracted = workbook.SheetNames.map((sheetName) => {
+            const sheet = workbook.Sheets[sheetName];
+            return XLSX.utils.sheet_to_csv(sheet || {});
+          }).join('\n');
+          return extracted || '';
+        } catch (error) {
+          console.error('Admin excel detection text extraction failed:', file.name, error);
+          return '';
+        }
+      }
+
+      if (lowerName.endsWith('.txt')) {
+        try {
+          return await file.text();
+        } catch (error) {
+          console.error('Admin TXT detection text extraction failed:', file.name, error);
+          return '';
+        }
+      }
+
+      return '';
+    };
+
+    const detected = await Promise.all(
+      adminUploadedDocFiles.map(async (file, index) => {
+        const isOcrFile = ocrFileRegex.test(file.name || '');
+        const extractedText = await extractDetectionTextFromFile(file, isOcrFile);
+
+        const predicted = pickBestCategoryFromDetectedText(file.name, extractedText, adminCategories);
+        const predictedCategory = predicted.category;
+
+        return {
+          fileName: file.name,
+          finalName: buildSuggestedUploadNameFromCategory(file.name, predictedCategory?.category_name || 'category'),
+          extractedText,
+          isOcrFile,
+          predictedCategoryName: predictedCategory?.category_name || '',
+          predictedMatchPercent: predicted.confidence || 0,
+        };
+      })
+    );
+
+    setAdminDetectedUploadItems(detected);
+    setShowAdminCategoryMatchConfirmModal(true);
+  } finally {
+    setIsAdminDetectingUploads(false);
+  }
+};
+
+const performAdminUploadDocument = async (namesOverride = null) => {
   if (!adminUploadedDocFiles.length) return;
 
   try {
-    for (const file of adminUploadedDocFiles) {
-      await documentAPI.uploadFiles([file], file.name, '', currentAdminFolder || null);
+    for (let index = 0; index < adminUploadedDocFiles.length; index += 1) {
+      const file = adminUploadedDocFiles[index];
+      const resolvedDocName = ((namesOverride || adminUploadFileNames)[index] || file.name || '').trim() || file.name;
+      await documentAPI.uploadFiles(
+        [file],
+        resolvedDocName,
+        '',
+        currentAdminFolder || null,
+        undefined,
+        { autoCategorize: adminAutoCategorizeUploads }
+      );
     }
 
     const [updatedDocs, updatedFolders] = await Promise.all([documentAPI.getAll(), folderAPI.getAll()]);
@@ -1944,10 +2245,15 @@ const handleAdminUploadDocument = async () => {
     });
 
     setShowAdminUploadModal(false);
+    setShowAdminCategoryMatchConfirmModal(false);
+    setShowAdminRenameDetectedModal(false);
     setAdminUploadedDocFiles([]);
     setAdminUploadPreviews([]);
     setAdminCurrentPreviewIndex(0);
     setAdminUploadTagValues({});
+    setAdminUploadFileNames([]);
+    setAdminDetectedUploadItems([]);
+    setAdminAutoCategorizeUploads(false);
 
     addAuditLog('Upload Document', `Admin uploaded ${adminUploadedDocFiles.length} document(s)`, 'Success');
     alert(`Uploaded ${adminUploadedDocFiles.length} document(s) successfully.`);
@@ -1957,9 +2263,60 @@ const handleAdminUploadDocument = async () => {
   }
 };
 
+const handleAdminUploadDocument = async () => {
+  if (!adminUploadedDocFiles.length) return;
+
+  if (adminAutoCategorizeUploads) {
+    await runAdminDetectionForUploads();
+    return;
+  }
+
+  await performAdminUploadDocument();
+};
+
+const handleAdminChangeDetectedUploadName = (index, newBaseName) => {
+  const file = adminUploadedDocFiles[index];
+  if (!file) return;
+
+  const { extension } = splitNameAndExtension(file.name);
+  const safeBase = String(newBaseName || '').trim();
+  const nextName = safeBase ? `${safeBase}${extension}` : file.name;
+
+  setAdminDetectedUploadItems((prev) => prev.map((item, i) => (i === index ? { ...item, finalName: nextName } : item)));
+};
+
+const handleAdminConfirmDetectedUpload = async () => {
+  setIsAdminSubmittingDetectedUpload(true);
+  try {
+    const confirmedNames = adminDetectedUploadItems.map((item, index) => item.finalName || adminUploadedDocFiles[index]?.name || 'file');
+    setAdminUploadFileNames(confirmedNames);
+    await performAdminUploadDocument(confirmedNames);
+  } finally {
+    setIsAdminSubmittingDetectedUpload(false);
+  }
+};
+
+const handleAdminProceedFromCategoryConfirm = () => {
+  setShowAdminCategoryMatchConfirmModal(false);
+  setShowAdminRenameDetectedModal(true);
+};
+
 const handleAdminDeleteDocument = async (docId) => {
   const targetId = docId?.doc_id || docId;
   if (!targetId) return;
+
+  const targetDoc = (adminDocuments || []).find(
+    (doc) => String(doc.doc_id || doc.id) === String(targetId)
+  );
+
+  if (!targetDoc) return;
+
+  const isOwnedByAdminOrg = String(targetDoc.owning_org || '') === String(adminOrgId || '');
+  if (!isOwnedByAdminOrg) {
+    alert('You can only delete documents owned by your organization.');
+    return;
+  }
+
   if (!window.confirm('Move this document to Recycle Bin?')) return;
 
   try {
@@ -2045,6 +2402,19 @@ const handleAdminEmptyRecycleBin = async () => {
 
 const handleAdminDeleteFolder = async (folderId) => {
   if (!folderId) return;
+
+  const targetFolder = (adminFolders || []).find(
+    (folder) => String(folder.folder_id) === String(folderId)
+  );
+
+  if (!targetFolder) return;
+
+  const isOwnedByAdminOrg = String(targetFolder.owning_org || '') === String(adminOrgId || '');
+  if (!isOwnedByAdminOrg) {
+    alert('You can only delete folders owned by your organization.');
+    return;
+  }
+
   if (!window.confirm('Delete this folder?')) return;
 
   try {
@@ -2070,20 +2440,54 @@ const handleAdminOCRFileUpload = (event) => {
   setAdminOcrText('');
 };
 
-const handleAdminProcessOCR = () => {
+const handleAdminProcessOCR = async () => {
   if (!adminUploadedOCRFile) return;
 
   setAdminIsProcessingOCR(true);
-  setTimeout(() => {
-    setAdminOcrText(
-      `[OCR Preview from ${adminUploadedOCRFile.name}]\n\nOCR processing is connected as a placeholder in Admin.\nBackend extraction and document creation wiring will be added in the next phase.`
-    );
+  try {
+    const result = await ocrAPI.extractText(adminUploadedOCRFile, {
+      engine: 'tesseract',
+      mode: adminOcrMode,
+      lang: 'eng',
+    });
+    setAdminOcrText(result.text || '');
+    if (!result.text) {
+      alert('OCR completed but no readable text was found in the file.');
+    }
+  } catch (error) {
+    console.error('Failed to process admin OCR:', error);
+    alert(`OCR failed: ${error.message}`);
+  } finally {
     setAdminIsProcessingOCR(false);
-  }, 900);
+  }
 };
 
 const handleAdminUseOCRText = () => {
-  alert('Admin OCR document creation is queued for the next phase.');
+  if (!adminOcrText) {
+    alert('Please process OCR first');
+    return;
+  }
+
+  const sourceName = adminUploadedOCRFile?.name || 'ocr-result';
+  const baseName = sourceName.replace(/\.[^/.]+$/, '');
+  const outputName = `${baseName}-ocr.txt`;
+
+  const textBlob = new Blob([adminOcrText], { type: 'text/plain;charset=utf-8' });
+  const downloadUrl = URL.createObjectURL(textBlob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = outputName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(downloadUrl);
+
+  addAuditLog('OCR Text Extracted', `Admin extracted OCR text file from ${sourceName}`, 'Success');
+
+  setShowAdminOCRModal(false);
+  setAdminUploadedOCRFile(null);
+  setAdminOcrText('');
+  alert(`Extracted text saved as ${outputName}`);
 };
 
 const closeAdminOCRModal = () => {
@@ -2135,6 +2539,8 @@ const closeAdminOCRModal = () => {
       uploadedFile={adminUploadedOCRFile}
       ocrText={adminOcrText}
       setOcrText={setAdminOcrText}
+      ocrMode={adminOcrMode}
+      setOcrMode={setAdminOcrMode}
       isProcessingOCR={adminIsProcessingOCR}
       onFileUpload={handleAdminOCRFileUpload}
       onProcessOCR={handleAdminProcessOCR}
@@ -2160,16 +2566,22 @@ const closeAdminOCRModal = () => {
     <UploadDocumentModal
       show={showAdminUploadModal}
       onClose={() => {
+        if (isAdminDetectingUploads) return;
         adminUploadPreviews.forEach((preview) => {
           if (preview?.url && preview.url.startsWith('blob:')) {
             URL.revokeObjectURL(preview.url);
           }
         });
         setShowAdminUploadModal(false);
+        setShowAdminCategoryMatchConfirmModal(false);
+        setShowAdminRenameDetectedModal(false);
         setAdminUploadedDocFiles([]);
         setAdminUploadPreviews([]);
         setAdminCurrentPreviewIndex(0);
         setAdminUploadTagValues({});
+        setAdminUploadFileNames([]);
+        setAdminDetectedUploadItems([]);
+        setAdminAutoCategorizeUploads(false);
       }}
       uploadedDocFiles={adminUploadedDocFiles}
       uploadPreviews={adminUploadPreviews}
@@ -2181,6 +2593,41 @@ const closeAdminOCRModal = () => {
       customFields={[]}
       uploadTagValues={adminUploadTagValues}
       setUploadTagValues={setAdminUploadTagValues}
+      autoCategorizeEnabled={adminAutoCategorizeUploads}
+      setAutoCategorizeEnabled={(enabled) => {
+        setAdminAutoCategorizeUploads(enabled);
+        setAdminUploadFileNames(adminUploadedDocFiles.map((file) => file.name));
+      }}
+      autoCategorizeWarning="Uploads may take a little longer while your files are organized automatically."
+      primaryActionLabel={adminAutoCategorizeUploads ? 'Detect' : 'Upload'}
+      primaryActionLoading={isAdminDetectingUploads}
+      primaryActionLoadingLabel="Detecting documents..."
+      lockInteractionWhenLoading
+      loadingOverlayText="Detection in progress. Please wait until it finishes."
+    />
+
+    <RenameDetectedDocumentsModal
+      show={showAdminRenameDetectedModal}
+      onClose={() => {
+        if (isAdminSubmittingDetectedUpload) return;
+        setShowAdminRenameDetectedModal(false);
+        setAdminDetectedUploadItems([]);
+      }}
+      detectedItems={adminDetectedUploadItems}
+      onChangeName={handleAdminChangeDetectedUploadName}
+      onConfirm={handleAdminConfirmDetectedUpload}
+      isSubmitting={isAdminSubmittingDetectedUpload}
+    />
+
+    <CategoryMatchConfirmationModal
+      show={showAdminCategoryMatchConfirmModal}
+      items={adminDetectedUploadItems}
+      onClose={() => {
+        if (isAdminSubmittingDetectedUpload) return;
+        setShowAdminCategoryMatchConfirmModal(false);
+      }}
+      onConfirm={handleAdminProceedFromCategoryConfirm}
+      isBusy={isAdminSubmittingDetectedUpload}
     />
 
     <ShareDocumentModal
@@ -2225,6 +2672,54 @@ const closeAdminOCRModal = () => {
       }}
       document={adminDocumentToRename}
       onRename={handleAdminRenameDocument}
+    />
+
+    <AddDocumentCategoriesModal
+      show={showAdminAddCategoriesModal}
+      onClose={() => {
+        setShowAdminAddCategoriesModal(false);
+        setAdminDocumentForCategories(null);
+      }}
+      document={adminDocumentForCategories}
+      categories={adminCategories}
+      onCategoriesUpdated={async () => {
+        try {
+          await refreshAdminFileLists();
+          if (adminDocumentForCategories) {
+            const latestDocs = await documentAPI.getAll();
+            const refreshedDoc = (latestDocs || []).find((d) => String(d.doc_id || d.id) === String(adminDocumentForCategories.doc_id || adminDocumentForCategories.id));
+            if (refreshedDoc) {
+              setAdminDocumentForCategories(refreshedDoc);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to refresh admin documents after category update:', error);
+        }
+      }}
+    />
+
+    <AddFolderCategoryModal
+      show={showAdminAddFolderCategoryModal}
+      onClose={() => {
+        setShowAdminAddFolderCategoryModal(false);
+        setAdminFolderForCategory(null);
+      }}
+      folder={adminFolderForCategory}
+      categories={adminCategories}
+      onCategoryUpdated={async () => {
+        try {
+          await refreshAdminFileLists();
+          if (adminFolderForCategory) {
+            const latestFolders = await folderAPI.getAll();
+            const refreshedFolder = (latestFolders || []).find((f) => String(f.folder_id) === String(adminFolderForCategory.folder_id));
+            if (refreshedFolder) {
+              setAdminFolderForCategory(refreshedFolder);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to refresh admin folders after category update:', error);
+        }
+      }}
     />
       <UserActionMenu
         openMenuUserId={openMenuUserId}
@@ -2487,12 +2982,30 @@ const closeAdminOCRModal = () => {
               onDownloadDocument={handleDownloadDocument}
               onPrintDocument={handlePrintDocument}
               onMoveToFolder={() => {}}
+              onMoveDocumentByDrop={handleAdminMoveDocumentByDrop}
+              enableDocumentDragDrop={true}
+              canDragDocument={(doc) => String(doc?.owning_org || '') === String(adminOrgId || '')}
+              canDropToFolder={(folder, draggedDoc) => {
+                const docOwnedByAdminOrg = String(draggedDoc?.owning_org || '') === String(adminOrgId || '');
+                return !!folder && docOwnedByAdminOrg;
+              }}
+              canDropToRoot={(draggedDoc) => String(draggedDoc?.owning_org || '') === String(adminOrgId || '')}
+              onMoveFolderByDrop={handleAdminMoveFolderByDrop}
+              enableFolderDragDrop={true}
+              canDragFolder={(folder) => String(folder?.owning_org || '') === String(adminOrgId || '')}
+              canDropFolderToFolder={(targetFolder, draggedFolder) => {
+                const targetOwnedByAdminOrg = String(targetFolder?.owning_org || '') === String(adminOrgId || '');
+                const draggedOwnedByAdminOrg = String(draggedFolder?.owning_org || '') === String(adminOrgId || '');
+                return targetOwnedByAdminOrg && draggedOwnedByAdminOrg;
+              }}
+              canDropFolderToRoot={(draggedFolder) => String(draggedFolder?.owning_org || '') === String(adminOrgId || '')}
               onShareDocument={openAdminShareDocumentModal}
               onRenameDocument={openAdminRenameDocumentModal}
-              onAddCategories={() => {}}
+              onAddCategories={openAdminAddCategoriesModal}
               onDeleteFolder={handleAdminDeleteFolder}
               onShareFolder={openAdminShareFolderModal}
               onRenameFolder={handleAdminRenameFolder}
+              onAddFolderCategory={openAdminAddFolderCategoryModal}
             />
           )}
 
