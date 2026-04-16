@@ -111,12 +111,12 @@ export default function ContextMenu({
           )}
 
           {/* Download */}
-          {itemType === 'document' && onDownload && (
+          {onDownload && (
             <button
               onClick={() => handleMenuClick(onDownload)}
               className="w-full flex items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 transition-colors border-b border-gray-100 text-sm"
             >
-              <span>Download</span>
+              <span>{itemType === 'folder' ? 'Download Folder (.zip)' : 'Download'}</span>
             </button>
           )}
 

@@ -117,6 +117,16 @@ export default function SystemAdminIDFormatter({
 
   const handleFormatChange = (key, value) => {
     const newFormat = { ...format, [key]: value };
+
+    if (key === 'segmentCount') {
+      const count = Number(value) || 1;
+      const normalizedLengths = Array.from({ length: count }, (_, idx) => {
+        const existing = Number(format.segmentLength[idx]);
+        return Number.isInteger(existing) && existing > 0 ? existing : 2;
+      });
+      newFormat.segmentLength = normalizedLengths;
+    }
+
     setFormat(newFormat);
     updatePreview(newFormat, customPattern);
   };
@@ -236,14 +246,21 @@ export default function SystemAdminIDFormatter({
     setSavedMessage('');
     
     try {
+      const activeSegmentLengths = (format.segmentLength || [])
+        .slice(0, Number(format.segmentCount) || 1)
+        .map((len) => {
+          const parsed = Number(len);
+          return Number.isInteger(parsed) && parsed > 0 ? parsed : 2;
+        });
+
       // Convert UI format to backend format (org is now nullable)
       const backendFormat = {
         prefix: format.prefix,
         admin_separator: format.adminSeparator,
         user_separator: format.userSeparator,
-        segment1_len: format.segmentLength[0] || null,
-        segment2_len: format.segmentLength[1] || null,
-        segment3_len: format.segmentLength[2] || null,
+        segment1_len: activeSegmentLengths[0] || null,
+        segment2_len: activeSegmentLengths[1] || null,
+        segment3_len: activeSegmentLengths[2] || null,
         is_active: true
         // org is now optional/nullable
       };

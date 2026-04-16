@@ -481,7 +481,7 @@ export default function RequestApprovalModal({
             </div>
             <div className="mt-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Role *
+                System Privilege *
               </label>
               <select
                 value={selectedRole}
@@ -496,14 +496,14 @@ export default function RequestApprovalModal({
                 }`}
                 disabled={isLoading}
               >
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
+                <option value="user">Standard Access</option>
+                <option value="admin">Management Access</option>
               </select>
               {selectedRoleError && (
                 <p className="mt-2 text-sm text-red-600 font-medium">{selectedRoleError}</p>
               )}
               <p className="mt-2 text-xs text-gray-700">
-                <strong>Selected Role:</strong> {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
+                <strong>Selected Privilege:</strong> {selectedRole === 'admin' ? 'Management Access' : 'Standard Access'}
               </p>
             </div>
           </div>

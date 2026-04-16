@@ -1,7 +1,6 @@
 
-import { X, Edit, Key, Lock, Unlock, CheckCircle } from 'lucide-react';
+import { X, Edit, Key, Lock, Unlock, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { getRoleDisplayName } from '../../utils/roleMapper';
 
 export function UserActionMenu({ 
   openMenuUserId, 
@@ -83,6 +82,14 @@ export function AdminVerificationModal({
   setErrors,
   handleVerifyAdmin
 }) {
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  useEffect(() => {
+    if (showAdminVerificationModal) {
+      setShowAdminPassword(false);
+    }
+  }, [showAdminVerificationModal]);
+
   if (!showAdminVerificationModal) return null;
 
   return (
@@ -97,6 +104,7 @@ export function AdminVerificationModal({
               setAdminVerificationPassword('');
               setEditingUserId(null);
               setErrors({});
+              setShowAdminPassword(false);
             }}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -113,17 +121,27 @@ export function AdminVerificationModal({
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Admin Password</label>
-            <input
-              type="password"
-              value={adminVerificationPassword}
-              onChange={(e) => setAdminVerificationPassword(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleVerifyAdmin()}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.adminPassword ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="Enter admin password"
-              autoFocus
-            />
+            <div className="relative">
+              <input
+                type={showAdminPassword ? 'text' : 'password'}
+                value={adminVerificationPassword}
+                onChange={(e) => setAdminVerificationPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleVerifyAdmin()}
+                className={`w-full px-4 py-2 pr-11 border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.adminPassword ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                }`}
+                placeholder="Enter admin password"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdminPassword((prev) => !prev)}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700"
+                aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+              >
+                {showAdminPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
             {errors.adminPassword && <p className="mt-1 text-sm text-red-500">{errors.adminPassword}</p>}
           </div>
         </div>
@@ -136,6 +154,7 @@ export function AdminVerificationModal({
               setAdminVerificationPassword('');
               setEditingUserId(null);
               setErrors({});
+              setShowAdminPassword(false);
             }}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
@@ -346,9 +365,12 @@ export function AddUserModal({
                 type="text"
                 value={newUser.middleName || ''}
                 onChange={(e) => setNewUser({ ...newUser, middleName: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.middleName ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                }`}
                 placeholder="e.g., Santos"
               />
+              {errors.middleName && <p className="mt-1 text-sm text-red-500">{errors.middleName}</p>}
             </div>
 
             {/* Last Name */}
@@ -383,7 +405,7 @@ export function AddUserModal({
             </div>
 
             {/* Email */}
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
               <input
                 type="email"
@@ -429,7 +451,7 @@ export function AddUserModal({
             {/* Role */}
             {!editingUserId && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Role *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">System Privilege *</label>
                 <select 
                   value={newUser.role} 
                   onChange={(e) => { 
@@ -438,11 +460,11 @@ export function AddUserModal({
                   }} 
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="User">User</option>
-                  <option value="Admin">Admin</option>
+                  <option value="User">Standard Access</option>
+                  <option value="Admin">Management Access</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
-                  Changing role will clear the User ID field
+                  Changing privilege will clear the User ID field
                 </p>
               </div>
             )}
@@ -537,128 +559,6 @@ export function AddUserModal({
   );
 }
 
-
-export function PasswordModal({
-  showPasswordModal,
-  showEditPasswordModal,
-  setShowPasswordModal,
-  setShowAddUserModal,
-  tempUserData,
-  passwordData,
-  setPasswordData,
-  errors,
-  setErrors,
-  handleSaveUser
-}) {
-  const defaultPassword = tempUserData?.lastName?.toUpperCase() || '';
-
-  // Auto-fill password on modal open
-  useEffect(() => {
-    if (showPasswordModal && !passwordData.password && defaultPassword) {
-      setPasswordData({
-        password: defaultPassword,
-        confirmPassword: defaultPassword
-      });
-    }
-  }, [showPasswordModal, defaultPassword, passwordData.password, setPasswordData]);
-
-  if (!showPasswordModal || showEditPasswordModal) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Set Password</h2>
-          <button 
-            onClick={() => {
-              setShowPasswordModal(false);
-              setShowAddUserModal(true);
-              setErrors({});
-            }}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-          <p className="text-sm text-gray-700">
-            <span className="font-semibold">Creating account for:</span>
-          </p>
-          {/* Display First + Last Name */}
-          <p className="text-sm text-gray-900 font-medium">
-            {tempUserData?.firstName} {tempUserData?.lastName}
-          </p>
-          <p className="text-xs text-gray-600">{tempUserData?.userId}</p>
-          <p className="text-xs text-gray-600 mt-1">{tempUserData?.email}</p>
-          <p className="text-xs text-gray-600 mt-2">Role: {getRoleDisplayName(tempUserData?.role)}</p>
-        </div>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-            <input
-              type="password"
-              value={passwordData.password}
-              onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.password ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="Enter password"
-            />
-            {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
-            <div className="mt-2 text-xs text-gray-600">
-              <p className="font-semibold mb-1">Password must contain:</p>
-              <ul className="list-disc list-inside space-y-1">
-                <li className={passwordData.password.length >= 6 ? 'text-green-600 font-semibold' : 'text-gray-600'}>
-                  ✓ At least 6 characters
-                </li>
-              </ul>
-              <p className="text-xs text-gray-500 mt-2 italic">Default: Your surname in CAPITALS</p>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
-            <input
-              type="password"
-              value={passwordData.confirmPassword}
-              onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                errors.confirmPassword ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-              }`}
-              placeholder="Re-enter password"
-            />
-            {errors.confirmPassword && <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>}
-          </div>
-        </div>
-
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={() => {
-              setShowPasswordModal(false);
-              setShowAddUserModal(true);
-              setErrors({});
-            }}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Back
-          </button>
-          <button
-            onClick={handleSaveUser}
-            disabled={!passwordData.password || !passwordData.confirmPassword || 
-              passwordData.password.length < 6 || 
-              passwordData.password !== passwordData.confirmPassword
-            }
-            className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Create User
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function EditPasswordModal({
   showEditPasswordModal,

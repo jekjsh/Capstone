@@ -394,9 +394,6 @@ export const sessionAPI = {
     // Handle both 200 and 400 responses - parse JSON regardless
     const data = await response.json();
     
-    // Log the response for debugging
-    console.log('Password verification response:', data);
-    
     // If response has a 'valid' field, trust that (handles both 200 and 400 responses)
     if (data.hasOwnProperty('valid')) {
       return data;
@@ -864,6 +861,28 @@ export const folderAPI = {
       throw new Error('Failed to fetch folder history');
     }
     return await response.json();
+  },
+
+  // Download folder as ZIP archive (includes subfolders and accessible files)
+  downloadZip: async (folderId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/folders/${folderId}/download-zip/`);
+    if (!response.ok) {
+      let errorMessage = 'Failed to download folder ZIP';
+      try {
+        const error = await response.json();
+        errorMessage = error.detail || error.error || errorMessage;
+      } catch (_) {
+        // Ignore JSON parse failures for non-JSON responses.
+      }
+      throw new Error(errorMessage);
+    }
+
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match ? decodeURIComponent(match[1]) : `folder-${folderId}.zip`;
+    const blob = await response.blob();
+
+    return { blob, filename };
   },
 
   // Create a new folder

@@ -190,13 +190,15 @@ export default function DocumentViewerModal({ show, document, onClose, onPrint, 
             Page 1 of 1
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={() => onViewHistory && onViewHistory(document)}
-              className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-2"
-            >
-              <Clock3 className="w-4 h-4" />
-              History
-            </button>
+            {onViewHistory && (
+              <button
+                onClick={() => onViewHistory(document)}
+                className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-2"
+              >
+                <Clock3 className="w-4 h-4" />
+                History
+              </button>
+            )}
             <button 
               onClick={() => onPrint(document)}
               className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2"

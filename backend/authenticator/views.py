@@ -269,6 +269,21 @@ class UserViewSet(ModelViewSet):
         """Create user and log the action"""
         try:
             response = super().create(request, *args, **kwargs)
+
+            # Notify the newly created user to change their initial password immediately.
+            try:
+                created_user_id = response.data.get('user_id')
+                created_user = User.objects.filter(user_id=created_user_id).first()
+                if created_user is not None and request.user and request.user.is_authenticated:
+                    Notification.objects.create(
+                        recipient_user=created_user,
+                        actor_user=request.user,
+                        notif_msg='Your account is ready. Please change your password immediately after first login.'[:255],
+                    )
+            except Exception:
+                # Notification delivery should not block user creation.
+                pass
+
             # Log successful user creation
             AuditLog.objects.create(
                 user_index=request.user,
@@ -720,6 +735,8 @@ class UserCreationRequestViewSet(ModelViewSet):
             )
         
         try:
+            reviewer = user_creation_request.claimed_by
+
             # Get the assigned user ID from request data
             assigned_user_id = request.data.get('assigned_user_id')
             if not assigned_user_id:
@@ -768,6 +785,19 @@ class UserCreationRequestViewSet(ModelViewSet):
             user_creation_request.claimed_by = None  # Clear claim
             user_creation_request.claimed_at = None
             user_creation_request.save()
+
+            # Notify the approved user to change their temporary password immediately.
+            try:
+                actor = reviewer or user_creation_request.reviewed_by
+                if actor is not None:
+                    Notification.objects.create(
+                        recipient_user=new_user,
+                        actor_user=actor,
+                        notif_msg='Your account request was approved. Please change your temporary password immediately after login.'[:255],
+                    )
+            except Exception:
+                # Notification delivery should not block approval flow.
+                pass
             
             # Log the approval in audit log
             AuditLog.objects.create(

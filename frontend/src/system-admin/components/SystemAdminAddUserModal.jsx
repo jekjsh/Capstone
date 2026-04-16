@@ -1,8 +1,28 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { userAPI, idFormatAPI } from '../../services/api';
-import { validateUserId, getFormatHint, generateSampleIds, buildIdFormatPattern } from '../../utils/idFormatValidator';
-import { getRoleDisplayName } from '../../utils/roleMapper';
+import { validateUserId, getFormatHint, buildIdFormatPattern } from '../../utils/idFormatValidator';
+
+const initialUserForm = {
+  userId: '',
+  firstName: '',
+  middleName: '',
+  lastName: '',
+  suffix: '',
+  email: '',
+  contactNumber: '',
+  birthdate: '',
+  role: 'User',
+  organizationUnitId: '',
+  organizationPosition: ''
+};
+
+const initialUserIdParts = {
+  prefix: '',
+  segment1: '',
+  segment2: '',
+  segment3: ''
+};
 
 export default function SystemAdminAddUserModal({
   isOpen,
@@ -18,17 +38,8 @@ export default function SystemAdminAddUserModal({
   const [currentFormat, setCurrentFormat] = useState(null);
   const [userIdFormatValid, setUserIdFormatValid] = useState(null);
   const [userIdExists, setUserIdExists] = useState(false);
-  const [formData, setFormData] = useState({
-    userId: '',
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    suffix: '',
-    email: '',
-    role: 'User',
-    organizationUnitId: '',
-    organizationPosition: ''
-  });
+  const [formData, setFormData] = useState(initialUserForm);
+  const [userIdParts, setUserIdParts] = useState(initialUserIdParts);
   const [passwordData, setPasswordData] = useState({
     password: '',
     confirmPassword: ''
@@ -44,6 +55,86 @@ export default function SystemAdminAddUserModal({
   const suffixOptions = defaultSuffixOptions.includes(formData.suffix)
     ? defaultSuffixOptions
     : [...defaultSuffixOptions, formData.suffix];
+
+  const getValidationRole = (role = formData.role) => {
+    return normalizeRole(role) === 'user' ? 'User' : 'Admin';
+  };
+
+  const getRoleSeparator = (role = formData.role) => {
+    if (!currentFormat) {
+      return '-';
+    }
+    return normalizeRole(role) === 'user' ? currentFormat.user_separator : currentFormat.admin_separator;
+  };
+
+  const getSegmentLengths = () => {
+    if (!currentFormat) {
+      return [];
+    }
+
+    return [currentFormat.segment1_len, currentFormat.segment2_len, currentFormat.segment3_len]
+      .map((len) => Number(len) || 0)
+      .filter((len) => len > 0)
+      .slice(0, 3);
+  };
+
+  const buildUserIdFromParts = (parts) => {
+    if (!currentFormat) {
+      return '';
+    }
+
+    const separator = getRoleSeparator();
+    const segmentLengths = getSegmentLengths();
+    const typedSegments = segmentLengths
+      .map((_, idx) => (parts[`segment${idx + 1}`] || '').trim())
+      .filter(Boolean);
+
+    if (!typedSegments.length) {
+      return currentFormat.prefix || '';
+    }
+
+    return [currentFormat.prefix, ...typedSegments].join(separator);
+  };
+
+  const isUserIdComplete = (parts) => {
+    const segmentLengths = getSegmentLengths();
+    if (!segmentLengths.length) {
+      return false;
+    }
+
+    return segmentLengths.every((len, idx) => {
+      const value = parts[`segment${idx + 1}`] || '';
+      return value.length === len;
+    });
+  };
+
+  const splitUserIdIntoParts = (userId, role = formData.role) => {
+    const parsed = {
+      ...initialUserIdParts,
+      prefix: currentFormat?.prefix || ''
+    };
+
+    if (!userId || !currentFormat) {
+      return parsed;
+    }
+
+    const separator = getRoleSeparator(role);
+    const parts = userId.split(separator);
+    parsed.prefix = parts[0] || currentFormat.prefix || '';
+
+    getSegmentLengths().forEach((_, idx) => {
+      parsed[`segment${idx + 1}`] = (parts[idx + 1] || '').replace(/\D/g, '');
+    });
+
+    return parsed;
+  };
+
+  const resetUserIdParts = (prefix = currentFormat?.prefix || '') => {
+    setUserIdParts({
+      ...initialUserIdParts,
+      prefix
+    });
+  };
 
   // Load user ID format from backend API
   useEffect(() => {
@@ -71,11 +162,19 @@ export default function SystemAdminAddUserModal({
     if (isOpen) {
       loadFormat();
     }
-  }, [isOpen, dataStore, formData.role]);
+  }, [isOpen, dataStore]);
 
   // Pre-fill form data when editing
   useEffect(() => {
     if (isOpen && isEditMode && editingUser) {
+      const sourceRole = editingUser.role_type || editingUser.role || 'user';
+      const normalizedRole = normalizeRole(sourceRole);
+      const displayRole = normalizedRole === 'admin'
+        ? 'Admin'
+        : normalizedRole === 'system_admin'
+          ? 'System Admin'
+          : 'User';
+
       setFormData({
         userId: editingUser.id || editingUser.userId || '',
         firstName: editingUser.firstName || '',
@@ -83,52 +182,44 @@ export default function SystemAdminAddUserModal({
         lastName: editingUser.lastName || '',
         suffix: editingUser.suffix || '',
         email: editingUser.email || '',
-        role: editingUser.role || 'User',
+        contactNumber: editingUser.userContact || editingUser.user_contact || '',
+        birthdate: editingUser.userBirthdate || editingUser.user_birthdate || '',
+        role: displayRole,
         organizationUnitId: editingUser.organizationUnitId || '',
         organizationPosition: editingUser.userPos || editingUser.organizationPosition || ''
       });
       setUserIdFormatValid(true);
       setStep(1); // Start at step 1 for editing
+      setUserIdExists(false);
     } else if (isOpen && !isEditMode) {
       // Reset form for adding new user
-      setFormData({
-        userId: '',
-        firstName: '',
-        middleName: '',
-        lastName: '',
-        suffix: '',
-        email: '',
-        role: 'User',
-        organizationUnitId: '',
-        organizationPosition: ''
-      });
+      setFormData(initialUserForm);
+      resetUserIdParts();
       setUserIdFormatValid(null);
+      setUserIdExists(false);
       setStep(1);
     }
   }, [isOpen, isEditMode, editingUser]);
 
-  // Get format info for current role
-  const getFormatByRole = () => {
-    if (!currentFormat) {
-      return {
-        separator: '-',
-        pattern: 'No format configured',
-        hint: 'Please configure ID format'
-      };
+  useEffect(() => {
+    if (!isOpen || !currentFormat) {
+      return;
     }
-    return {
-      separator: formData.role === 'Admin' ? currentFormat.admin_separator : currentFormat.user_separator,
-      pattern: generateSampleIds(currentFormat, formData.role)?.admin || 'N/A',
-      hint: getFormatHint(currentFormat, formData.role)
-    };
-  };
+
+    if (isEditMode && formData.userId) {
+      setUserIdParts(splitUserIdIntoParts(formData.userId, formData.role));
+      return;
+    }
+
+    resetUserIdParts(currentFormat.prefix || '');
+  }, [isOpen, currentFormat, isEditMode]);
 
   // Get placeholder for user ID input
   const getPlaceholder = () => {
     if (!currentFormat) {
       return 'e.g., TUPM-01-0001';
     }
-    const formatInfo = buildIdFormatPattern(currentFormat, formData.role);
+    const formatInfo = buildIdFormatPattern(currentFormat, getValidationRole());
     return formatInfo?.pattern || 'e.g., TUPM-01-0001';
   };
 
@@ -144,17 +235,35 @@ export default function SystemAdminAddUserModal({
     }
 
     // Use the utility function to validate
-    const result = validateUserId(userId, currentFormat, formData.role);
+    const result = validateUserId(userId, currentFormat, getValidationRole());
     setUserIdFormatValid(result.isValid);
     return result.isValid;
   };
 
-  const handleUserIdChange = (value) => {
-    setFormData({ ...formData, userId: value });
-    validateUserIdFormat(value);
-    // Check if user ID already exists
-    const exists = userList?.some(u => (u.userId || u.id) === value);
-    setUserIdExists(exists);
+  const handleUserIdSegmentChange = (segmentIndex, value) => {
+    const segmentLengths = getSegmentLengths();
+    const maxLength = segmentLengths[segmentIndex - 1] || 0;
+    const normalizedValue = value.replace(/\D/g, '').slice(0, maxLength);
+
+    const updatedParts = {
+      ...userIdParts,
+      [`segment${segmentIndex}`]: normalizedValue
+    };
+
+    setUserIdParts(updatedParts);
+
+    const composedUserId = buildUserIdFromParts(updatedParts);
+    setFormData((prev) => ({ ...prev, userId: composedUserId }));
+
+    if (!isUserIdComplete(updatedParts)) {
+      setUserIdFormatValid(null);
+      setUserIdExists(false);
+      return;
+    }
+
+    validateUserIdFormat(composedUserId);
+    const exists = userList?.some((u) => (u.userId || u.id) === composedUserId);
+    setUserIdExists(Boolean(exists));
   };
 
   // Generate password from last name
@@ -174,7 +283,9 @@ export default function SystemAdminAddUserModal({
 
     // Skip User ID validation in edit mode since it's disabled
     if (!isEditMode) {
-      if (!formData.userId.trim()) {
+      if (!isUserIdComplete(userIdParts)) {
+        newErrors.userId = 'Please complete all User ID number segments';
+      } else if (!formData.userId.trim()) {
         newErrors.userId = 'User ID is required';
       } else if (userIdFormatValid !== true) {
         newErrors.userId = 'User ID format is invalid';
@@ -191,10 +302,18 @@ export default function SystemAdminAddUserModal({
       newErrors.lastName = 'Last name is required';
     }
 
+    if (formData.middleName.trim() && formData.middleName.trim().length === 1) {
+      newErrors.middleName = 'Middle name must be at least 2 characters if provided';
+    }
+
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Invalid email format';
+    }
+
+    if (!formData.organizationUnitId) {
+      newErrors.organizationUnitId = 'Organization Unit is required';
     }
 
     setErrors(newErrors);
@@ -230,6 +349,8 @@ export default function SystemAdminAddUserModal({
         last_name: formData.lastName,
         suffix: formData.suffix,
         email_add: formData.email,
+        user_contact: formData.contactNumber || '',
+        user_birthdate: formData.birthdate || null,
         password: password,
         role_type: normalizeRole(formData.role),
         org: formData.organizationUnitId || null,
@@ -239,17 +360,8 @@ export default function SystemAdminAddUserModal({
       console.log('User created successfully:', newUser);
       
       // Reset form
-      setFormData({
-        userId: '',
-        firstName: '',
-        middleName: '',
-        lastName: '',
-        suffix: '',
-        email: '',
-        role: 'User',
-        organizationUnitId: '',
-        organizationPosition: ''
-      });
+      setFormData(initialUserForm);
+      resetUserIdParts();
       setPasswordData({
         password: '',
         confirmPassword: ''
@@ -288,25 +400,16 @@ export default function SystemAdminAddUserModal({
         last_name: formData.lastName,
         suffix: formData.suffix,
         email_add: formData.email,
+        user_contact: formData.contactNumber || '',
+        user_birthdate: formData.birthdate || null,
         role_type: normalizeRole(formData.role),
         org: formData.organizationUnitId || null,
         user_pos: formData.organizationPosition
       });
 
-      console.log('User updated successfully');
-      
       // Reset form
-      setFormData({
-        userId: '',
-        firstName: '',
-        middleName: '',
-        lastName: '',
-        suffix: '',
-        email: '',
-        role: 'User',
-        organizationUnitId: '',
-        organizationPosition: ''
-      });
+      setFormData(initialUserForm);
+      resetUserIdParts();
       setPasswordData({ password: '', confirmPassword: '' });
       setStep(1);
       setErrors({});
@@ -350,17 +453,8 @@ export default function SystemAdminAddUserModal({
       console.log('User created successfully:', newUser);
       
       // Reset form
-      setFormData({
-        userId: '',
-        firstName: '',
-        middleName: '',
-        lastName: '',
-        suffix: '',
-        email: '',
-        role: 'User',
-        organizationUnitId: '',
-        organizationPosition: ''
-      });
+      setFormData(initialUserForm);
+      resetUserIdParts();
       setPasswordData({
         password: '',
         confirmPassword: ''
@@ -419,17 +513,8 @@ export default function SystemAdminAddUserModal({
               setErrors({});
               setUserIdFormatValid(null);
               setUserIdExists(false);
-              setFormData({
-                userId: '',
-                firstName: '',
-                middleName: '',
-                lastName: '',
-                suffix: '',
-                email: '',
-                role: 'User',
-                organizationUnitId: '',
-                organizationPosition: ''
-              });
+              setFormData(initialUserForm);
+              resetUserIdParts();
               setPasswordData({ password: '', confirmPassword: '' });
             }}
             className="text-gray-400 hover:text-gray-600"
@@ -451,24 +536,40 @@ export default function SystemAdminAddUserModal({
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 User ID * {isEditMode && <span className="text-gray-500 text-xs">(cannot be changed)</span>}
               </label>
-              <div className="relative">
-                <input 
-                  type="text" 
-                  value={formData.userId} 
-                  onChange={(e) => handleUserIdChange(e.target.value)}
-                  disabled={isEditMode}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                    isEditMode ? 'bg-gray-100 cursor-not-allowed' :
-                    userIdExists ? 'border-red-500 focus:ring-red-500' :
-                    errors.userId ? 'border-red-500 focus:ring-red-500' : 
-                    userIdFormatValid === true ? 'border-green-500 focus:ring-green-500' :
-                    userIdFormatValid === false ? 'border-red-500 focus:ring-red-500' :
-                    'border-gray-300 focus:ring-blue-500'
-                  }`} 
-                  placeholder={getPlaceholder()}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                <input
+                  type="text"
+                  value={userIdParts.prefix || currentFormat?.prefix || ''}
+                  readOnly
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
+                  placeholder="Prefix"
                 />
-
+                {getSegmentLengths().map((segmentLen, idx) => (
+                  <input
+                    key={`segment-${idx + 1}`}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={userIdParts[`segment${idx + 1}`]}
+                    onChange={(e) => handleUserIdSegmentChange(idx + 1, e.target.value)}
+                    disabled={isEditMode}
+                    maxLength={segmentLen}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                      isEditMode ? 'bg-gray-100 cursor-not-allowed' :
+                      userIdExists ? 'border-red-500 focus:ring-red-500' :
+                      errors.userId ? 'border-red-500 focus:ring-red-500' :
+                      userIdFormatValid === true ? 'border-green-500 focus:ring-green-500' :
+                      userIdFormatValid === false ? 'border-red-500 focus:ring-red-500' :
+                      'border-gray-300 focus:ring-blue-500'
+                    }`}
+                    placeholder={'#'.repeat(segmentLen)}
+                  />
+                ))}
               </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Separator for {formData.role}: <span className="font-medium">{getRoleSeparator()}</span>
+              </p>
               {!isEditMode && userIdExists && (
                 <p className="mt-1 text-sm text-red-500">User ID already exists!</p>
               )}
@@ -479,7 +580,7 @@ export default function SystemAdminAddUserModal({
               {!isEditMode && !userIdExists && userIdFormatValid === true && (
                 <p className="mt-1 text-sm text-green-600">Format is correct!</p>
               )}
-              {!isEditMode && <p className="mt-1 text-xs text-gray-500">{getFormatHint()}</p>}
+              {!isEditMode && <p className="mt-1 text-xs text-gray-500">{getFormatHint(currentFormat, getValidationRole())}</p>}
             </div>
 
             {/* First Name & Middle Name & Last Name & Suffix */}
@@ -504,9 +605,12 @@ export default function SystemAdminAddUserModal({
                   type="text"
                   value={formData.middleName}
                   onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                    errors.middleName ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                   placeholder="Michael"
                 />
+                {errors.middleName && <p className="mt-1 text-sm text-red-500">{errors.middleName}</p>}
               </div>
 
               <div>
@@ -556,20 +660,44 @@ export default function SystemAdminAddUserModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">System Privilege *</label>
                 <select
                   value={formData.role}
                   onChange={(e) => {
                     setFormData({ ...formData, role: e.target.value, userId: '' });
+                    resetUserIdParts(currentFormat?.prefix || '');
                     setUserIdFormatValid(null);
                     setUserIdExists(false);
                   }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="User">User</option>
-                  <option value="Admin">Admin</option>
-                  <option value="System Admin">System Admin</option>
+                  <option value="User">Standard Access</option>
+                  <option value="Admin">Management Access</option>
+                  <option value="System Admin">System Privilege</option>
                 </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
+                <input
+                  type="text"
+                  value={formData.contactNumber || ''}
+                  onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., 09171234567"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Birthdate</label>
+                <input
+                  type="date"
+                  value={formData.birthdate || ''}
+                  onChange={(e) => setFormData({ ...formData, birthdate: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
             </div>
 
@@ -578,15 +706,18 @@ export default function SystemAdminAddUserModal({
               <h3 className="text-lg font-semibold text-gray-700 mb-4">Organization Assignment</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Unit</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Unit *</label>
                   <select
                     value={formData.organizationUnitId || ''}
                     onChange={(e) => setFormData({ ...formData, organizationUnitId: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                      errors.organizationUnitId ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                    }`}
                   >
-                    <option value="">Select Organization Unit (Optional)</option>
+                    <option value="">Select Organization Unit</option>
                     {organizationTree && organizationTree.length > 0 && renderOrgUnitOptions(organizationTree)}
                   </select>
+                  {errors.organizationUnitId && <p className="mt-1 text-sm text-red-500">{errors.organizationUnitId}</p>}
                   <p className="mt-1 text-xs text-gray-500">The organizational unit where this user belongs</p>
                 </div>
 
@@ -612,17 +743,8 @@ export default function SystemAdminAddUserModal({
                   setErrors({});
                   setUserIdFormatValid(null);
                   setUserIdExists(false);
-                  setFormData({
-                    userId: '',
-                    firstName: '',
-                    middleName: '',
-                    lastName: '',
-                    suffix: '',
-                    email: '',
-                    role: 'User',
-                    organizationUnitId: '',
-                    organizationPosition: ''
-                  });
+                  setFormData(initialUserForm);
+                  resetUserIdParts();
                   setPasswordData({ password: '', confirmPassword: '' });
                 }}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
@@ -631,7 +753,7 @@ export default function SystemAdminAddUserModal({
               </button>
               <button
                 onClick={handleNextStep}
-                disabled={isEditMode ? false : (userIdFormatValid !== true || userIdExists)}
+                disabled={isEditMode ? false : (userIdFormatValid !== true || userIdExists || !isUserIdComplete(userIdParts))}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isEditMode ? 'Save Changes' : 'Create'}

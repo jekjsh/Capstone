@@ -70,13 +70,25 @@ class DocumentSerializer(serializers.ModelSerializer):
         if user_index is None:
             return False
 
+        user_role = getattr(user, 'role_type', '') or ''
+        user_org_id = getattr(user, 'org_id', None)
+
         # Owner-only preview policy: only document owner account can open preview/file.
         owner_user_index = obj.uploaded_by_user_id or obj.user_index_id
         if owner_user_index and owner_user_index == user_index:
             return True
 
+        # Organization admins can open all files owned by their organization.
+        if user_role == 'admin' and user_org_id is not None and getattr(obj, 'owning_org_id', None) == user_org_id:
+            return True
+
         # Fallback for legacy records missing owner linkage.
-        if not owner_user_index and getattr(obj, 'owning_org_id', None) == getattr(user, 'org_id', None):
+        # Keep this admin-only so regular users cannot open peers' files.
+        if (
+            not owner_user_index
+            and user_role == 'admin'
+            and getattr(obj, 'owning_org_id', None) == user_org_id
+        ):
             return True
 
         if DocumentShare.objects.filter(doc=obj, shared_to_user=user).exists():

@@ -16,8 +16,12 @@ export default function FileManagement({
   filteredDocuments,
   searchQuery,
   setSearchQuery,
-  filterFormat,
-  setFilterFormat,
+  organizationFilters = [],
+  setOrganizationFilters = () => {},
+  organizationFilterOptions = [],
+  ownerFilter = 'all',
+  setOwnerFilter = () => {},
+  ownerFilterOptions = [],
   sortBy,
   setSortBy,
   customFields = [],
@@ -46,6 +50,7 @@ export default function FileManagement({
   onAddCategories,
   onAddFolderCategory,
   onDeleteFolder,
+  onDownloadFolder,
   onShareFolder,
   onRenameFolder,
   getFolderDocumentCount = () => 0,
@@ -68,6 +73,7 @@ export default function FileManagement({
   const [draggedFolderId, setDraggedFolderId] = useState(null);
   const [draggedFolder, setDraggedFolder] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
+  const [showOrganizationDropdown, setShowOrganizationDropdown] = useState(false);
 
   const canUseDocumentDragDrop = enableDocumentDragDrop && typeof onMoveDocumentByDrop === 'function';
   const canUseFolderDragDrop = enableFolderDragDrop && typeof onMoveFolderByDrop === 'function';
@@ -103,13 +109,18 @@ export default function FileManagement({
       if (menu && !menu.contains(e.target)) {
         setShowNewMenu(false);
       }
+
+      const orgMenu = document.querySelector('[data-org-filter-menu]');
+      if (orgMenu && !orgMenu.contains(e.target)) {
+        setShowOrganizationDropdown(false);
+      }
     };
 
-    if (showNewMenu) {
+    if (showNewMenu || showOrganizationDropdown) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [showNewMenu]);
+  }, [showNewMenu, showOrganizationDropdown]);
 
   const currentFolderData = folders.find(f => f.folder_id === currentFolder);
   const isInFolder = !!currentFolder;
@@ -560,7 +571,7 @@ export default function FileManagement({
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-md p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 ${ownerFilterOptions.length > 0 ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
           <div className="md:col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
             <div className="relative">
@@ -578,18 +589,70 @@ export default function FileManagement({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Format</label>
-            <select
-              value={filterFormat}
-              onChange={(e) => setFilterFormat(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="all">All Formats</option>
-              <option value="pdf">PDF</option>
-              <option value="docx">DOCX</option>
-              <option value="ocr">OCR</option>
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Organization</label>
+            <div className="relative" data-org-filter-menu>
+              <button
+                type="button"
+                onClick={() => setShowOrganizationDropdown((prev) => !prev)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                {organizationFilters.length === 0
+                  ? 'All organizations'
+                  : `${organizationFilters.length} selected`}
+              </button>
+
+              {showOrganizationDropdown && (
+                <div className="absolute z-20 mt-2 w-full max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                  <label className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100">
+                    <input
+                      type="checkbox"
+                      checked={organizationFilters.length === 0}
+                      onChange={() => setOrganizationFilters([])}
+                    />
+                    <span>All organizations</span>
+                  </label>
+
+                  {organizationFilterOptions.map((option) => {
+                    const isChecked = organizationFilters.includes(String(option.value));
+                    return (
+                      <label key={option.value} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const value = String(option.value);
+                            if (e.target.checked) {
+                              setOrganizationFilters((prev) => Array.from(new Set([...(prev || []), value])));
+                            } else {
+                              setOrganizationFilters((prev) => (prev || []).filter((id) => String(id) !== value));
+                            }
+                          }}
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
+
+          {ownerFilterOptions.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Created By</label>
+              <select
+                value={ownerFilter}
+                onChange={(e) => setOwnerFilter(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {ownerFilterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Sort</label>
@@ -717,6 +780,7 @@ export default function FileManagement({
                     <ContextMenu
                       item={item.data}
                       itemType="folder"
+                      onDownload={onDownloadFolder}
                       hideShareOption={true}
                       onShare={() => onShareFolder(item.data)}
                       onRename={() => onRenameFolder(item.data.folder_id)}

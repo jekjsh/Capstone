@@ -31,6 +31,12 @@ export default function SystemAdminVerificationModal({
       getLoggedInUser();
     }
   }, [showAdminVerificationModal]);
+
+  useEffect(() => {
+    if (!showAdminVerificationModal) {
+      setShowPassword(false);
+    }
+  }, [showAdminVerificationModal]);
   
   if (!showAdminVerificationModal) return null;
 
@@ -46,6 +52,7 @@ export default function SystemAdminVerificationModal({
               setAdminVerificationPassword('');
               setEditingUserId(null);
               setErrors({});
+              setShowPassword(false);
             }}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -103,6 +110,7 @@ export default function SystemAdminVerificationModal({
               setAdminVerificationPassword('');
               setEditingUserId(null);
               setErrors({});
+              setShowPassword(false);
             }}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >

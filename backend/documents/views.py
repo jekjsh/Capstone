@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
+from django.http import HttpResponse
 from django.utils import timezone
 from datetime import datetime
 import uuid
@@ -80,6 +81,108 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         # Soft-delete documents under this folder as part of folder recycle operation.
         instance.documents.filter(is_deleted=False).update(is_deleted=True, deleted_at=now)
+
+    def _sanitize_zip_part(self, value, fallback):
+        cleaned = ''.join(ch if ch.isalnum() or ch in (' ', '-', '_', '.') else '_' for ch in str(value or '').strip())
+        cleaned = cleaned.strip().strip('.')
+        return cleaned or fallback
+
+    def _can_open_document_for_user(self, doc, user):
+        owner_user_index = doc.uploaded_by_user_id or doc.user_index_id
+        user_index = getattr(user, 'user_index', None)
+        user_org_id = getattr(user, 'org_id', None)
+        user_role = getattr(user, 'role_type', '') or ''
+
+        if owner_user_index and owner_user_index == user_index:
+            return True
+
+        if user_role == 'admin' and user_org_id is not None and getattr(doc, 'owning_org_id', None) == user_org_id:
+            return True
+
+        if not owner_user_index and getattr(doc, 'owning_org_id', None) == user_org_id:
+            return True
+
+        if DocumentShare.objects.filter(doc=doc, shared_to_user=user).exists():
+            return True
+
+        return False
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated, IsOrgMember, CanAccessFolder], url_path='download-zip')
+    def download_zip(self, request, pk=None):
+        root_folder = self.get_object()
+        user = request.user
+
+        def can_access_folder(folder_obj):
+            return (
+                folder_obj.owning_org_id == user.org_id or
+                FolderShare.objects.filter(folder=folder_obj, shared_with_org=user.org).exists()
+            )
+
+        zip_buffer = io.BytesIO()
+        used_paths = set()
+        added_files = 0
+        root_name = self._sanitize_zip_part(root_folder.folder_name, f'folder_{root_folder.folder_id}')
+
+        def unique_path(path):
+            if path not in used_paths:
+                used_paths.add(path)
+                return path
+
+            base, ext = splitext(path)
+            counter = 1
+            while True:
+                candidate = f"{base}({counter}){ext}"
+                if candidate not in used_paths:
+                    used_paths.add(candidate)
+                    return candidate
+                counter += 1
+
+        def add_folder_contents(folder_obj, relative_base):
+            nonlocal added_files
+
+            docs = folder_obj.documents.filter(is_archived=False, is_deleted=False).order_by('doc_name')
+            for doc in docs:
+                if not self._can_open_document_for_user(doc, user):
+                    continue
+
+                if not doc.doc_file:
+                    continue
+
+                file_name = self._sanitize_zip_part(doc.doc_name, f'document_{doc.doc_id}')
+                archive_path = unique_path(f"{relative_base}/{file_name}")
+
+                try:
+                    doc.doc_file.open('rb')
+                    file_bytes = doc.doc_file.read()
+                    if file_bytes is not None:
+                        archive.writestr(archive_path, file_bytes)
+                        added_files += 1
+                except Exception:
+                    continue
+                finally:
+                    try:
+                        doc.doc_file.close()
+                    except Exception:
+                        pass
+
+            subfolders = folder_obj.subfolders.filter(is_archived=False, is_deleted=False).order_by('folder_name')
+            for subfolder in subfolders:
+                if not can_access_folder(subfolder):
+                    continue
+                next_base = f"{relative_base}/{self._sanitize_zip_part(subfolder.folder_name, f'folder_{subfolder.folder_id}') }"
+                add_folder_contents(subfolder, next_base)
+
+        with zipfile.ZipFile(zip_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:
+            add_folder_contents(root_folder, root_name)
+
+            if added_files == 0:
+                archive.writestr(f"{root_name}/README.txt", 'No downloadable files are available in this folder for your account.')
+
+        zip_buffer.seek(0)
+        filename = self._sanitize_zip_part(root_folder.folder_name, f'folder_{root_folder.folder_id}') + '.zip'
+        response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
     
     def create(self, request, *args, **kwargs):
         """Create folder and log the action"""

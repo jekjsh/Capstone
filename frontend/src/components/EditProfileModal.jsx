@@ -136,6 +136,10 @@ export default function EditProfileModal({
       newErrors.last_name = 'Last name is required';
     }
 
+    if (formData.middle_name.trim() && formData.middle_name.trim().length === 1) {
+      newErrors.middle_name = 'Middle name must be at least 2 characters if provided';
+    }
+
     if (formData.email_add && !formData.email_add.includes('@')) {
       newErrors.email_add = 'Please enter a valid email address';
     }
@@ -267,10 +271,17 @@ export default function EditProfileModal({
                   value={formData.middle_name}
                   onChange={handleInputChange}
                   onBlur={handleInputBlur}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+                    errors.middle_name
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                   disabled={isLoading}
                   placeholder="Middle Name"
                 />
+                {errors.middle_name && (
+                  <p className="mt-1 text-xs text-red-600">{errors.middle_name}</p>
+                )}
               </div>
 
               <div>

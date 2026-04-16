@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Briefcase, Building2, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react';
+import { Mail, Briefcase, Building2, AlertCircle, CheckCircle2, ChevronLeft, Phone, Calendar } from 'lucide-react';
 import { authAPI, organizationAPI } from './services/api';
 import './LoginForm.css';
 
@@ -12,6 +12,8 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
     suffix: '',
     email_add: '',
     user_pos: '',
+    user_contact: '',
+    user_birthdate: '',
     org: ''
   });
   const [organizations, setOrganizations] = useState([]);
@@ -36,6 +38,16 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === 'user_contact') {
+      const digitsOnly = value.replace(/\D/g, '').slice(0, 11);
+      setFormData(prev => ({
+        ...prev,
+        [name]: digitsOnly
+      }));
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: value
@@ -56,6 +68,9 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
       if (!formData.last_name.trim()) {
         throw new Error('Last Name is required');
       }
+      if (formData.middle_name.trim() && formData.middle_name.trim().length === 1) {
+        throw new Error('Middle Name must be at least 2 characters if provided');
+      }
       if (!formData.email_add.trim()) {
         throw new Error('Email is required');
       }
@@ -64,6 +79,23 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
       }
       if (!formData.org) {
         throw new Error('Organization is required');
+      }
+      if (!formData.user_contact || formData.user_contact.length !== 11) {
+        throw new Error('Contact Number must be exactly 11 digits');
+      }
+      if (!formData.user_birthdate) {
+        throw new Error('Birthdate is required');
+      }
+
+      const birthDate = new Date(formData.user_birthdate);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age -= 1;
+      }
+      if (Number.isNaN(age) || age < 18) {
+        throw new Error('Registrant must be at least 18 years old');
       }
 
       // Submit registration request
@@ -77,6 +109,8 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
           suffix: formData.suffix,
           email_add: formData.email_add,
           user_pos: formData.user_pos,
+          user_contact: formData.user_contact,
+          user_birthdate: formData.user_birthdate || null,
           org: parseInt(formData.org)
         })
       });
@@ -276,6 +310,48 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
                 className="w-full pl-10 pr-4 py-2 bg-transparent rounded-md focus:outline-none text-sm"
                 required
               />
+            </div>
+          </div>
+
+          {/* Contact and Birthdate */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">
+                Contact Number
+              </label>
+              <div className="relative rounded-md border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-600 transition-all">
+                <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  name="user_contact"
+                  value={formData.user_contact}
+                  onChange={handleInputChange}
+                  placeholder="e.g., 09171234567"
+                  maxLength={11}
+                  inputMode="numeric"
+                  pattern="[0-9]{11}"
+                  className="w-full pl-10 pr-4 py-2 bg-transparent rounded-md focus:outline-none text-sm"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">
+                Birthdate
+              </label>
+              <div className="relative rounded-md border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-600 transition-all">
+                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                <input
+                  type="date"
+                  name="user_birthdate"
+                  value={formData.user_birthdate}
+                  onChange={handleInputChange}
+                  max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
+                  className="w-full pl-10 pr-4 py-2 bg-transparent rounded-md focus:outline-none text-sm"
+                  required
+                />
+              </div>
             </div>
           </div>
 

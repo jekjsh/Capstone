@@ -283,6 +283,10 @@ export default function SystemAdminMainFrame({
     }
   };
 
+  const handleUserIdFormatSaved = async () => {
+    await checkActiveUserIdFormat();
+  };
+
   useEffect(() => {
     checkActiveUserIdFormat();
   }, []);
@@ -304,6 +308,8 @@ export default function SystemAdminMainFrame({
         lastName: user.last_name || '',
         middleName: user.middle_name || '',
         userPos: user.user_pos || '',
+        userContact: user.user_contact || '',
+        userBirthdate: user.user_birthdate || '',
         email: user.email_add || '',
         role: user.role_type || 'User',
         isActive: user.is_active !== false,
@@ -315,6 +321,8 @@ export default function SystemAdminMainFrame({
         middle_name: user.middle_name || '',
         suffix: user.suffix || '',
         user_pos: user.user_pos || '',
+        user_contact: user.user_contact || '',
+        user_birthdate: user.user_birthdate || '',
         email_add: user.email_add || '',
         role_type: user.role_type || 'User',
         is_active: user.is_active !== false,
@@ -642,10 +650,8 @@ export default function SystemAdminMainFrame({
   };
 
   const handleUserAdded = async () => {
-    // Refresh user list
     try {
-      const data = await userAPI.getAll();
-      setUserList(data);
+      await refreshUserList();
     } catch (error) {
       console.error('Failed to refresh user list:', error);
     }
@@ -919,7 +925,7 @@ export default function SystemAdminMainFrame({
         show={showUserIdFormatModal}
         onClose={() => setShowUserIdFormatModal(false)}
         dataStore={dataStore}
-        onSave={() => setShowUserIdFormatModal(false)}
+        onSave={handleUserIdFormatSaved}
         lockUntilConfigured={hasActiveUserIdFormat === false}
       />
 

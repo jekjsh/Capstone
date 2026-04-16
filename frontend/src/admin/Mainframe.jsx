@@ -34,10 +34,9 @@ import {
   UserActionMenu, 
   AdminVerificationModal, 
   AddUserModal, 
-  PasswordModal, 
   EditPasswordModal 
 } from './component/AdminModals';
-import AdminAllDocumentsView from './component/AdminAllDocumentsView';
+import GenerateReportsView from './component/GenerateReportsView';
 import Category from '../components/Category';
 import FileManagement from '../components/FileManagement';
 import RecycleBin from '../components/RecycleBin';
@@ -63,7 +62,7 @@ export default function Mainframe({
     'my-files': '/admin/my-files',
     'org-users': '/admin/user-assignment',
     'users': '/admin/user-profiles',
-    'all-documents': '/admin/documents-list',
+    'all-documents': '/admin/generate-reports',
     'org-shares': '/admin/file-sharing',
     'categories': '/admin/categories',
     'recycle-bin': '/admin/recycle-bin',
@@ -75,6 +74,7 @@ export default function Mainframe({
     '/admin/users-by-organization': 'org-users',
     '/admin/user-management': 'users',
     '/admin/all-user-documents': 'all-documents',
+    '/admin/documents-list': 'all-documents',
     '/admin/organization-shares': 'org-shares',
   };
 
@@ -156,10 +156,11 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const [adminOcrMode, setAdminOcrMode] = useState('fast');
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [adminFilterFormat, setAdminFilterFormat] = useState('all');
+  const [adminOwnerFilter, setAdminOwnerFilter] = useState('all');
+  const [adminOrganizationFilters, setAdminOrganizationFilters] = useState([]);
   const [adminSortBy, setAdminSortBy] = useState('date-desc');
   const [adminFilterByTag, setAdminFilterByTag] = useState({});
   const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showEditPasswordModal, setShowEditPasswordModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -168,7 +169,6 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const [showAdminVerificationModal, setShowAdminVerificationModal] = useState(false);
   const [adminVerificationPassword, setAdminVerificationPassword] = useState('');
   const [editingUserId, setEditingUserId] = useState(null);
-  const [tempUserData, setTempUserData] = useState(null);
   const [openMenuUserId, setOpenMenuUserId] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const [passwordData, setPasswordData] = useState({
@@ -787,7 +787,7 @@ const [viewingDocument, setViewingDocument] = useState(null);
         { id: 'org-users', label: 'User Assignment', icon: null },
       ],
     },
-    { id: 'all-documents', label: 'Documents List', icon: FileText },
+    { id: 'all-documents', label: 'Generate Reports', icon: FileText },
     { id: 'logs', label: 'Activity Logs', icon: ClipboardList },
   ];
 
@@ -795,27 +795,156 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const adminVisibleFolders = Array.isArray(adminFolders) ? adminFolders : [];
   const adminVisibleDocuments = Array.isArray(adminDocuments) ? adminDocuments : [];
 
+  const currentAdminUserId = String(loggedInUser?.user_id || loggedInUser?.id || '').trim();
+  const currentAdminUserIndex = String(loggedInUser?.full_data?.user_index || loggedInUser?.user_index || '').trim();
+
+  const getItemCreatorInfo = (item) => {
+    const ownerUser = item?.uploaded_by_user || item?.created_by_user || item?.user_index || null;
+    if (!ownerUser || typeof ownerUser !== 'object') {
+      return {
+        key: '',
+        userId: '',
+        userIndex: '',
+        label: 'Unknown',
+      };
+    }
+
+    const userId = String(ownerUser.user_id || ownerUser.id || '').trim();
+    const userIndex = String(ownerUser.user_index || '').trim();
+    const key = userId || (userIndex ? `idx:${userIndex}` : '');
+
+    const middleInitial = ownerUser.middle_name ? `${String(ownerUser.middle_name).trim().charAt(0)}.` : '';
+    const fullName = [ownerUser.first_name, middleInitial, ownerUser.last_name, ownerUser.suffix]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      key,
+      userId,
+      userIndex,
+      label: fullName || userId || (userIndex ? `User ${userIndex}` : 'Unknown'),
+    };
+  };
+
+  const isCurrentAdminCreator = (creatorInfo) => {
+    if (!creatorInfo) return false;
+    const sameUserId = creatorInfo.userId && currentAdminUserId && String(creatorInfo.userId) === String(currentAdminUserId);
+    const sameUserIndex = creatorInfo.userIndex && currentAdminUserIndex && String(creatorInfo.userIndex) === String(currentAdminUserIndex);
+    return Boolean(sameUserId || sameUserIndex);
+  };
+
+  const getItemOrganizationInfo = (item) => {
+    const orgId = String(item?.owning_org || item?.org || '').trim();
+    const orgName = String(item?.owning_org_name || item?.org_name || '').trim();
+    return {
+      id: orgId,
+      name: orgName || (orgId ? `Organization ${orgId}` : 'Unknown Organization'),
+    };
+  };
+
+  const adminOwnerFilterOptions = (() => {
+    const creatorMap = new Map();
+
+    adminVisibleDocuments.forEach((doc) => {
+      const creator = getItemCreatorInfo(doc);
+      if (!creator.key) return;
+      creatorMap.set(creator.key, creator.label);
+    });
+
+    adminVisibleFolders.forEach((folder) => {
+      const creator = getItemCreatorInfo(folder);
+      if (!creator.key) return;
+      creatorMap.set(creator.key, creator.label);
+    });
+
+    const dynamicOptions = Array.from(creatorMap.entries())
+      .filter(([value]) => {
+        const matchByUserId = value === currentAdminUserId;
+        const matchByUserIndex = currentAdminUserIndex && value === `idx:${currentAdminUserIndex}`;
+        return !(matchByUserId || matchByUserIndex);
+      })
+      .sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+      .map(([value, label]) => ({ value, label }));
+
+    return [
+      { value: 'all', label: 'All creators' },
+      { value: 'me', label: 'Created by me' },
+      ...dynamicOptions,
+    ];
+  })();
+
+  const adminOrganizationFilterOptions = (() => {
+    const orgMap = new Map();
+
+    (organizations || []).forEach((org) => {
+      const orgId = String(org?.org_id || org?.id || '').trim();
+      const orgName = String(org?.org_name || org?.name || '').trim();
+      if (!orgId) return;
+      orgMap.set(orgId, orgName || `Organization ${orgId}`);
+    });
+
+    adminVisibleDocuments.forEach((doc) => {
+      const org = getItemOrganizationInfo(doc);
+      if (!org.id) return;
+      orgMap.set(org.id, org.name);
+    });
+
+    adminVisibleFolders.forEach((folder) => {
+      const org = getItemOrganizationInfo(folder);
+      if (!org.id) return;
+      orgMap.set(org.id, org.name);
+    });
+
+    return Array.from(orgMap.entries())
+      .sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+      .map(([value, label]) => ({ value, label }));
+  })();
+
+  const matchesAdminOrganizationFilter = (item) => {
+    if (!adminOrganizationFilters.length) return true;
+    const org = getItemOrganizationInfo(item);
+    return adminOrganizationFilters.includes(String(org.id));
+  };
+
+  const adminFilteredFolders = adminVisibleFolders.filter((folder) => {
+    const folderName = String(folder.folder_name || '').toLowerCase();
+    const searchOk = !adminSearchQuery || folderName.includes(adminSearchQuery.toLowerCase());
+    const creator = getItemCreatorInfo(folder);
+    const ownerOk =
+      adminOwnerFilter === 'all' ||
+      (adminOwnerFilter === 'me' && isCurrentAdminCreator(creator)) ||
+      String(creator.key) === String(adminOwnerFilter);
+
+    const orgOk = matchesAdminOrganizationFilter(folder);
+
+    return searchOk && ownerOk && orgOk;
+  });
+
   const adminFilteredDocuments = adminVisibleDocuments.filter((doc) => {
     const name = String(doc.doc_name || doc.title || '').toLowerCase();
     const searchOk = !adminSearchQuery || name.includes(adminSearchQuery.toLowerCase());
+    const creator = getItemCreatorInfo(doc);
+    const ownerOk =
+      adminOwnerFilter === 'all' ||
+      (adminOwnerFilter === 'me' && isCurrentAdminCreator(creator)) ||
+      String(creator.key) === String(adminOwnerFilter);
 
-    if (!searchOk) return false;
+    const orgOk = matchesAdminOrganizationFilter(doc);
 
-    if (adminFilterFormat === 'all') return true;
-    if (adminFilterFormat === 'pdf') return name.endsWith('.pdf');
-    if (adminFilterFormat === 'docx') return name.endsWith('.docx') || name.endsWith('.doc');
-    if (adminFilterFormat === 'ocr') return name.includes('ocr');
+    if (!searchOk || !ownerOk || !orgOk) return false;
 
     return true;
   });
 
   useEffect(() => {
     if (!currentAdminFolder) return;
-    const stillVisible = adminVisibleFolders.some((folder) => folder.folder_id === currentAdminFolder);
+    const stillVisible = adminFilteredFolders.some((folder) => folder.folder_id === currentAdminFolder);
     if (!stillVisible) {
       setCurrentAdminFolder(null);
     }
-  }, [currentAdminFolder, adminVisibleFolders]);
+  }, [currentAdminFolder, adminFilteredFolders]);
 
   useEffect(() => {
     if (activeSection !== 'my-files' && activeSection !== 'org-shares' && activeSection !== 'recycle-bin') return;
@@ -945,6 +1074,10 @@ const [viewingDocument, setViewingDocument] = useState(null);
     newErrors.lastName = 'Last name is required';
   }
 
+  if ((newUser.middleName || '').trim() && (newUser.middleName || '').trim().length === 1) {
+    newErrors.middleName = 'Middle name must be at least 2 characters if provided';
+  }
+
 
   if (!newUser.email.trim()) {
     newErrors.email = 'Email is required';
@@ -1052,9 +1185,8 @@ const [viewingDocument, setViewingDocument] = useState(null);
 
           await userAPI.update(editingUserId, updateData);
 
-          // Refresh user list from API
-          const users = await userAPI.getAll();
-          setUserList(transformUsers(users));
+          // Refresh user list after editing so UI always reflects latest backend data.
+          await refreshUserList();
 
           if (dataStore) {
             dataStore.updateUser(editingUserId, {
@@ -1087,7 +1219,6 @@ const [viewingDocument, setViewingDocument] = useState(null);
             organizationUnitId: '', 
             organizationPosition: '' 
           });
-          setTempUserData(null);
           setErrors({});
           alert('User information updated successfully!');
         } catch (error) {
@@ -1102,21 +1233,8 @@ const [viewingDocument, setViewingDocument] = useState(null);
 
       updateUserAPI();
     } else {
-      setTempUserData({
-        userId: newUser.userId,
-        firstName: newUser.firstName,   
-        middleName: newUser.middleName,
-        lastName: newUser.lastName,  
-        suffix: newUser.suffix,
-        email: newUser.email,  
-        userContact: newUser.userContact,
-        userBirthdate: newUser.userBirthdate,
-        role: newUser.role,
-        organizationUnitId: newUser.organizationUnitId,
-        organizationPosition: newUser.organizationPosition
-      });
-      setShowAddUserModal(false);
-      setShowPasswordModal(true);
+      setErrors({ general: 'Admin user creation is disabled. Use the System Admin add-user flow.' });
+      alert('Admin user creation is disabled. Please ask a System Admin to create users.');
     }
   }
 };
@@ -1153,68 +1271,7 @@ const [viewingDocument, setViewingDocument] = useState(null);
 
       updatePasswordAPI();
     } else {
-      // Create user in backend API
-      const createUserAPI = async () => {
-        try {
-          const userData = {
-            username: tempUserData.userId,
-            first_name: tempUserData.firstName,
-            middle_name: tempUserData.middleName || '',
-            last_name: tempUserData.lastName,
-            suffix: tempUserData.suffix || '',
-            email: tempUserData.email,
-            user_contact: tempUserData.userContact || '',
-            user_birthdate: tempUserData.userBirthdate || null,
-            user_pos: tempUserData.organizationPosition || '',
-            password: passwordData.password,
-            job_title: '',
-            department: '',
-            organization_unit_id: tempUserData.organizationUnitId || null,
-            organization_position: tempUserData.organizationPosition || '',
-            status: 'Active',
-            role: tempUserData.role
-          };
-          
-          const newUser = await userAPI.create(userData);
-          
-          // Refresh user list from API
-          const users = await userAPI.getAll();
-          setUserList(transformUsers(users));
-          
-          addAuditLog('User Created', `${tempUserData.userId} - ${tempUserData.firstName} ${tempUserData.lastName}`, 'Success');
-          
-          setShowPasswordModal(false);
-          setNewUser({
-            userId: '',
-            firstName: '',
-            middleName: '',
-            lastName: '',
-            suffix: '',
-            email: '',
-            userContact: '',
-            userBirthdate: '',
-            role: 'User',
-            organizationUnitId: '',
-            organizationPosition: ''
-          });
-          setPasswordData({
-            password: '',
-            confirmPassword: ''
-          });
-          setTempUserData(null);
-          setErrors({});
-          alert('User created successfully!');
-        } catch (error) {
-          console.error('Failed to create user:', error);
-          const message = error.status === 401
-            ? 'Session expired. Please log in again.'
-            : error.message;
-          setErrors({ general: message });
-          alert(`Failed to create user: ${message}`);
-        }
-      };
-      
-      createUserAPI();
+      setErrors({ general: 'Admin user creation is disabled. Use the System Admin add-user flow.' });
     }
   }
 };
@@ -1566,7 +1623,7 @@ const handleViewDocument = async (doc) => {
   }
 
   if (doc.can_open === false) {
-    alert('You can view metadata for this file, but opening is restricted by ownership policy.');
+    alert('You can see this file in the list, but you are not allowed to open it.');
     return;
   }
 
@@ -1662,6 +1719,31 @@ const handleDownloadDocument = (doc) => {
   }
   
   addAuditLog('Document Downloaded', `Admin downloaded: ${doc.doc_name || doc.title} (ID: ${doc.doc_id || doc.id})`, 'Success');
+};
+
+const handleDownloadFolder = async (folder) => {
+  try {
+    const folderId = folder?.folder_id || folder?.id;
+    if (!folderId) {
+      alert('Folder ID not found.');
+      return;
+    }
+
+    const { blob, filename } = await folderAPI.downloadZip(folderId);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || `${folder.folder_name || 'folder'}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    addAuditLog('Folder Downloaded', `Admin downloaded folder ZIP: ${folder.folder_name || folderId}`, 'Success');
+  } catch (error) {
+    console.error('Failed to download folder ZIP:', error);
+    alert(`Failed to download folder: ${error.message}`);
+  }
 };
 
 const handlePrintDocument = (doc) => {
@@ -1793,6 +1875,10 @@ const refreshAdminFileLists = async () => {
   setAdminFolders(Array.isArray(updatedFolders) ? updatedFolders : []);
 };
 
+const refreshAdminWorkspaceAfterShare = async () => {
+  await Promise.all([refreshAdminFileLists(), refreshAdminShareData()]);
+};
+
 const handleAdminMoveDocumentByDrop = async (docId, targetFolderId) => {
   const normalizedDocId = Number.isNaN(Number(docId)) ? docId : Number(docId);
   const normalizedTargetFolderId = targetFolderId == null
@@ -1904,7 +1990,7 @@ const handleAdminShareDocument = async (shareData) => {
   );
 
   await Promise.all(sharePromises);
-  await refreshAdminShareData();
+  await refreshAdminWorkspaceAfterShare();
 };
 
 const handleAdminShareFolder = async (shareData) => {
@@ -1967,7 +2053,7 @@ const handleAdminShareFolder = async (shareData) => {
   });
 
   await Promise.all([...createOps, ...deleteOps]);
-  await refreshAdminShareData();
+  await refreshAdminWorkspaceAfterShare();
 };
 
 const handleAdminCreateFolder = async () => {
@@ -2645,7 +2731,7 @@ const closeAdminOCRModal = () => {
         org: loggedInUser?.full_data?.org || loggedInUser?.org,
       }}
       onShareDocument={handleAdminShareDocument}
-      onSharesUpdated={refreshAdminShareData}
+      onSharesUpdated={refreshAdminWorkspaceAfterShare}
     />
 
     <ShareFolderModal
@@ -2661,7 +2747,7 @@ const closeAdminOCRModal = () => {
         org: loggedInUser?.full_data?.org || loggedInUser?.org,
       }}
       onShareFolder={handleAdminShareFolder}
-      onSharesUpdated={refreshAdminShareData}
+      onSharesUpdated={refreshAdminWorkspaceAfterShare}
     />
 
     <RenameDocumentModal
@@ -2758,19 +2844,6 @@ const closeAdminOCRModal = () => {
         userList={userList}
         organizationTree={organizationTree}
         renderOrgUnitOptions={renderOrgUnitOptions}
-      />
-
-      <PasswordModal
-        showPasswordModal={showPasswordModal}
-        showEditPasswordModal={showEditPasswordModal}
-        setShowPasswordModal={setShowPasswordModal}
-        setShowAddUserModal={setShowAddUserModal}
-        tempUserData={tempUserData}
-        passwordData={passwordData}
-        setPasswordData={setPasswordData}
-        errors={errors}
-        setErrors={setErrors}
-        handleSaveUser={handleSaveUser}
       />
 
       <EditPasswordModal
@@ -2911,7 +2984,7 @@ const closeAdminOCRModal = () => {
             />
           )}
           {activeSection === 'all-documents' && (
-            <AdminAllDocumentsView 
+            <GenerateReportsView 
               dataStore={dataStore}
               documents={documents}
               userList={userList}
@@ -2959,7 +3032,7 @@ const closeAdminOCRModal = () => {
               rootLabel={adminFilesLabel}
               currentFolder={currentAdminFolder}
               setCurrentFolder={setCurrentAdminFolder}
-              folders={adminVisibleFolders}
+              folders={adminFilteredFolders}
               userDocuments={adminVisibleDocuments}
               sharedDocumentIds={adminSharedDocumentIds}
               sharedDocumentLabels={adminSharedDocumentLabels}
@@ -2968,8 +3041,12 @@ const closeAdminOCRModal = () => {
               filteredDocuments={adminFilteredDocuments}
               searchQuery={adminSearchQuery}
               setSearchQuery={setAdminSearchQuery}
-              filterFormat={adminFilterFormat}
-              setFilterFormat={setAdminFilterFormat}
+              organizationFilters={adminOrganizationFilters}
+              setOrganizationFilters={setAdminOrganizationFilters}
+              organizationFilterOptions={adminOrganizationFilterOptions}
+              ownerFilter={adminOwnerFilter}
+              setOwnerFilter={setAdminOwnerFilter}
+              ownerFilterOptions={adminOwnerFilterOptions}
               sortBy={adminSortBy}
               setSortBy={setAdminSortBy}
               filterByTag={adminFilterByTag}
@@ -3003,6 +3080,7 @@ const closeAdminOCRModal = () => {
               onRenameDocument={openAdminRenameDocumentModal}
               onAddCategories={openAdminAddCategoriesModal}
               onDeleteFolder={handleAdminDeleteFolder}
+              onDownloadFolder={handleDownloadFolder}
               onShareFolder={openAdminShareFolderModal}
               onRenameFolder={handleAdminRenameFolder}
               onAddFolderCategory={openAdminAddFolderCategoryModal}

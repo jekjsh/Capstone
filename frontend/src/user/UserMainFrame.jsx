@@ -163,9 +163,7 @@ export default function UserMainFrame({
       try {
         setIsLoadingDocuments(true);
         const allDocs = await documentAPI.getAll();
-        // Filter to only show documents created by current user
-        const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username);
-        setUserDocuments(myDocs);
+        setUserDocuments(Array.isArray(allDocs) ? allDocs : []);
       } catch (error) {
         console.error('Failed to load user documents:', error);
         // Fallback to dataStore
@@ -326,6 +324,8 @@ export default function UserMainFrame({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('date-desc');
   const [filterFormat, setFilterFormat] = useState('all');
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const [organizationFilters, setOrganizationFilters] = useState([]);
   const [filterByTag, setFilterByTag] = useState({});
   const [uploadTagValues, setUploadTagValues] = useState({});
   const [autoCategorizeUploads, setAutoCategorizeUploads] = useState(false);
@@ -354,7 +354,9 @@ const [newField, setNewField] = useState({
   const [sharedDocuments, setSharedDocuments] = useState([]);
   const [sharedFolders, setSharedFolders] = useState([]);
   const [sharedOutDocumentIds, setSharedOutDocumentIds] = useState([]);
+  const [sharedDocumentLabels, setSharedDocumentLabels] = useState({});
   const [sharedOutFolderIds, setSharedOutFolderIds] = useState([]);
+  const [sharedFolderLabels, setSharedFolderLabels] = useState({});
   const [sharedByMe, setSharedByMe] = useState([]);
   const [organizationShares, setOrganizationShares] = useState(dataStore ? dataStore.getAllOrgShares() : []);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -377,6 +379,7 @@ const [newField, setNewField] = useState({
       if (!currentUserIndex) {
         setSharedDocuments([]);
         setSharedOutDocumentIds([]);
+        setSharedDocumentLabels({});
         return;
       }
 
@@ -406,14 +409,26 @@ const [newField, setNewField] = useState({
 
       const sharedByMeData = normalizedShares.filter((share) => String(share.shared_by_user) === String(currentUserIndex));
 
+      const labelMap = {};
+      normalizedShares.forEach((share) => {
+        const docKey = String(share.doc);
+        if (String(share.shared_by_user) === String(currentUserIndex)) {
+          labelMap[docKey] = 'Shared';
+        } else if (String(share.shared_to_user) === String(currentUserIndex) && !labelMap[docKey]) {
+          labelMap[docKey] = 'Shared to you';
+        }
+      });
+
       setSharedOutDocumentIds(
-        Array.from(new Set(sharedByMeData.map((share) => share.doc).filter(Boolean)))
+        Array.from(new Set(Object.keys(labelMap)))
       );
+      setSharedDocumentLabels(labelMap);
       setSharedDocuments(normalizedShares);
     } catch (error) {
       console.error('Failed to refresh shared documents:', error);
       setSharedDocuments(dataStore ? dataStore.getAllDirectShares() : []);
       setSharedOutDocumentIds([]);
+      setSharedDocumentLabels({});
     }
   };
 
@@ -454,15 +469,58 @@ const [newField, setNewField] = useState({
       }));
 
       const allFolderSharesCombined = [...sharedWithMe, ...sharedByMeData];
+      const folderLabelMap = {};
+      allFolderSharesCombined.forEach((share) => {
+        const folderKey = String(share.folderId || share.folder?.folder_id || '');
+        if (!folderKey) return;
+        if (String(share.sharedBy) === String(currentOrgId)) {
+          folderLabelMap[folderKey] = 'Shared';
+        }
+      });
+
+      allFolderShares.forEach((share) => {
+        const folderKey = String(share.folder || '');
+        if (!folderKey) return;
+        if (String(share.shared_by_org) === String(currentOrgId)) {
+          folderLabelMap[folderKey] = 'Shared';
+        } else if (String(share.shared_with_org) === String(currentOrgId) && !folderLabelMap[folderKey]) {
+          folderLabelMap[folderKey] = 'Shared to you';
+        }
+      });
+
       setSharedFolders(allFolderSharesCombined);
       setSharedOutFolderIds(
-        Array.from(new Set(sharedByMeData.map((share) => share.folderId || share.folder?.folder_id).filter(Boolean)))
+        Array.from(new Set(Object.keys(folderLabelMap)))
       );
+      setSharedFolderLabels(folderLabelMap);
     } catch (error) {
       console.error('Failed to refresh shared folders:', error);
       setSharedFolders([]);
       setSharedOutFolderIds([]);
+      setSharedFolderLabels({});
     }
+  };
+
+  const refreshUserFileLists = async () => {
+    const [docs, foldersData, deletedDocs, deletedFoldersData] = await Promise.all([
+      documentAPI.getAll(),
+      folderAPI.getAll(),
+      documentAPI.getDeleted(),
+      folderAPI.getDeleted(),
+    ]);
+
+    setUserDocuments(Array.isArray(docs) ? docs : []);
+    setFolders(Array.isArray(foldersData) ? foldersData : []);
+    setDeletedDocuments(Array.isArray(deletedDocs) ? deletedDocs : []);
+    setDeletedFolders(Array.isArray(deletedFoldersData) ? deletedFoldersData : []);
+  };
+
+  const refreshWorkspaceAfterShare = async () => {
+    await Promise.all([
+      refreshUserFileLists(),
+      refreshSharedDocuments(),
+      refreshSharedFolders(),
+    ]);
   };
 
   // Fetch shared documents from backend
@@ -817,12 +875,12 @@ const handleToggleFieldActive = async (fieldId) => {
       
       // Update document in backend API
       await documentAPI.update(documentToMove, {
-        folderId: folderIdToSave
+        folder: folderIdToSave
       });
       
       // Refresh documents from API
       const updatedDocs = await documentAPI.getAll();
-      setUserDocuments(updatedDocs);
+      setUserDocuments(Array.isArray(updatedDocs) ? updatedDocs : []);
       
       // Also update in dataStore for backward compatibility
       if (dataStore) {
@@ -830,11 +888,11 @@ const handleToggleFieldActive = async (fieldId) => {
       }
       
       // Log the action
-      const doc = userDocuments.find(d => d.id === documentToMove);
-      const folderName = folders.find(f => f.id === folderId)?.name || 'Root';
+      const doc = userDocuments.find(d => String(d.doc_id || d.id) === String(documentToMove));
+      const folderName = folders.find(f => String(f.folder_id) === String(folderId))?.folder_name || 'Root';
       addAuditLog(
         'Document Moved',
-        `"${doc?.title}" moved to folder "${folderName}"`,
+        `"${doc?.doc_name || doc?.title || documentToMove}" moved to folder "${folderName}"`,
         'Success'
       );
       
@@ -849,6 +907,86 @@ const handleToggleFieldActive = async (fieldId) => {
   const openMoveToFolderModal = (docId) => {
     setDocumentToMove(docId);
     setShowMoveToFolderModal(true);
+  };
+
+  const handleMoveDocumentByDrop = async (docId, targetFolderId) => {
+    const normalizedDocId = Number.isNaN(Number(docId)) ? docId : Number(docId);
+    const normalizedTargetFolderId = targetFolderId == null
+      ? null
+      : (Number.isNaN(Number(targetFolderId)) ? targetFolderId : Number(targetFolderId));
+
+    const sourceDoc = (userDocuments || []).find(
+      (doc) => String(doc.doc_id || doc.id) === String(normalizedDocId)
+    );
+
+    if (!sourceDoc) return;
+    if (String(sourceDoc.folder ?? '') === String(normalizedTargetFolderId ?? '')) return;
+
+    try {
+      await documentAPI.update(normalizedDocId, {
+        folder: normalizedTargetFolderId,
+      });
+
+      const [updatedDocs, updatedFolders] = await Promise.all([
+        documentAPI.getAll(),
+        folderAPI.getAll(),
+      ]);
+      setUserDocuments(Array.isArray(updatedDocs) ? updatedDocs : []);
+      setFolders(Array.isArray(updatedFolders) ? updatedFolders : []);
+
+      const targetFolderName = normalizedTargetFolderId == null
+        ? 'root'
+        : ((folders || []).find((folder) => String(folder.folder_id) === String(normalizedTargetFolderId))?.folder_name || 'selected folder');
+
+      addAuditLog(
+        'Move Document',
+        `Moved document ${(sourceDoc.doc_name || normalizedDocId)} to ${targetFolderName}`,
+        'Success'
+      );
+    } catch (error) {
+      console.error('Failed to move document by drag and drop:', error);
+      alert(`Failed to move document: ${error.message}`);
+    }
+  };
+
+  const handleMoveFolderByDrop = async (folderId, targetParentFolderId) => {
+    const normalizedFolderId = Number.isNaN(Number(folderId)) ? folderId : Number(folderId);
+    const normalizedTargetParentFolderId = targetParentFolderId == null
+      ? null
+      : (Number.isNaN(Number(targetParentFolderId)) ? targetParentFolderId : Number(targetParentFolderId));
+
+    const sourceFolder = (folders || []).find(
+      (folder) => String(folder.folder_id) === String(normalizedFolderId)
+    );
+
+    if (!sourceFolder) return;
+    if (String(sourceFolder.parent_folder ?? '') === String(normalizedTargetParentFolderId ?? '')) return;
+
+    try {
+      await folderAPI.update(normalizedFolderId, {
+        parent_folder: normalizedTargetParentFolderId,
+      });
+
+      const [updatedDocs, updatedFolders] = await Promise.all([
+        documentAPI.getAll(),
+        folderAPI.getAll(),
+      ]);
+      setUserDocuments(Array.isArray(updatedDocs) ? updatedDocs : []);
+      setFolders(Array.isArray(updatedFolders) ? updatedFolders : []);
+
+      const targetFolderName = normalizedTargetParentFolderId == null
+        ? 'root'
+        : ((folders || []).find((folder) => String(folder.folder_id) === String(normalizedTargetParentFolderId))?.folder_name || 'selected folder');
+
+      addAuditLog(
+        'Move Folder',
+        `Moved folder ${(sourceFolder.folder_name || normalizedFolderId)} to ${targetFolderName}`,
+        'Success'
+      );
+    } catch (error) {
+      console.error('Failed to move folder by drag and drop:', error);
+      alert(`Failed to move folder: ${error.message}`);
+    }
   };
 
   const handleSavePersonalInfo = () => {
@@ -936,8 +1074,7 @@ Document ID: ${Date.now()}
       
       // Refresh documents list
       const allDocs = await documentAPI.getAll();
-      const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username);
-      setUserDocuments(myDocs);
+      setUserDocuments(Array.isArray(allDocs) ? allDocs : []);
       
       // Also update dataStore
       if (dataStore) {
@@ -995,8 +1132,7 @@ Document ID: ${Date.now()}
       
       // Refresh documents list
       const allDocs = await documentAPI.getAll();
-      const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username);
-      setUserDocuments(myDocs);
+      setUserDocuments(Array.isArray(allDocs) ? allDocs : []);
       
       // Also update dataStore
       if (dataStore) {
@@ -1050,8 +1186,7 @@ const handleRestoreDocument = async (docId) => {
     // Refresh user documents list
     try {
       const allDocs = await documentAPI.getAll();
-      const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username);
-      setUserDocuments(myDocs);
+      setUserDocuments(Array.isArray(allDocs) ? allDocs : []);
     } catch (error) {
       console.error('Failed to refresh user documents:', error);
     }
@@ -1098,10 +1233,7 @@ const handlePermanentDelete = async (docId) => {
   }
 };
 const handleEmptyRecycleBin = async () => {
-  const count = deletedDocuments.filter((d) => {
-    const owner = d.createdBy || d.user_index?.user_id || d.uploaded_by_user?.user_id;
-    return String(owner || '') === String(currentUser.id || currentUser.user_id);
-  }).length;
+  const count = deletedDocuments.length;
   if (!window.confirm(`Are you sure you want to permanently delete ALL ${count} documents? This action cannot be undone.`)) {
     return;
   }
@@ -1125,10 +1257,7 @@ const handleEmptyRecycleBin = async () => {
 };
 
 const handleRestoreAllRecycleBin = async () => {
-  const docsToRestore = deletedDocuments.filter((d) => {
-    const owner = d.createdBy || d.user_index?.user_id || d.uploaded_by_user?.user_id;
-    return String(owner || '') === String(currentUser.id || currentUser.user_id);
-  });
+  const docsToRestore = deletedDocuments;
 
   if (!docsToRestore.length) return;
 
@@ -1142,8 +1271,7 @@ const handleRestoreAllRecycleBin = async () => {
       documentAPI.getAll(),
     ]);
     setDeletedDocuments(updatedDeleted);
-    const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username || doc.uploaded_by_user?.user_id === currentUser.id);
-    setUserDocuments(myDocs);
+    setUserDocuments(Array.isArray(allDocs) ? allDocs : []);
     alert('All eligible deleted documents were restored successfully.');
   } catch (error) {
     console.error('Failed to restore all documents:', error);
@@ -1184,6 +1312,13 @@ const handlePermanentDeleteFolder = async (folderId) => {
 };
 
   const handleOpenDocument = async (doc) => {
+    if (!doc) return;
+
+    if (doc.can_open === false) {
+      alert('You can see this file in the list, but you are not allowed to open it.');
+      return;
+    }
+
     // Check if document already has content loaded
     if (doc.fileData || doc.content || doc.ocrContent) {
       setViewingDocument(doc);
@@ -1344,6 +1479,22 @@ const handlePermanentDeleteFolder = async (folderId) => {
 
   const handleDownloadDocument = (doc) => {
     try {
+      if (doc.can_open === false) {
+        alert('Download is restricted by ownership policy for this shared file.');
+        return;
+      }
+
+      if (doc.doc_file_url) {
+        const link = document.createElement('a');
+        link.href = doc.doc_file_url;
+        link.download = doc.doc_name || doc.title || 'document';
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
       if (doc.fileData && (doc.format === 'pdf' || ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'docx', 'doc'].includes(doc.format))) {
         // For binary files directly from URL
         const link = document.createElement('a');
@@ -1373,8 +1524,36 @@ const handlePermanentDeleteFolder = async (folderId) => {
     }
   };
 
+  const handleDownloadFolder = async (folder) => {
+    try {
+      const folderId = folder?.folder_id || folder?.id;
+      if (!folderId) {
+        alert('Folder ID not found.');
+        return;
+      }
+
+      const { blob, filename } = await folderAPI.downloadZip(folderId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || `${folder.folder_name || 'folder'}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download folder ZIP:', error);
+      alert(`Failed to download folder: ${error.message}`);
+    }
+  };
+
   const handlePrintDocument = (doc) => {
     try {
+      if (doc.can_open === false) {
+        alert('Print is restricted by ownership policy for this shared file.');
+        return;
+      }
+
       if (doc.fileData && (doc.format === 'pdf' || ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(doc.format))) {
         // For PDFs and images, open in new tab for printing
         window.open(doc.fileData, '_blank');
@@ -1860,27 +2039,177 @@ const handlePermanentDeleteFolder = async (folderId) => {
     setShowRenameDetectedModal(true);
   };
 
+  const currentUserIdForFilter = String(loggedInUser?.user_id || loggedInUser?.id || currentUser?.user_id || currentUser?.id || '').trim();
+  const currentUserIndexForFilter = String(loggedInUser?.full_data?.user_index || loggedInUser?.user_index || currentUser?.user_index || '').trim();
+
+  const getItemCreatorInfo = (item) => {
+    const ownerUser = item?.uploaded_by_user || item?.created_by_user || item?.user_index || null;
+    if (!ownerUser || typeof ownerUser !== 'object') {
+      return {
+        key: '',
+        userId: '',
+        userIndex: '',
+        label: 'Unknown',
+      };
+    }
+
+    const userId = String(ownerUser.user_id || ownerUser.id || '').trim();
+    const userIndex = String(ownerUser.user_index || '').trim();
+    const key = userId || (userIndex ? `idx:${userIndex}` : '');
+    const middleInitial = ownerUser.middle_name ? `${String(ownerUser.middle_name).trim().charAt(0)}.` : '';
+    const fullName = [ownerUser.first_name, middleInitial, ownerUser.last_name, ownerUser.suffix]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      key,
+      userId,
+      userIndex,
+      label: fullName || userId || (userIndex ? `User ${userIndex}` : 'Unknown'),
+    };
+  };
+
+  const isCurrentUserCreator = (creatorInfo) => {
+    if (!creatorInfo) return false;
+    const sameUserId = creatorInfo.userId && currentUserIdForFilter && String(creatorInfo.userId) === String(currentUserIdForFilter);
+    const sameUserIndex = creatorInfo.userIndex && currentUserIndexForFilter && String(creatorInfo.userIndex) === String(currentUserIndexForFilter);
+    return Boolean(sameUserId || sameUserIndex);
+  };
+
+  const ownerFilterOptions = (() => {
+    const creatorMap = new Map();
+
+    (userDocuments || []).forEach((doc) => {
+      const creator = getItemCreatorInfo(doc);
+      if (!creator.key) return;
+      creatorMap.set(creator.key, creator.label);
+    });
+
+    (folders || []).forEach((folder) => {
+      const creator = getItemCreatorInfo(folder);
+      if (!creator.key) return;
+      creatorMap.set(creator.key, creator.label);
+    });
+
+    const dynamicOptions = Array.from(creatorMap.entries())
+      .filter(([value]) => {
+        const matchByUserId = value === currentUserIdForFilter;
+        const matchByUserIndex = currentUserIndexForFilter && value === `idx:${currentUserIndexForFilter}`;
+        return !(matchByUserId || matchByUserIndex);
+      })
+      .sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+      .map(([value, label]) => ({ value, label }));
+
+    return [
+      { value: 'all', label: 'All creators' },
+      { value: 'me', label: 'Created by me' },
+      ...dynamicOptions,
+    ];
+  })();
+
+  const matchesOwnerFilter = (item) => {
+    if (ownerFilter === 'all') return true;
+    const creator = getItemCreatorInfo(item);
+    if (ownerFilter === 'me') return isCurrentUserCreator(creator);
+    return String(creator.key) === String(ownerFilter);
+  };
+
+  const getItemOrganizationInfo = (item) => {
+    const orgId = String(item?.owning_org || item?.org || '').trim();
+    const orgName = String(item?.owning_org_name || item?.org_name || '').trim();
+    return {
+      id: orgId,
+      name: orgName || (orgId ? `Organization ${orgId}` : 'Unknown Organization'),
+    };
+  };
+
+  const organizationFilterOptions = (() => {
+    const orgMap = new Map();
+
+    const walkOrgNodes = (nodes = []) => {
+      nodes.forEach((node) => {
+        const orgId = String(node?.org_id || node?.id || '').trim();
+        const orgName = String(node?.org_name || node?.name || '').trim();
+        if (orgId) {
+          orgMap.set(orgId, orgName || `Organization ${orgId}`);
+        }
+
+        const children = node?.sub_offices || node?.children || [];
+        if (Array.isArray(children) && children.length > 0) {
+          walkOrgNodes(children);
+        }
+      });
+    };
+
+    walkOrgNodes(Array.isArray(orgTree) ? orgTree : []);
+
+    (userDocuments || []).forEach((doc) => {
+      const org = getItemOrganizationInfo(doc);
+      if (!org.id) return;
+      orgMap.set(org.id, org.name);
+    });
+
+    (folders || []).forEach((folder) => {
+      const org = getItemOrganizationInfo(folder);
+      if (!org.id) return;
+      orgMap.set(org.id, org.name);
+    });
+
+    return Array.from(orgMap.entries())
+      .sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+      .map(([value, label]) => ({ value, label }));
+  })();
+
+  const matchesOrganizationFilter = (item) => {
+    if (!organizationFilters.length) return true;
+    const org = getItemOrganizationInfo(item);
+    return organizationFilters.includes(String(org.id));
+  };
+
+  const getDocumentFolderId = (doc) => {
+    return doc?.folder ?? doc?.folderId ?? null;
+  };
+
+  const getDocumentName = (doc) => {
+    return String(doc?.doc_name || doc?.title || '').trim();
+  };
+
+  const getDocumentDescription = (doc) => {
+    return String(doc?.doc_desc || doc?.description || '').trim();
+  };
+
+  const getDocumentCreatedAt = (doc) => {
+    return doc?.doc_uploaded || doc?.createdAt || doc?.created_at || null;
+  };
+
+  const getDocumentFormat = (doc) => {
+    if (doc?.format) return String(doc.format).toLowerCase();
+    const fileName = getDocumentName(doc).toLowerCase();
+    if (fileName.endsWith('.pdf')) return 'pdf';
+    if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) return 'docx';
+    if (fileName.includes('ocr')) return 'ocr';
+    return 'other';
+  };
+
   const getFilteredAndSortedDocuments = () => {
-    let filtered = [...userDocuments];
+    let filtered = [...userDocuments].filter((doc) => matchesOwnerFilter(doc) && matchesOrganizationFilter(doc));
 
     if (currentFolder) {
-      filtered = filtered.filter(doc => String(doc.folderId) === String(currentFolder));
+      filtered = filtered.filter((doc) => String(getDocumentFolderId(doc)) === String(currentFolder));
     } else if (activeSection === 'documents') {
-      filtered = filtered.filter(doc => !doc.folderId);
+      filtered = filtered.filter((doc) => !getDocumentFolderId(doc));
     }
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(doc => 
-        doc.title.toLowerCase().includes(query) ||
-        doc.description?.toLowerCase().includes(query) ||
+        getDocumentName(doc).toLowerCase().includes(query) ||
+        getDocumentDescription(doc).toLowerCase().includes(query) ||
         doc.personalInfo?.fullName?.toLowerCase().includes(query) ||
         doc.personalInfo?.email?.toLowerCase().includes(query)
       );
-    }
-
-    if (filterFormat !== 'all') {
-      filtered = filtered.filter(doc => doc.format === filterFormat);
     }
 
     if (Object.keys(filterByTag).length > 0) {
@@ -1896,13 +2225,13 @@ const handlePermanentDeleteFolder = async (folderId) => {
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'date-desc':
-          return new Date(b.createdAt) - new Date(a.createdAt);
+          return new Date(getDocumentCreatedAt(b) || 0) - new Date(getDocumentCreatedAt(a) || 0);
         case 'date-asc':
-          return new Date(a.createdAt) - new Date(b.createdAt);
+          return new Date(getDocumentCreatedAt(a) || 0) - new Date(getDocumentCreatedAt(b) || 0);
         case 'title-asc':
-          return a.title.localeCompare(b.title);
+          return getDocumentName(a).localeCompare(getDocumentName(b));
         case 'title-desc':
-          return b.title.localeCompare(a.title);
+          return getDocumentName(b).localeCompare(getDocumentName(a));
         default:
           return 0;
       }
@@ -1912,9 +2241,19 @@ const handlePermanentDeleteFolder = async (folderId) => {
   };
 
   const filteredDocuments = getFilteredAndSortedDocuments();
+  const ownerFilteredDocuments = (userDocuments || []).filter((doc) => matchesOwnerFilter(doc) && matchesOrganizationFilter(doc));
+  const ownerFilteredFolders = (folders || []).filter((folder) => matchesOwnerFilter(folder) && matchesOrganizationFilter(folder));
+
+  useEffect(() => {
+    if (!currentFolder) return;
+    const stillVisible = ownerFilteredFolders.some((folder) => String(folder.folder_id) === String(currentFolder));
+    if (!stillVisible) {
+      setCurrentFolder(null);
+    }
+  }, [currentFolder, ownerFilteredFolders]);
 
   const getFolderDocumentCount = (folderId) => {
-    return userDocuments.filter(doc => String(doc.folderId) === String(folderId)).length;
+    return ownerFilteredDocuments.filter((doc) => String(getDocumentFolderId(doc)) === String(folderId)).length;
   };
 
   const handleShareDocument = async (shareData) => {
@@ -1936,7 +2275,7 @@ const handlePermanentDeleteFolder = async (folderId) => {
     );
 
     await Promise.all(sharePromises);
-    await refreshSharedDocuments();
+    await refreshWorkspaceAfterShare();
 
     const recipientNames = shareData.sharedWith
       .map(userId => {
@@ -2036,7 +2375,7 @@ const handlePermanentDeleteFolder = async (folderId) => {
         ...folderSharePromises,
         ...folderUnsharePromises,
       ]);
-      await refreshSharedFolders();
+      await refreshWorkspaceAfterShare();
 
       const recipientNames = orgsToShare
         .map(orgId => {
@@ -2359,7 +2698,6 @@ const handleSaveToMyDocuments = (document, source) => {
         }}
         onPrint={handlePrintDocument}
         onDownload={handleDownloadDocument}
-        onViewHistory={openDocumentHistoryModal}
       />
 
       <DocumentHistoryModal
@@ -2496,7 +2834,7 @@ const handleSaveToMyDocuments = (document, source) => {
         organizationTree={orgTree}
         currentUser={currentUser}
         onShareDocument={handleShareDocument}
-        onSharesUpdated={refreshSharedDocuments}
+        onSharesUpdated={refreshWorkspaceAfterShare}
       />
 
       <ShareFolderModal
@@ -2510,7 +2848,7 @@ const handleSaveToMyDocuments = (document, source) => {
         organizationTree={orgTree}
         currentUser={currentUser}
         onShareFolder={handleShareFolder}
-        onSharesUpdated={refreshSharedFolders}
+        onSharesUpdated={refreshWorkspaceAfterShare}
       />
 
       <RenameDocumentModal
@@ -2637,16 +2975,22 @@ const handleSaveToMyDocuments = (document, source) => {
               rootLabel={`${userOrgCode || 'Organization'} Files`}
               currentFolder={currentFolder}
               setCurrentFolder={setCurrentFolder}
-              folders={folders}
-              userDocuments={userDocuments}
+              folders={ownerFilteredFolders}
+              userDocuments={ownerFilteredDocuments}
               sharedDocumentIds={sharedOutDocumentIds}
+              sharedDocumentLabels={sharedDocumentLabels}
               sharedFolderIds={sharedOutFolderIds}
+              sharedFolderLabels={sharedFolderLabels}
               ownerDisplayMode="full"
               filteredDocuments={filteredDocuments}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
-              filterFormat={filterFormat}
-              setFilterFormat={setFilterFormat}
+              organizationFilters={organizationFilters}
+              setOrganizationFilters={setOrganizationFilters}
+              organizationFilterOptions={organizationFilterOptions}
+              ownerFilter={ownerFilter}
+              setOwnerFilter={setOwnerFilter}
+              ownerFilterOptions={ownerFilterOptions}
               sortBy={sortBy}
               setSortBy={setSortBy}
               customFields={customFields}
@@ -2660,10 +3004,27 @@ const handleSaveToMyDocuments = (document, source) => {
               onDownloadDocument={handleDownloadDocument}
               onPrintDocument={handlePrintDocument}
               onMoveToFolder={openMoveToFolderModal}
+              onMoveDocumentByDrop={handleMoveDocumentByDrop}
+              enableDocumentDragDrop={true}
+              canDragDocument={(doc) => String(doc?.owning_org || '') === String((loggedInUser?.full_data?.org || currentUser?.org || ''))}
+              canDropToFolder={(folder, draggedDoc) => {
+                const currentOrgId = loggedInUser?.full_data?.org || currentUser?.org || '';
+                return String(folder?.owning_org || '') === String(currentOrgId) && String(draggedDoc?.owning_org || '') === String(currentOrgId);
+              }}
+              canDropToRoot={(draggedDoc) => String(draggedDoc?.owning_org || '') === String((loggedInUser?.full_data?.org || currentUser?.org || ''))}
+              onMoveFolderByDrop={handleMoveFolderByDrop}
+              enableFolderDragDrop={true}
+              canDragFolder={(folder) => String(folder?.owning_org || '') === String((loggedInUser?.full_data?.org || currentUser?.org || ''))}
+              canDropFolderToFolder={(targetFolder, draggedFolder) => {
+                const currentOrgId = loggedInUser?.full_data?.org || currentUser?.org || '';
+                return String(targetFolder?.owning_org || '') === String(currentOrgId) && String(draggedFolder?.owning_org || '') === String(currentOrgId);
+              }}
+              canDropFolderToRoot={(draggedFolder) => String(draggedFolder?.owning_org || '') === String((loggedInUser?.full_data?.org || currentUser?.org || ''))}
               onShareDocument={openShareModal}
               onRenameDocument={openRenameModal}
               onAddCategories={openAddCategoriesModal}
               onDeleteFolder={handleDeleteFolder}
+              onDownloadFolder={handleDownloadFolder}
               onShareFolder={(folder) => openShareFolderModal(folder)}
               onRenameFolder={handleRenameFolder}
               onAddFolderCategory={openAddFolderCategoryModal}
