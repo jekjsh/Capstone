@@ -5,7 +5,6 @@ import { LayoutDashboard, Users, FileText, ClipboardList } from 'lucide-react';
 import SharedHeader from '../components/SharedHeader';
 import AdminSidebar from './component/AdminSidebar';
 import AdminDashboard from './component/AdminDashboard';
-import AdminUserManagement from './component/AdminUserManagement';
 import AdminDocuments from './component/AdminDocuments';
 import AdminLogAudits from './component/AdminLogAudits';
 import ErrorBoundary from './component/ErrorBoundary';
@@ -767,6 +766,7 @@ const [viewingDocument, setViewingDocument] = useState(null);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'users', label: 'Users', icon: Users },
     {
       id: 'file-mgmt',
       label: 'Files & Sharing',
@@ -776,15 +776,6 @@ const [viewingDocument, setViewingDocument] = useState(null);
         { id: 'org-shares', label: 'File Sharing', icon: null },
         { id: 'categories', label: 'Categories', icon: null },
         { id: 'recycle-bin', label: 'Recycle Bin', icon: null },
-      ],
-    },
-    {
-      id: 'access-mgmt',
-      label: 'People & Roles',
-      icon: Users,
-      children: [
-        { id: 'users', label: 'User Profiles', icon: null },
-        { id: 'org-users', label: 'User Assignment', icon: null },
       ],
     },
     { id: 'all-documents', label: 'Generate Reports', icon: FileText },
@@ -2007,6 +1998,28 @@ const handleAdminRenameFolder = async (folderId) => {
 };
 
 const handleAdminShareDocument = async (shareData) => {
+  const currentUserIndex = String(loggedInUser?.full_data?.user_index || loggedInUser?.user_index || '').trim();
+  const currentOrgId = String(loggedInUser?.full_data?.org || loggedInUser?.org || '').trim();
+  const targetDoc = (adminDocuments || []).find((doc) => String(doc.doc_id || doc.id) === String(shareData.documentId));
+  const ownerUser = targetDoc?.uploaded_by_user || targetDoc?.user_index || null;
+  const ownerIndex = String(ownerUser?.user_index || targetDoc?.uploaded_by_user_id || targetDoc?.user_index_id || '').trim();
+  const owningOrgId = String(targetDoc?.owning_org || targetDoc?.org || '').trim();
+
+  if (!targetDoc) {
+    alert('❌ Document not found.');
+    return;
+  }
+
+  if (!currentUserIndex || !ownerIndex || currentUserIndex !== ownerIndex) {
+    alert('❌ Only the owner of this document can share or unshare it.');
+    return;
+  }
+
+  if (!currentOrgId || !owningOrgId || currentOrgId !== owningOrgId) {
+    alert('❌ You can only share documents owned by your organization.');
+    return;
+  }
+
   const sharePromises = (shareData.sharedWith || []).map((userPk) =>
     documentShareAPI.create({
       doc: shareData.documentId,
@@ -3090,29 +3103,15 @@ const closeAdminOCRModal = () => {
               organizations={organizations}
             />
           )}
-          {activeSection === 'org-users' && (
+          {(activeSection === 'users' || activeSection === 'org-users') && (
             <OrgUnitUsersView
               organizationTree={organizationTree}
               userList={userList}
               organizations={organizations}
               onRefreshUsers={refreshUserList}
               loggedInUser={loggedInUser}
-            />
-          )}
-          {activeSection === 'users' && (
-            <AdminUserManagement
-              userList={userList}
-              userSearchQuery={userSearchQuery}
-              setUserSearchQuery={setUserSearchQuery}
-              userFilterRole={userFilterRole}
-              setUserFilterRole={setUserFilterRole}
-              userFilterStatus={userFilterStatus}
-              setUserFilterStatus={setUserFilterStatus}
-              getFilteredUsers={getFilteredUsers}
-              handleViewUser={handleViewUser}
-              handleEditUser={handleEditUser}
-              handleDeleteUser={handleDeleteUser}
-              setShowAddUserModal={setShowAddUserModal}
+              onViewUser={handleViewUser}
+              onEditUser={handleEditUser}
             />
           )}
           {activeSection === 'all-documents' && (

@@ -21,6 +21,33 @@ export default function ShareDocumentModal({
   const [shareScope, setShareScope] = useState('users');
   const [selectedOrgIds, setSelectedOrgIds] = useState([]);
 
+  const getUserIndexValue = (user) => String(user?.user_index ?? user?.userIndex ?? user?.id ?? '');
+  const getUserOrgValue = (user) => String(user?.org ?? user?.organizationUnitId ?? user?.org_id ?? user?.organization?.org_id ?? '');
+  const getUserDisplayValue = (user) => {
+    const first = user?.first_name || user?.firstName || '';
+    const last = user?.last_name || user?.lastName || '';
+    const fullName = `${first} ${last}`.trim();
+    return fullName || user?.name || user?.user_id || user?.id || '';
+  };
+  const getUserEmailValue = (user) => user?.email_add || user?.email || '';
+
+  const findUserById = (value) => {
+    const normalized = String(value);
+    return allUsers.find(
+      (u) =>
+        getUserIndexValue(u) === normalized ||
+        String(u.user_id ?? '') === normalized ||
+        String(u.id ?? '') === normalized
+    );
+  };
+
+  const getUserDisplayName = (value) => {
+    const user = findUserById(value);
+    if (!user) return `User ${value}`;
+    const fullName = getUserDisplayValue(user);
+    return fullName || user.name || user.user_id || `User ${value}`;
+  };
+
   // Fetch existing shares for this document
   useEffect(() => {
     const fetchExistingShares = async () => {
@@ -32,13 +59,26 @@ export default function ShareDocumentModal({
         // Filter shares for this specific document
         const docShares = shares.filter(share => String(share.doc) === String(currentDocId));
         // Extract the user_index of users this document is shared with
-        const sharedUserIds = docShares.map(share => share.shared_to_user);
+        const sharedUserIds = docShares.map(share => String(share.shared_to_user));
         const map = {};
         docShares.forEach(share => {
-          map[share.shared_to_user] = share.share_id;
+          map[String(share.shared_to_user)] = share.share_id;
         });
+
+        const sharedOrgIds = Array.from(
+          new Set(
+            sharedUserIds
+              .map((sharedId) => {
+                const matched = findUserById(sharedId);
+                return matched ? getUserOrgValue(matched) : '';
+              })
+              .filter(Boolean)
+          )
+        );
+
         setCurrentlySharedWith(sharedUserIds);
         setSelectedUsers(sharedUserIds);
+        setSelectedOrgIds(sharedOrgIds);
         setShareMap(map);
       } catch (error) {
         console.error('Failed to fetch existing shares:', error);
@@ -46,20 +86,19 @@ export default function ShareDocumentModal({
     };
 
     fetchExistingShares();
-  }, [show, document]);
-
-  if (!show || !document) return null;
+  }, [show, document, allUsers]);
 
   // Allow sharing across all organization units; exclude current user.
   const availableUsers = allUsers.filter(user => 
-    user.user_index !== currentUser.user_index
+    getUserIndexValue(user) !== String(currentUser?.user_index ?? currentUser?.id ?? '') &&
+    String(user?.role_type || '').toLowerCase() !== 'system_admin'
   );
   
   // Filter based on search
   const filteredUsers = availableUsers.filter(user => {
-    const displayName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase().trim();
-    const username = (user.user_id || '').toLowerCase();
-    const email = (user.email_add || '').toLowerCase();
+    const displayName = getUserDisplayValue(user).toLowerCase().trim();
+    const username = String(user.user_id || user.id || '').toLowerCase();
+    const email = String(getUserEmailValue(user)).toLowerCase();
     const searchLower = searchQuery.toLowerCase();
     
     return displayName.includes(searchLower) || 
@@ -89,9 +128,13 @@ export default function ShareDocumentModal({
 
   const effectiveSelectedUsers = shareScope === 'users'
     ? selectedUsers
-    : availableUsers
-        .filter((user) => selectedOrgIds.includes(String(user.org)))
-        .map((user) => user.user_index);
+    : Array.from(
+        new Set(
+          availableUsers
+            .filter((user) => selectedOrgIds.includes(getUserOrgValue(user)))
+            .map((user) => getUserIndexValue(user))
+        )
+      );
 
   const handleToggleOrg = (orgId) => {
     const normalized = String(orgId);
@@ -101,25 +144,28 @@ export default function ShareDocumentModal({
   };
 
   const handleToggleUser = (userId) => {
+    const normalizedUserId = String(userId);
     setSelectedUsers(prev => 
-      prev.includes(userId) 
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
+      prev.includes(normalizedUserId) 
+        ? prev.filter(id => id !== normalizedUserId)
+        : [...prev, normalizedUserId]
     );
   };
+
+  if (!show || !document) return null;
 
   const handleShare = async () => {
     setIsLoading(true);
     try {
       // Determine who to unshare with (were shared before, not selected now)
-      const usersToUnshare = currentlySharedWith.filter(userId => !effectiveSelectedUsers.includes(userId));
+      const usersToUnshare = currentlySharedWith.filter(userId => !effectiveSelectedUsers.includes(String(userId)));
       
       // Determine who to share with (not shared before, selected now)
-      const usersToShare = effectiveSelectedUsers.filter(userId => !currentlySharedWith.includes(userId));
+      const usersToShare = effectiveSelectedUsers.filter(userId => !currentlySharedWith.includes(String(userId)));
 
       // Handle unsharing (delete operations)
       for (const userId of usersToUnshare) {
-        const shareId = shareMap[userId];
+        const shareId = shareMap[String(userId)];
         if (shareId) {
           await documentShareAPI.delete(shareId);
         }
@@ -127,9 +173,13 @@ export default function ShareDocumentModal({
 
       // Handle new shares
       if (usersToShare.length > 0) {
+        const normalizedRecipients = usersToShare
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id));
+
         await onShareDocument({
           documentId: document.doc_id || document.id,
-          sharedWith: usersToShare,
+          sharedWith: normalizedRecipients,
           shareScope,
           selectedUnits: selectedOrgIds,
           shareAllUnits: false,
@@ -140,10 +190,7 @@ export default function ShareDocumentModal({
       } else if (usersToUnshare.length > 0) {
         // Only unsharing, no new shares
         const recipientNames = usersToUnshare
-          .map(userId => {
-            const user = allUsers.find(u => u.user_index === userId);
-            return user ? (user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id) : userId;
-          })
+          .map(userId => getUserDisplayName(userId))
           .join(', ');
         
         alert(`Document "${document.doc_name || document.title}" unshared from ${recipientNames}`);
@@ -281,26 +328,26 @@ export default function ShareDocumentModal({
                 <div className="divide-y divide-gray-200">
                   {filteredUsers.map((user) => (
                     <label
-                      key={user.user_index}
+                        key={getUserIndexValue(user)}
                       className="flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer transition-colors"
                     >
                       <input
                         type="checkbox"
-                        checked={selectedUsers.includes(user.user_index)}
-                        onChange={() => handleToggleUser(user.user_index)}
+                          checked={selectedUsers.includes(getUserIndexValue(user))}
+                          onChange={() => handleToggleUser(getUserIndexValue(user))}
                         className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                         disabled={isLoading}
                       />
                       <div className="flex items-center gap-3 flex-1">
                         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                          {(user.first_name || user.user_id || 'U').charAt(0).toUpperCase()}
+                          {(getUserDisplayValue(user) || 'U').charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-gray-800">{user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id}</p>
-                          <p className="text-sm text-gray-500">{user.email_add || '-'}</p>
+                          <p className="font-medium text-gray-800">{getUserDisplayValue(user) || '-'}</p>
+                          <p className="text-sm text-gray-500">{getUserEmailValue(user) || '-'}</p>
                         </div>
                       </div>
-                      {selectedUsers.includes(user.user_index) && (
+                      {selectedUsers.includes(getUserIndexValue(user)) && (
                         <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
                           Selected
                         </div>
@@ -322,8 +369,7 @@ export default function ShareDocumentModal({
               </p>
               {shareScope === 'users' ? <div className="flex flex-wrap gap-2">
                 {effectiveSelectedUsers.map(userId => {
-                  const user = availableUsers.find(u => u.user_index === userId);
-                  const displayName = user ? (user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.user_id) : userId;
+                  const displayName = getUserDisplayName(userId);
                   return (
                     <div key={userId} className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-blue-300">
                       <span className="text-sm text-gray-700">{displayName}</span>

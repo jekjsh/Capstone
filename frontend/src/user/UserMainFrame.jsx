@@ -2388,11 +2388,27 @@ const handlePermanentDeleteFolder = async (folderId) => {
     return ownerFilteredDocuments.filter((doc) => String(getDocumentFolderId(doc)) === String(folderId)).length;
   };
 
+  const isDocumentOwnedByCurrentUser = (doc) => {
+    if (!doc) return false;
+    const currentUserIndex = String(loggedInUser?.full_data?.user_index || loggedInUser?.user_index || currentUser?.user_index || '').trim();
+    const currentOrgId = String(loggedInUser?.full_data?.org || loggedInUser?.org || currentUser?.org || '').trim();
+    const ownerRef = doc.uploaded_by_user || doc.user_index || null;
+    const ownerIndex = String(ownerRef?.user_index || doc.uploaded_by_user_id || doc.user_index_id || '').trim();
+    const owningOrgId = String(doc?.owning_org || doc?.org || '').trim();
+    return Boolean(currentUserIndex) && Boolean(ownerIndex) && currentUserIndex === ownerIndex && Boolean(currentOrgId) && currentOrgId === owningOrgId;
+  };
+
   const handleShareDocument = async (shareData) => {
   const documentToShare = userDocuments.find(doc => String(doc.id || doc.doc_id) === String(shareData.documentId));
+  const documentName = getDocumentName(documentToShare);
   
   if (!documentToShare) {
     alert('❌ Error: Document not found');
+    return;
+  }
+
+  if (!isDocumentOwnedByCurrentUser(documentToShare)) {
+    alert('❌ Only the owner of this document can share or unshare it.');
     return;
   }
 
@@ -2418,11 +2434,11 @@ const handlePermanentDeleteFolder = async (folderId) => {
 
     addAuditLog(
       'Document Shared',
-      `"${documentToShare.title}" shared with ${recipientNames}`,
+      `"${documentName}" shared with ${recipientNames}`,
       'Success'
     );
 
-    alert(`Document "${documentToShare.title}" successfully shared!`);
+    alert(`Document "${documentName}" successfully shared!`);
     setShowShareModal(false);
     setDocumentToShare(null);
   } catch (error) {
@@ -2557,6 +2573,10 @@ const handlePermanentDeleteFolder = async (folderId) => {
   };
 
   const openShareModal = (doc) => {
+  if (!isDocumentOwnedByCurrentUser(doc)) {
+    alert('❌ You can only share documents that you own.');
+    return;
+  }
   setDocumentToShare(doc);
   setShowShareModal(true);
 };  
@@ -2661,6 +2681,7 @@ const handlePermanentDeleteFolder = async (folderId) => {
 };
 const handleConfirmSendToOrganization = async (shareData) => {
   const documentToShare = userDocuments.find(d => d.id === shareData.documentId);
+  const documentName = getDocumentName(documentToShare);
   
   if (!documentToShare) {
     alert('❌ Error: Document not found');
@@ -2702,7 +2723,7 @@ const handleConfirmSendToOrganization = async (shareData) => {
       dataStore.addOrgShare(newShare);
       addAuditLog(
         'Organization Distribution',
-        `Document: "${documentToShare.title}" sent to ${newShare.recipients.length} recipients via ${shareData.distributionMode}`,
+        `Document: "${documentName}" sent to ${newShare.recipients.length} recipients via ${shareData.distributionMode}`,
         'Success'
       );
     }
@@ -2714,7 +2735,7 @@ const handleConfirmSendToOrganization = async (shareData) => {
     const myDocs = allDocs.filter(doc => doc.createdBy === currentUser.id || doc.createdBy === currentUser.username);
     setUserDocuments(myDocs);
 
-    alert(`✅ Document "${documentToShare.title}" successfully sent to ${shareData.recipients.length} user(s) in your organization!`);
+    alert(`✅ Document "${documentName}" successfully sent to ${shareData.recipients.length} user(s) in your organization!`);
 
     setShowSendToOrgModal(false);
     setSelectedDocForOrgShare(null);

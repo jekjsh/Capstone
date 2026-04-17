@@ -152,28 +152,50 @@ export default function SharedDocuments({
   };
 
   const normalizedItems = useMemo(() => {
-    const directDocItems = (sharedDocuments || []).map((share, index) => {
+    const directDocGrouped = new Map();
+    (sharedDocuments || []).forEach((share, index) => {
       const documentRef = share.document || share.doc || share;
       const owner = share.sharedBy;
       const isSharedByMe = String(owner) === String(userId) || String(owner) === String(userIndex);
+      const docId = String(documentRef?.doc_id || documentRef?.id || share.doc || `idx-${index}`);
+      const groupKey = `${docId}|${resolveSharedBy(share)}`;
 
-      return {
-        key: `direct-doc-${share.id || index}`,
-        sourceGroup: 'user',
-        sourceType: 'direct-doc',
-        type: 'document',
-        name: documentRef?.doc_name || documentRef?.title || share.doc_name || share.document_name || 'Untitled',
-        dateValue: share.sharedAt || share.created_at || share.share_timestamp || documentRef?.doc_uploaded || null,
-        dateLabel: formatDate(share.sharedAt || share.created_at || share.share_timestamp || documentRef?.doc_uploaded),
-        sharedBy: resolveSharedBy(share),
-        sharedTo: resolveSharedTo(share),
-        fromUnit: '-',
-        documentRef,
-        folderId: null,
-        raw: share,
-        isSharedByMe,
-      };
+      if (!directDocGrouped.has(groupKey)) {
+        directDocGrouped.set(groupKey, {
+          key: `direct-doc-${groupKey}`,
+          sourceGroup: 'user',
+          sourceType: 'direct-doc',
+          type: 'document',
+          name: documentRef?.doc_name || documentRef?.title || share.doc_name || share.document_name || 'Untitled',
+          dateValue: share.sharedAt || share.created_at || share.share_timestamp || documentRef?.doc_uploaded || null,
+          dateLabel: formatDate(share.sharedAt || share.created_at || share.share_timestamp || documentRef?.doc_uploaded),
+          sharedBy: resolveSharedBy(share),
+          sharedTo: resolveSharedTo(share),
+          recipientCount: 1,
+          fromUnit: '-',
+          documentRef,
+          folderId: null,
+          raw: share,
+          isSharedByMe,
+        });
+        return;
+      }
+
+      const existing = directDocGrouped.get(groupKey);
+      const existingTime = existing.dateValue ? new Date(existing.dateValue).getTime() : 0;
+      const candidateTime = share.sharedAt || share.created_at || share.share_timestamp || documentRef?.doc_uploaded || null;
+      const candidateMs = candidateTime ? new Date(candidateTime).getTime() : 0;
+
+      existing.recipientCount += 1;
+      existing.sharedTo = String(existing.recipientCount);
+
+      if (candidateMs > existingTime) {
+        existing.dateValue = candidateTime;
+        existing.dateLabel = formatDate(candidateTime);
+      }
     });
+
+    const directDocItems = Array.from(directDocGrouped.values());
 
     const directFolderItems = (sharedFolders || []).map((share, index) => {
       const folderObj = share.folder || share.folder_data || null;

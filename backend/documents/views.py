@@ -837,9 +837,14 @@ class DocumentViewSet(viewsets.ModelViewSet):
         docs_in_shared_folders = Document.objects.filter(
             Q(folder__org_shares__shared_with_org=user.org)
         )
+
+        # Get documents directly shared to this user.
+        docs_shared_directly = Document.objects.filter(
+            Q(documentshare__shared_to_user=user)
+        )
         
-        # Combine all three querysets
-        return (docs_by_org | docs_in_org_folders | docs_in_shared_folders).filter(is_archived=False, is_deleted=False).distinct()
+        # Combine all visibility scopes.
+        return (docs_by_org | docs_in_org_folders | docs_in_shared_folders | docs_shared_directly).filter(is_archived=False, is_deleted=False).distinct()
     
     def perform_create(self, serializer):
         folder = serializer.validated_data.get('folder')
@@ -1270,6 +1275,32 @@ class DocumentShareViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Create document share and log the action"""
         try:
+            doc_id = request.data.get('doc')
+            shared_to_user_id = request.data.get('shared_to_user')
+
+            if not doc_id or not shared_to_user_id:
+                return Response({'detail': 'doc and shared_to_user are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                document = Document.objects.get(pk=doc_id)
+            except Document.DoesNotExist:
+                return Response({'detail': 'Document not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            if str(getattr(document, 'owning_org_id', '')) != str(getattr(request.user, 'org_id', '')):
+                raise PermissionDenied('You can only share documents owned by your organization.')
+
+            owner_user_id = getattr(document, 'uploaded_by_user_id', None) or getattr(document, 'user_index_id', None)
+            if str(owner_user_id) != str(request.user.pk):
+                raise PermissionDenied('Only the document owner can share this file.')
+
+            existing_share = DocumentShare.objects.filter(
+                doc=document,
+                shared_to_user_id=shared_to_user_id,
+            ).first()
+            if existing_share is not None:
+                serializer = self.get_serializer(existing_share)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+
             response = super().create(request, *args, **kwargs)
 
             # Notify the target user about the direct document share.
@@ -1321,6 +1352,9 @@ class DocumentShareViewSet(viewsets.ModelViewSet):
         """Delete document share and log the action"""
         try:
             share_obj = self.get_object()
+            if str(share_obj.shared_by_user_id) != str(request.user.pk):
+                raise PermissionDenied('Only the original sharer can revoke this document share.')
+
             doc_name = getattr(getattr(share_obj, 'doc', None), 'doc_name', 'Unknown Document')
             target_user = getattr(getattr(share_obj, 'shared_to_user', None), 'user_id', 'Unknown User')
 
