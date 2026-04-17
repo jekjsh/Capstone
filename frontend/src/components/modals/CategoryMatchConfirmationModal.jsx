@@ -31,15 +31,35 @@ export default function CategoryMatchConfirmationModal({
                 <div className="text-sm text-gray-800">
                   <p className="font-semibold">{item.fileName}</p>
                   {item.predictedCategoryName ? (
-                    <p>
-                      We detected {item.predictedMatchPercent ?? 0}% match from the {item.predictedCategoryName} category.
-                      Do you consider this file to add the category {item.predictedCategoryName}?
-                    </p>
+                    <>
+                      <p>
+                        We detected {item.predictedMatchPercent ?? 0}% match from the {item.predictedCategoryName} category.
+                        Do you want to apply this category?
+                      </p>
+                      {item.matchedFolderName ? (
+                        <p className="mt-1 text-xs text-emerald-700">
+                          Matching folder found: {item.matchedFolderName}
+                          {item.matchConfidence > 0 && ` (${item.matchConfidence}% confidence)`}. After rename, this file will upload directly to that folder.
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-amber-700">
+                          No matching folder name found for this category. It will upload to your current folder.
+                        </p>
+                      )}
+                    </>
                   ) : (
-                    <p>
-                      We could not confidently map this file to a category.
-                      It will continue with fallback naming and no automatic category assignment.
-                    </p>
+                    <>
+                      <p>
+                        We could not confidently map this file to a category.
+                        It will continue with fallback naming and no automatic category assignment.
+                      </p>
+                      {item.matchedFolderName && (
+                        <p className="mt-1 text-xs text-emerald-700">
+                          Folder name match found: {item.matchedFolderName}
+                          {item.matchConfidence > 0 && ` (${item.matchConfidence}% confidence)`}. After rename, this file will upload directly to that folder.
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

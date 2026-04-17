@@ -148,8 +148,9 @@ export default function SystemAdminUserManagement({
 
   const getRoleLevelDisplayName = (role) => {
     const normalizedRole = (role || '').toString().toLowerCase();
-    if (normalizedRole === 'admin') return 'Head';
-    if (normalizedRole === 'user') return 'Staff';
+    if (normalizedRole === 'system_admin') return 'System Admin';
+    if (normalizedRole === 'admin') return 'OU Admin';
+    if (normalizedRole === 'user') return 'Regular User';
     return getRoleDisplayName(role);
   };
   
@@ -201,8 +202,9 @@ export default function SystemAdminUserManagement({
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="All">All Role Levels</option>
-              <option value="admin">Head</option>
-              <option value="user">Staff</option>
+              <option value="system_admin">System Admin</option>
+              <option value="admin">OU Admin</option>
+              <option value="user">Regular User</option>
             </select>
           </div>
 

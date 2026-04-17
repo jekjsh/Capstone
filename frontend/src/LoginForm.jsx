@@ -1,16 +1,35 @@
 // frontend/src/components/LoginForm.jsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { setAuthTokens, authAPI } from "./services/api";
 import './LoginForm.css';
+
+const REMEMBER_ME_STORAGE_KEY = 'rkms.rememberedLogin';
 
 export default function LoginForm({ themeData, onShowRegistration }) {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showError, setShowError] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(REMEMBER_ME_STORAGE_KEY);
+      if (!raw) return;
+
+      const saved = JSON.parse(raw);
+      if (saved?.rememberMe) {
+        setUserId(saved.userId || '');
+        setPassword(saved.password || '');
+        setRememberMe(true);
+      }
+    } catch (error) {
+      console.warn('Failed to read remembered login:', error);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,6 +47,16 @@ export default function LoginForm({ themeData, onShowRegistration }) {
         const data = await response.json();
         // Use setAuthTokens to store tokens and start refresh timer
         setAuthTokens(data.access, data.refresh);
+
+        if (rememberMe) {
+          localStorage.setItem(REMEMBER_ME_STORAGE_KEY, JSON.stringify({
+            rememberMe: true,
+            userId,
+            password
+          }));
+        } else {
+          localStorage.removeItem(REMEMBER_ME_STORAGE_KEY);
+        }
         
         // Fetch user profile to determine which dashboard to redirect to
         try {
@@ -134,6 +163,7 @@ export default function LoginForm({ themeData, onShowRegistration }) {
               type="text"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
+              autoComplete="username"
               className="w-full pl-10 pr-4 py-3 bg-transparent rounded-md focus:outline-none text-sm text-gray-800"
               placeholder="Enter your user ID"
               required
@@ -153,7 +183,7 @@ export default function LoginForm({ themeData, onShowRegistration }) {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete="off"
+              autoComplete="current-password"
               className="w-full pl-10 pr-12 py-3 bg-transparent rounded-md focus:outline-none text-sm text-gray-800"
               placeholder="••••••••"
               required
@@ -167,9 +197,19 @@ export default function LoginForm({ themeData, onShowRegistration }) {
             </button>
           </div>
           
-          {/* No Account / Request Here Link (Right Aligned) */}
-          <div className="flex justify-end mt-2">
-            <button 
+          {/* Remember Me + Request Link */}
+          <div className="flex items-center justify-between mt-2">
+            <label className="inline-flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Remember Me
+            </label>
+
+            <button
               type="button"
               onClick={() => onShowRegistration && onShowRegistration()}
               className="text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors"

@@ -3,6 +3,20 @@ import { X, AlertCircle, Lock, Unlock } from 'lucide-react';
 import { validateUserId, getFormatHint } from '../../utils/idFormatValidator';
 import { userCreationRequestAPI, idFormatAPI, userAPI } from '../../services/api';
 
+const initialUserIdParts = {
+  prefix: '',
+  segment1: '',
+  segment2: '',
+  segment3: ''
+};
+
+const segment2DateFormatVariants = ['MMYYYY', 'YYYYMM', 'YYMM', 'MMYY', 'MYYYY'];
+
+const pickRandomSegment2DateFormat = () => {
+  const index = Math.floor(Math.random() * segment2DateFormatVariants.length);
+  return segment2DateFormatVariants[index];
+};
+
 export default function RequestApprovalModal({ 
   isOpen, 
   onClose, 
@@ -18,6 +32,9 @@ export default function RequestApprovalModal({
   const [rejectionReasonError, setRejectionReasonError] = useState('');
   const [assignedUserId, setAssignedUserId] = useState('');
   const [assignedUserIdError, setAssignedUserIdError] = useState('');
+  const [assignedUserIdParts, setAssignedUserIdParts] = useState(initialUserIdParts);
+  const [segment2DateFormat, setSegment2DateFormat] = useState(pickRandomSegment2DateFormat());
+  const [idAlgorithm, setIdAlgorithm] = useState('sequential');
   const [selectedRole, setSelectedRole] = useState('user');
   const [selectedRoleError, setSelectedRoleError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -33,6 +50,7 @@ export default function RequestApprovalModal({
   const [userIdAvailable, setUserIdAvailable] = useState(null); // null = not checked, true = available, false = not available
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [userIdFormatValid, setUserIdFormatValid] = useState(null); // null = not checked, true = valid, false = invalid
+  const [usersSnapshot, setUsersSnapshot] = useState([]);
 
   const currentUserId = currentUser?.user_id || currentUser?.id || null;
   const currentUserIndex = currentUser?.user_index || currentUser?.full_data?.user_index || null;
@@ -43,6 +61,241 @@ export default function RequestApprovalModal({
   );
   const isClaimedByOtherUser = isClaimed && !isClaimedByCurrentUser;
 
+  const getRoleSeparator = () => {
+    if (!idFormat) {
+      return '-';
+    }
+    return selectedRole === 'admin' ? idFormat.admin_separator : idFormat.user_separator;
+  };
+
+  const getSegmentLengths = () => {
+    if (!idFormat) {
+      return [];
+    }
+
+    return [idFormat.segment1_len, idFormat.segment2_len, idFormat.segment3_len]
+      .map((len) => Number(len) || 0)
+      .filter((len) => len > 0)
+      .slice(0, 3);
+  };
+
+  const getSegmentRule = (segmentIndex) => {
+    const fallback = {
+      1: { source: 'first_name_ascii', format: 'ASCII_SUM' },
+      2: { source: 'current_date', format: segment2DateFormat },
+      3: { source: 'birthdate', format: 'YYYY' }
+    };
+
+    if (!idFormat?.segment_rules) {
+      return fallback[segmentIndex] || null;
+    }
+
+    return idFormat.segment_rules[`segment${segmentIndex}`] || fallback[segmentIndex] || null;
+  };
+
+  const formatDateByRule = (dateValue, token) => {
+    if (!dateValue) {
+      return '';
+    }
+
+    const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const monthNoPad = String(date.getMonth() + 1);
+
+    switch ((token || 'YYYY').toUpperCase()) {
+      case 'YY':
+        return year.slice(-2);
+      case 'YYY':
+        return year.slice(-3);
+      case 'YYYY':
+        return year;
+      case 'MYYYY':
+        return `${monthNoPad}${year}`;
+      case 'MMYYYY':
+        return `${month}${year}`;
+      case 'YYMM':
+        return `${year.slice(-2)}${month}`;
+      case 'MMYY':
+        return `${month}${year.slice(-2)}`;
+      case 'YYYYMM':
+        return `${year}${month}`;
+      default:
+        return year;
+    }
+  };
+
+  const toAsciiSum = (value) => {
+    const source = (value || '').trim();
+    if (!source) {
+      return '';
+    }
+
+    return String(
+      source
+        .toUpperCase()
+        .split('')
+        .reduce((total, ch) => total + ch.charCodeAt(0), 0)
+    );
+  };
+
+  const normalizeSegmentByLength = (rawValue, maxLength, padRight = false) => {
+    const onlyDigits = (rawValue || '').replace(/\D/g, '');
+    if (!maxLength) {
+      return '';
+    }
+
+    if (onlyDigits.length === maxLength) {
+      return onlyDigits;
+    }
+
+    if (onlyDigits.length > maxLength) {
+      return padRight ? onlyDigits.slice(0, maxLength) : onlyDigits.slice(-maxLength);
+    }
+
+    return padRight ? onlyDigits.padEnd(maxLength, '0') : onlyDigits.padStart(maxLength, '0');
+  };
+
+  const computeNextSequenceParts = (segment1Value, segmentLengths, separator) => {
+    const remainingLengths = segmentLengths.slice(1);
+    const totalSequenceLength = remainingLengths.reduce((sum, len) => sum + len, 0);
+    if (!remainingLengths.length || totalSequenceLength <= 0) {
+      return [];
+    }
+
+    const prefix = idFormat?.prefix || '';
+    let maxSequence = 0;
+
+    (usersSnapshot || []).forEach((user) => {
+      const id = String(user?.user_id || '').trim();
+      if (!id) {
+        return;
+      }
+
+      const parts = separator ? id.split(separator) : [id];
+      const expectedCount = 1 + segmentLengths.length;
+      if (parts.length !== expectedCount) {
+        return;
+      }
+      if (parts[0] !== prefix || parts[1] !== segment1Value) {
+        return;
+      }
+
+      const sequenceNumber = Number(parts.slice(2).join(''));
+      if (!Number.isNaN(sequenceNumber)) {
+        maxSequence = Math.max(maxSequence, sequenceNumber);
+      }
+    });
+
+    const nextSequence = maxSequence + 1;
+    const padded = String(nextSequence).padStart(totalSequenceLength, '0').slice(-totalSequenceLength);
+    const sequenceParts = [];
+    let cursor = 0;
+    remainingLengths.forEach((len) => {
+      sequenceParts.push(padded.slice(cursor, cursor + len));
+      cursor += len;
+    });
+
+    return sequenceParts;
+  };
+
+  const buildUserIdFromParts = (parts) => {
+    if (!idFormat) {
+      return '';
+    }
+
+    const separator = getRoleSeparator();
+    const segmentLengths = getSegmentLengths();
+    const typedSegments = segmentLengths
+      .map((_, idx) => (parts[`segment${idx + 1}`] || '').trim())
+      .filter(Boolean);
+
+    if (!typedSegments.length) {
+      return idFormat.prefix || '';
+    }
+
+    return [idFormat.prefix, ...typedSegments].join(separator);
+  };
+
+  const buildSegmentValueFromRule = (segmentIndex, segmentLength) => {
+    const rule = getSegmentRule(segmentIndex);
+    if (!rule) {
+      return '';
+    }
+
+    const source = (rule.source || '').toLowerCase();
+    const format = rule.format || 'YYYY';
+
+    if (source === 'current_date') {
+      const raw = formatDateByRule(new Date(), format);
+      return normalizeSegmentByLength(raw, segmentLength, false);
+    }
+
+    if (source === 'birthdate') {
+      const raw = formatDateByRule(request?.user_birthdate, format);
+      return normalizeSegmentByLength(raw, segmentLength, false);
+    }
+
+    if (source === 'first_name_ascii') {
+      const fullNameSource = `${request?.first_name || ''}${request?.middle_name || ''}${request?.last_name || ''}`;
+      const raw = toAsciiSum(fullNameSource);
+      return normalizeSegmentByLength(raw, segmentLength, true);
+    }
+
+    return '';
+  };
+
+  const handleApplySegmentedUserId = () => {
+    const segmentLengths = getSegmentLengths();
+    if (!segmentLengths.length || !idFormat) {
+      return;
+    }
+
+    const nextParts = {
+      ...initialUserIdParts,
+      prefix: idFormat.prefix || ''
+    };
+
+    if (idAlgorithm === 'sequential') {
+      const separator = getRoleSeparator();
+      const segment1 = normalizeSegmentByLength(formatDateByRule(new Date(), 'MMYYYY'), segmentLengths[0], false);
+      nextParts.segment1 = segment1;
+
+      const sequenceParts = computeNextSequenceParts(segment1, segmentLengths, separator);
+      sequenceParts.forEach((value, idx) => {
+        nextParts[`segment${idx + 2}`] = value;
+      });
+    } else {
+      segmentLengths.forEach((len, idx) => {
+        const segmentIndex = idx + 1;
+        nextParts[`segment${segmentIndex}`] = buildSegmentValueFromRule(segmentIndex, len);
+      });
+    }
+
+    setAssignedUserIdParts(nextParts);
+    const composedUserId = buildUserIdFromParts(nextParts);
+    handleUserIdChange(composedUserId);
+  };
+
+  const handleAssignedUserIdPartChange = (segmentIndex, value) => {
+    const segmentLengths = getSegmentLengths();
+    const maxLength = segmentLengths[segmentIndex - 1] || 0;
+    const normalizedValue = value.replace(/\D/g, '').slice(0, maxLength);
+
+    const updatedParts = {
+      ...assignedUserIdParts,
+      [`segment${segmentIndex}`]: normalizedValue
+    };
+
+    setAssignedUserIdParts(updatedParts);
+    const composedUserId = buildUserIdFromParts(updatedParts);
+    handleUserIdChange(composedUserId);
+  };
+
   useEffect(() => {
     setClaimInfo({
       claimed_by: request?.claimed_by || null,
@@ -51,7 +304,29 @@ export default function RequestApprovalModal({
     });
     setClaimedError('');
     setClaimSuccessMessage('');
-  }, [request]);
+    if (isOpen) {
+      setSegment2DateFormat(pickRandomSegment2DateFormat());
+      setIdAlgorithm('sequential');
+    }
+  }, [request, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || action !== 'approve') {
+      return;
+    }
+
+    const loadUsers = async () => {
+      try {
+        const response = await userAPI.getAll();
+        const users = Array.isArray(response) ? response : (response.results || []);
+        setUsersSnapshot(users);
+      } catch (error) {
+        setUsersSnapshot([]);
+      }
+    };
+
+    loadUsers();
+  }, [isOpen, action]);
 
   // Load ID format and generate temporary password on mount
   useEffect(() => {
@@ -71,6 +346,14 @@ export default function RequestApprovalModal({
 
     loadFormat();
   }, []);
+
+  useEffect(() => {
+    if (!isOpen || !idFormat || action !== 'approve') {
+      return;
+    }
+
+    handleApplySegmentedUserId();
+  }, [isOpen, idFormat, action, selectedRole, request?.first_name, request?.middle_name, request?.last_name, request?.user_birthdate, segment2DateFormat, idAlgorithm, usersSnapshot]);
 
   // Generate temporary password from surname
   useEffect(() => {
@@ -439,29 +722,58 @@ export default function RequestApprovalModal({
           <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
             <div className="flex items-start gap-3 mb-4">
               <AlertCircle className="w-5 h-5 text-gray-600 flex-shrink-0 mt-0.5" />
-              <h3 className="text-lg font-semibold text-gray-900">Assign User ID</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Assigned User ID</h3>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                User ID *
+                Assigned User ID *
               </label>
-              <div className="relative">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                 <input
                   type="text"
-                  value={assignedUserId}
-                  onChange={(e) => handleUserIdChange(e.target.value)}
-                  placeholder={idFormat ? getFormatHint(idFormat, selectedRole === 'admin' ? 'Admin' : 'User') : 'Enter the new User ID for this user'}
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 transition-colors ${
-                    assignedUserIdError
-                      ? 'border-red-500 focus:ring-red-500'
-                      : userIdFormatValid === true && userIdAvailable === true ? 'border-green-500 focus:ring-green-500'
-                      : userIdFormatValid === true && userIdAvailable === false ? 'border-red-500 focus:ring-red-500'
-                      : userIdFormatValid === false ? 'border-red-500 focus:ring-red-500'
-                      : checkingAvailability ? 'border-blue-400 focus:ring-blue-500'
-                      : 'border-gray-300 focus:ring-blue-500'
-                  }`}
-                  disabled={isLoading}
+                  value={assignedUserIdParts.prefix || idFormat?.prefix || ''}
+                  readOnly
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
+                  placeholder="Prefix"
                 />
+                {getSegmentLengths().map((segmentLen, idx) => (
+                  <input
+                    key={`assigned-segment-${idx + 1}`}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={assignedUserIdParts[`segment${idx + 1}`]}
+                    onChange={(e) => handleAssignedUserIdPartChange(idx + 1, e.target.value)}
+                    maxLength={segmentLen}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                      assignedUserIdError
+                        ? 'border-red-500 focus:ring-red-500'
+                        : userIdFormatValid === true && userIdAvailable === true ? 'border-green-500 focus:ring-green-500'
+                        : userIdFormatValid === true && userIdAvailable === false ? 'border-red-500 focus:ring-red-500'
+                        : userIdFormatValid === false ? 'border-red-500 focus:ring-red-500'
+                        : checkingAvailability ? 'border-blue-400 focus:ring-blue-500'
+                        : 'border-gray-300 focus:ring-blue-500'
+                    }`}
+                    disabled={isLoading}
+                    placeholder={'#'.repeat(segmentLen)}
+                  />
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Separator for {selectedRole === 'admin' ? 'Management Access' : 'Standard Access'}: <span className="font-medium">{getRoleSeparator()}</span>
+              </p>
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">ID Method</label>
+                <select
+                  value={idAlgorithm}
+                  onChange={(e) => setIdAlgorithm(e.target.value)}
+                  className="w-full md:w-96 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isLoading}
+                >
+                  <option value="sequential">Method 1 - By Sequence (segment 1 current MMYYYY + running number)</option>
+                  <option value="composite">Method 2 - By Name and Dates (name ASCII + random date arrangement + birthdate)</option>
+                </select>
               </div>
               {assignedUserIdError && (
                 <p className="mt-2 text-sm text-red-600 font-medium">{assignedUserIdError}</p>

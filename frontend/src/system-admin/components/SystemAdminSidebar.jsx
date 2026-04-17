@@ -13,7 +13,7 @@ export default function SystemAdminSidebar({
 }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'organization', label: 'Organization', icon: Building2 },
+    { id: 'organization', label: 'Organization Structure', icon: Building2 },
     {
       id: 'personnel',
       label: 'Personnel Management',
@@ -21,7 +21,7 @@ export default function SystemAdminSidebar({
       isGroup: true,
       children: [
         { id: 'user-management', label: 'User Management' },
-        { id: 'org-users', label: 'Users by Organization' }
+        { id: 'org-users', label: 'Users by Units' }
       ]
     },
     { id: 'requests', label: 'Requests', icon: UserPlus, ...(pendingRequestsCount > 0 && { badgeCount: pendingRequestsCount }) },

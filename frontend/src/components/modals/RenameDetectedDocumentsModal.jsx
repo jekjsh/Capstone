@@ -68,6 +68,19 @@ export default function RenameDetectedDocumentsModal({
                       No matching category was detected from this file yet.
                     </p>
                   )}
+
+                  {item.matchedFolderName ? (
+                    <p className="text-xs text-blue-700 mt-1">
+                      Upload target folder: {item.matchedFolderName}
+                      {item.matchReason === 'category' && ' (matched by category)'}
+                      {item.matchReason === 'folder-name' && ' (matched by folder name)'}
+                      {item.matchConfidence > 0 && ` - ${item.matchConfidence}% confidence`}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-600 mt-1">
+                      Upload target folder: Current folder
+                    </p>
+                  )}
                 </div>
 
                 {item.isOcrFile && (

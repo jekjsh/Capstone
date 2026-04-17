@@ -17,7 +17,8 @@ from authenticator.views import (
     IdFormatViewSet,
     LogoutView,
     UserCreationRequestViewSet,
-    UserRegistrationRequestView
+    UserRegistrationRequestView,
+    OrganizationUnitTypeView,
 )
 from documents.views import DocumentViewSet, DocumentShareViewSet, OcrDataViewSet, FolderViewSet, FolderShareViewSet, CategoryViewSet
 from monitoring.views import AuditLogViewSet, NotificationViewSet
@@ -51,6 +52,7 @@ urlpatterns = [
     path('auth/profile/', UserProfileView.as_view(), name='user_profile'),
     path('auth/update-profile/', UpdateUserProfileView.as_view(), name='update_user_profile'),
     path('auth/verify-password/', VerifyPasswordView.as_view(), name='verify_password'),
+    path('api/organization-unit-types/', OrganizationUnitTypeView.as_view(), name='organization_unit_types'),
     
     # API routes (organizations, documents, etc.)
     path('api/', include(router.urls)),

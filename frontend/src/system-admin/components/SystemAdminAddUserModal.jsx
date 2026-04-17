@@ -10,7 +10,7 @@ const initialUserForm = {
   lastName: '',
   suffix: '',
   email: '',
-  contactNumber: '',
+  contactNumber: '09',
   birthdate: '',
   role: 'User',
   organizationUnitId: '',
@@ -22,6 +22,13 @@ const initialUserIdParts = {
   segment1: '',
   segment2: '',
   segment3: ''
+};
+
+const segment2DateFormatVariants = ['MMYYYY', 'YYYYMM', 'YYMM', 'MMYY', 'MYYYY'];
+
+const pickRandomSegment2DateFormat = () => {
+  const index = Math.floor(Math.random() * segment2DateFormatVariants.length);
+  return segment2DateFormatVariants[index];
 };
 
 export default function SystemAdminAddUserModal({
@@ -44,6 +51,13 @@ export default function SystemAdminAddUserModal({
     password: '',
     confirmPassword: ''
   });
+  const [segment2DateFormat, setSegment2DateFormat] = useState(pickRandomSegment2DateFormat());
+  const [birthdateParts, setBirthdateParts] = useState({
+    year: '',
+    month: '',
+    day: ''
+  });
+  const [idAlgorithm, setIdAlgorithm] = useState('sequential');
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [successNotice, setSuccessNotice] = useState({
@@ -55,6 +69,19 @@ export default function SystemAdminAddUserModal({
   const suffixOptions = defaultSuffixOptions.includes(formData.suffix)
     ? defaultSuffixOptions
     : [...defaultSuffixOptions, formData.suffix];
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 101 }, (_, idx) => String((currentYear - 100) + idx));
+  const monthOptions = Array.from({ length: 12 }, (_, idx) => String(idx + 1).padStart(2, '0'));
+
+  const getDaysInMonth = (year, month) => {
+    if (!year || !month) {
+      return 31;
+    }
+    return new Date(Number(year), Number(month), 0).getDate();
+  };
+
+  const dayCount = getDaysInMonth(birthdateParts.year, birthdateParts.month);
+  const dayOptions = Array.from({ length: dayCount }, (_, idx) => String(idx + 1).padStart(2, '0'));
 
   const getValidationRole = (role = formData.role) => {
     return normalizeRole(role) === 'user' ? 'User' : 'Admin';
@@ -76,6 +103,193 @@ export default function SystemAdminAddUserModal({
       .map((len) => Number(len) || 0)
       .filter((len) => len > 0)
       .slice(0, 3);
+  };
+
+  const getSegmentRule = (segmentIndex) => {
+    const defaultRules = {
+      1: { source: 'first_name_ascii', format: 'ASCII_SUM' },
+      2: { source: 'current_date', format: segment2DateFormat },
+      3: { source: 'birthdate', format: 'YYYY' }
+    };
+
+    if (!currentFormat?.segment_rules) {
+      return defaultRules[segmentIndex] || null;
+    }
+
+    return currentFormat.segment_rules[`segment${segmentIndex}`] || defaultRules[segmentIndex] || null;
+  };
+
+  const formatDateByRule = (dateValue, token) => {
+    if (!dateValue) {
+      return '';
+    }
+
+    const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const monthNoPad = String(date.getMonth() + 1);
+
+    switch ((token || 'YYYY').toUpperCase()) {
+      case 'YY':
+        return year.slice(-2);
+      case 'YYY':
+        return year.slice(-3);
+      case 'YYYY':
+        return year;
+      case 'MYYYY':
+        return `${monthNoPad}${year}`;
+      case 'MMYYYY':
+        return `${month}${year}`;
+      case 'YYMM':
+        return `${year.slice(-2)}${month}`;
+      case 'MMYY':
+        return `${month}${year.slice(-2)}`;
+      case 'YYYYMM':
+        return `${year}${month}`;
+      default:
+        return year;
+    }
+  };
+
+  const toAsciiSum = (value) => {
+    const source = (value || '').trim();
+    if (!source) {
+      return '';
+    }
+
+    return String(
+      source
+        .toUpperCase()
+        .split('')
+        .reduce((total, ch) => total + ch.charCodeAt(0), 0)
+    );
+  };
+
+  const normalizeSegmentByLength = (rawValue, maxLength, padRight = false) => {
+    const onlyDigits = (rawValue || '').replace(/\D/g, '');
+    if (!maxLength) {
+      return '';
+    }
+
+    if (onlyDigits.length === maxLength) {
+      return onlyDigits;
+    }
+
+    if (onlyDigits.length > maxLength) {
+      return padRight ? onlyDigits.slice(0, maxLength) : onlyDigits.slice(-maxLength);
+    }
+
+    return padRight ? onlyDigits.padEnd(maxLength, '0') : onlyDigits.padStart(maxLength, '0');
+  };
+
+  const computeNextSequenceParts = (segment1Value, segmentLengths, separator) => {
+    const remainingLengths = segmentLengths.slice(1);
+    const totalSequenceLength = remainingLengths.reduce((sum, len) => sum + len, 0);
+    if (!remainingLengths.length || totalSequenceLength <= 0) {
+      return [];
+    }
+
+    const prefix = currentFormat?.prefix || '';
+    const existingIds = (userList || []).map((u) => u.userId || u.user_id || u.id).filter(Boolean);
+
+    let maxSequence = 0;
+    existingIds.forEach((idValue) => {
+      const id = String(idValue);
+      const parts = separator ? id.split(separator) : [id];
+      const expectedCount = 1 + segmentLengths.length;
+      if (!parts.length || parts.length !== expectedCount) {
+        return;
+      }
+      if (parts[0] !== prefix || parts[1] !== segment1Value) {
+        return;
+      }
+
+      const sequenceNumber = Number(parts.slice(2).join(''));
+      if (!Number.isNaN(sequenceNumber)) {
+        maxSequence = Math.max(maxSequence, sequenceNumber);
+      }
+    });
+
+    const nextSequence = maxSequence + 1;
+    const padded = String(nextSequence).padStart(totalSequenceLength, '0').slice(-totalSequenceLength);
+    const sequenceParts = [];
+    let cursor = 0;
+    remainingLengths.forEach((len) => {
+      sequenceParts.push(padded.slice(cursor, cursor + len));
+      cursor += len;
+    });
+
+    return sequenceParts;
+  };
+
+  const buildSegmentValueFromRule = (segmentIndex, segmentLength) => {
+    const rule = getSegmentRule(segmentIndex);
+    if (!rule) {
+      return '';
+    }
+
+    const source = (rule.source || '').toLowerCase();
+    const format = rule.format || 'YYYY';
+
+    if (source === 'current_date') {
+      const raw = formatDateByRule(new Date(), format);
+      return normalizeSegmentByLength(raw, segmentLength, false);
+    }
+
+    if (source === 'birthdate') {
+      const raw = formatDateByRule(formData.birthdate, format);
+      return normalizeSegmentByLength(raw, segmentLength, false);
+    }
+
+    if (source === 'first_name_ascii') {
+      const fullNameSource = `${formData.firstName || ''}${formData.middleName || ''}${formData.lastName || ''}`;
+      const raw = toAsciiSum(fullNameSource);
+      return normalizeSegmentByLength(raw, segmentLength, true);
+    }
+
+    return '';
+  };
+
+  const handleApplySegmentation = () => {
+    const segmentLengths = getSegmentLengths();
+    if (!segmentLengths.length) {
+      return;
+    }
+
+    const nextParts = {
+      ...userIdParts,
+      prefix: currentFormat?.prefix || userIdParts.prefix
+    };
+
+    if (idAlgorithm === 'sequential') {
+      const separator = getRoleSeparator();
+      const segment1 = normalizeSegmentByLength(formatDateByRule(new Date(), 'MMYYYY'), segmentLengths[0], false);
+      nextParts.segment1 = segment1;
+
+      const sequenceParts = computeNextSequenceParts(segment1, segmentLengths, separator);
+      sequenceParts.forEach((value, idx) => {
+        nextParts[`segment${idx + 2}`] = value;
+      });
+    } else {
+      segmentLengths.forEach((len, idx) => {
+        const segmentIndex = idx + 1;
+        nextParts[`segment${segmentIndex}`] = buildSegmentValueFromRule(segmentIndex, len);
+      });
+    }
+
+    setUserIdParts(nextParts);
+    const composedUserId = buildUserIdFromParts(nextParts);
+    setFormData((prev) => ({ ...prev, userId: composedUserId }));
+
+    if (isUserIdComplete(nextParts)) {
+      validateUserIdFormat(composedUserId);
+      const exists = userList?.some((u) => (u.userId || u.id) === composedUserId);
+      setUserIdExists(Boolean(exists));
+    }
   };
 
   const buildUserIdFromParts = (parts) => {
@@ -182,7 +396,7 @@ export default function SystemAdminAddUserModal({
         lastName: editingUser.lastName || '',
         suffix: editingUser.suffix || '',
         email: editingUser.email || '',
-        contactNumber: editingUser.userContact || editingUser.user_contact || '',
+        contactNumber: normalizeContactNumber(editingUser.userContact || editingUser.user_contact || ''),
         birthdate: editingUser.userBirthdate || editingUser.user_birthdate || '',
         role: displayRole,
         organizationUnitId: editingUser.organizationUnitId || '',
@@ -198,8 +412,21 @@ export default function SystemAdminAddUserModal({
       setUserIdFormatValid(null);
       setUserIdExists(false);
       setStep(1);
+      setSegment2DateFormat(pickRandomSegment2DateFormat());
+      setIdAlgorithm('sequential');
     }
   }, [isOpen, isEditMode, editingUser]);
+
+  useEffect(() => {
+    const raw = formData.birthdate || '';
+    if (!raw || !raw.includes('-')) {
+      setBirthdateParts({ year: '', month: '', day: '' });
+      return;
+    }
+
+    const [year = '', month = '', day = ''] = raw.split('-');
+    setBirthdateParts({ year, month, day });
+  }, [formData.birthdate]);
 
   useEffect(() => {
     if (!isOpen || !currentFormat) {
@@ -213,6 +440,14 @@ export default function SystemAdminAddUserModal({
 
     resetUserIdParts(currentFormat.prefix || '');
   }, [isOpen, currentFormat, isEditMode]);
+
+  useEffect(() => {
+    if (!isOpen || isEditMode || !currentFormat) {
+      return;
+    }
+
+    handleApplySegmentation();
+  }, [isOpen, isEditMode, currentFormat, formData.firstName, formData.middleName, formData.lastName, formData.birthdate, segment2DateFormat, idAlgorithm, formData.role, userList]);
 
   // Get placeholder for user ID input
   const getPlaceholder = () => {
@@ -278,6 +513,71 @@ export default function SystemAdminAddUserModal({
     return role.toLowerCase().replace(/\s+/g, '_');
   };
 
+  const normalizeContactNumber = (value) => {
+    const digits = (value || '').replace(/\D/g, '');
+
+    if (!digits) {
+      return '09';
+    }
+
+    let normalized = digits;
+    if (normalized.startsWith('9')) {
+      normalized = `0${normalized}`;
+    }
+
+    if (!normalized.startsWith('09')) {
+      normalized = `09${normalized.slice(2)}`;
+    }
+
+    return normalized.slice(0, 11);
+  };
+
+  const isAtLeast18 = (birthdateValue) => {
+    if (!birthdateValue) {
+      return true;
+    }
+
+    const birthDate = new Date(birthdateValue);
+    if (Number.isNaN(birthDate.getTime())) {
+      return false;
+    }
+
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age -= 1;
+    }
+
+    return age >= 18;
+  };
+
+  const handleBirthdatePartChange = (part, value) => {
+    const nextParts = {
+      ...birthdateParts,
+      [part]: value
+    };
+
+    if (part === 'year' || part === 'month') {
+      const maxDays = getDaysInMonth(nextParts.year, nextParts.month);
+      if (nextParts.day && Number(nextParts.day) > maxDays) {
+        nextParts.day = '';
+      }
+    }
+
+    setBirthdateParts(nextParts);
+
+    const isComplete = nextParts.year && nextParts.month && nextParts.day;
+    const birthdateValue = isComplete
+      ? `${nextParts.year}-${nextParts.month}-${nextParts.day}`
+      : '';
+
+    setFormData((prev) => ({
+      ...prev,
+      birthdate: birthdateValue
+    }));
+  };
+
   const validateStep1 = () => {
     const newErrors = {};
 
@@ -316,6 +616,14 @@ export default function SystemAdminAddUserModal({
       newErrors.organizationUnitId = 'Organization Unit is required';
     }
 
+    if (formData.birthdate && !isAtLeast18(formData.birthdate)) {
+      newErrors.birthdate = 'User must be at least 18 years old.';
+    }
+
+    if (formData.contactNumber && formData.contactNumber !== '09' && !/^09\d{9}$/.test(formData.contactNumber)) {
+      newErrors.contactNumber = 'Contact number must start with 09 and be 11 digits.';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -349,7 +657,7 @@ export default function SystemAdminAddUserModal({
         last_name: formData.lastName,
         suffix: formData.suffix,
         email_add: formData.email,
-        user_contact: formData.contactNumber || '',
+        user_contact: formData.contactNumber && formData.contactNumber !== '09' ? formData.contactNumber : '',
         user_birthdate: formData.birthdate || null,
         password: password,
         role_type: normalizeRole(formData.role),
@@ -377,6 +685,7 @@ export default function SystemAdminAddUserModal({
         title: 'User Created',
         lines: [
           'User created successfully.',
+          `User ID: ${formData.userId}`,
           `Default password: ${password}`,
           'Remind them to change password ASAP.'
         ]
@@ -400,7 +709,7 @@ export default function SystemAdminAddUserModal({
         last_name: formData.lastName,
         suffix: formData.suffix,
         email_add: formData.email,
-        user_contact: formData.contactNumber || '',
+        user_contact: formData.contactNumber && formData.contactNumber !== '09' ? formData.contactNumber : '',
         user_birthdate: formData.birthdate || null,
         role_type: normalizeRole(formData.role),
         org: formData.organizationUnitId || null,
@@ -570,6 +879,19 @@ export default function SystemAdminAddUserModal({
               <p className="mt-1 text-xs text-gray-500">
                 Separator for {formData.role}: <span className="font-medium">{getRoleSeparator()}</span>
               </p>
+              {!isEditMode && (
+                <div className="mt-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">ID Method</label>
+                  <select
+                    value={idAlgorithm}
+                    onChange={(e) => setIdAlgorithm(e.target.value)}
+                    className="w-full md:w-96 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="sequential">Method 1 - By Sequence (segment 1 current MMYYYY + running number)</option>
+                    <option value="composite">Method 2 - By Name and Dates (name ASCII + random date arrangement + birthdate)</option>
+                  </select>
+                </div>
+              )}
               {!isEditMode && userIdExists && (
                 <p className="mt-1 text-sm text-red-500">User ID already exists!</p>
               )}
@@ -684,20 +1006,48 @@ export default function SystemAdminAddUserModal({
                 <input
                   type="text"
                   value={formData.contactNumber || ''}
-                  onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, contactNumber: normalizeContactNumber(e.target.value) })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., 09171234567"
+                  placeholder="09171234567"
                 />
+                {errors.contactNumber && <p className="mt-1 text-sm text-red-500">{errors.contactNumber}</p>}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Birthdate</label>
-                <input
-                  type="date"
-                  value={formData.birthdate || ''}
-                  onChange={(e) => setFormData({ ...formData, birthdate: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="grid grid-cols-3 gap-2">
+                  <select
+                    value={birthdateParts.month}
+                    onChange={(e) => handleBirthdatePartChange('month', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Month</option>
+                    {monthOptions.map((month) => (
+                      <option key={month} value={month}>{month}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={birthdateParts.day}
+                    onChange={(e) => handleBirthdatePartChange('day', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Day</option>
+                    {dayOptions.map((day) => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={birthdateParts.year}
+                    onChange={(e) => handleBirthdatePartChange('year', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Year</option>
+                    {yearOptions.map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+                {errors.birthdate && <p className="mt-1 text-sm text-red-500">{errors.birthdate}</p>}
               </div>
             </div>
 

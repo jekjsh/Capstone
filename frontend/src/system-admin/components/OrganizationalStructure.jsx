@@ -6,7 +6,8 @@ const ORGANIZATION_TYPE_OPTIONS = [
   'Administrator',
   'Office',
   'Department',
-  'Division'
+  'Division',
+  'Others'
 ];
 
 const ORGANIZATION_TYPE_COLORS = {
@@ -22,6 +23,10 @@ const DEFAULT_ORG_TYPE_COLOR = { bg: 'bg-gray-50', border: 'border-gray-300', ic
 export default function OrganizationalStructure() {
   const [expandedNodes, setExpandedNodes] = useState({});
   const [organizationTree, setOrganizationTree] = useState([]);
+  const [customTypeOptions, setCustomTypeOptions] = useState([]);
+  const [customTypeInput, setCustomTypeInput] = useState('');
+  const [customTypeError, setCustomTypeError] = useState('');
+  const [isUpdatingTypes, setIsUpdatingTypes] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -30,6 +35,26 @@ export default function OrganizationalStructure() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ name: '', code: '', type: '', description: '' });
   const [formErrors, setFormErrors] = useState({});
+
+  const normalizeCustomTypeName = (value) => (value || '').replace(/\s+[xX×]$/, '').trim();
+
+  const sanitizeCustomTypeList = (list) => {
+    const seen = new Set();
+    return (Array.isArray(list) ? list : [])
+      .map((item) => normalizeCustomTypeName(item))
+      .filter((item) => {
+        if (!item) return false;
+        const key = item.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+
+  const allOrganizationTypeOptions = [
+    ...ORGANIZATION_TYPE_OPTIONS,
+    ...customTypeOptions.filter((customType) => !ORGANIZATION_TYPE_OPTIONS.some((defaultType) => defaultType.toLowerCase() === customType.toLowerCase()))
+  ];
 
   const getOrgTypeColor = (orgType) => {
     const normalized = (orgType || '').trim().toLowerCase();
@@ -45,6 +70,7 @@ export default function OrganizationalStructure() {
 
   useEffect(() => {
     fetchOrganizations();
+    fetchCustomTypes();
   }, []);
 
   // =====================
@@ -108,7 +134,7 @@ export default function OrganizationalStructure() {
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">
-                {selectedOrg ? 'Edit Organization' : 'Create Organization'}
+                {selectedOrg ? 'Edit Organization' : 'Create Organization Unit'}
               </h2>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
@@ -146,19 +172,81 @@ export default function OrganizationalStructure() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
-                <select
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                    formErrors.type ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
-                  }`}
-                >
-                  <option value="">Select Type</option>
-                  {ORGANIZATION_TYPE_OPTIONS.map((type) => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                      formErrors.type ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500'
+                    }`}
+                  >
+                    <option value="">Select Type</option>
+                    {allOrganizationTypeOptions.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
                 {formErrors.type && <p className="text-xs text-red-500 mt-1">{formErrors.type}</p>}
+
+                <div className="mt-2 rounded-lg border border-dashed border-gray-300 p-2">
+                  <p className="text-xs text-gray-500 mb-2">Need another type? Add a custom organization unit type.</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={customTypeInput}
+                      onChange={(e) => {
+                        setCustomTypeInput(e.target.value);
+                        setCustomTypeError('');
+                      }}
+                      disabled={formData.type !== 'Others'}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400"
+                      placeholder="e.g., Committee"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomType}
+                      disabled={isUpdatingTypes || formData.type !== 'Others' || !customTypeInput.trim()}
+                      className="px-3 py-2 text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  {formData.type !== 'Others' && (
+                    <p className="text-xs text-gray-500 mt-2">Select Others in Type first to add a custom value.</p>
+                  )}
+
+                  {formData.type === 'Others' && customTypeOptions.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-500 mb-2">Custom types (from text file):</p>
+                      <div className="space-y-2">
+                        {customTypeOptions.map((customType) => (
+                          <div key={customType} className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setFormData((prev) => ({ ...prev, type: customType }))}
+                              className="flex-1 text-left px-3 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50"
+                              title={`Select ${customType}`}
+                            >
+                              {customType}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCustomType(customType)}
+                              className="p-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
+                              title={`Delete ${customType}`}
+                              aria-label={`Delete ${customType}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {customTypeError && <p className="text-xs text-red-500 mt-2">{customTypeError}</p>}
+                </div>
               </div>
 
               <div>
@@ -228,6 +316,119 @@ export default function OrganizationalStructure() {
       setError(err.message);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function fetchCustomTypes() {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        return;
+      }
+
+      const response = await fetch('http://localhost:8000/api/organization-unit-types/', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch custom types: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setCustomTypeOptions(sanitizeCustomTypeList(data.types));
+    } catch (err) {
+      console.error('Error fetching custom organization types:', err);
+      setCustomTypeOptions([]);
+    }
+  }
+
+  async function handleAddCustomType() {
+    if (formData.type !== 'Others') {
+      setCustomTypeError('Select Others in Type first.');
+      return;
+    }
+
+    const name = normalizeCustomTypeName(customTypeInput);
+    if (!name) {
+      setCustomTypeError('Type name is required.');
+      return;
+    }
+
+    setIsUpdatingTypes(true);
+    setCustomTypeError('');
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch('http://localhost:8000/api/organization-unit-types/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ name })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || `Failed to add custom type: ${response.status}`);
+      }
+
+      setCustomTypeOptions(sanitizeCustomTypeList(payload.types));
+      setCustomTypeInput('');
+      setFormData((prev) => ({ ...prev, type: name }));
+    } catch (err) {
+      setCustomTypeError(err.message || 'Failed to add custom type.');
+    } finally {
+      setIsUpdatingTypes(false);
+    }
+  }
+
+  async function handleDeleteCustomType(typeName) {
+    const shouldDelete = window.confirm(`Delete custom type "${typeName}"?`);
+    if (!shouldDelete) {
+      return;
+    }
+
+    setIsUpdatingTypes(true);
+    setCustomTypeError('');
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch('http://localhost:8000/api/organization-unit-types/', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: typeName })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || `Failed to remove custom type: ${response.status}`);
+      }
+
+      setCustomTypeOptions(sanitizeCustomTypeList(payload.types));
+      setFormData((prev) => {
+        if ((prev.type || '').toLowerCase() === typeName.toLowerCase()) {
+          return { ...prev, type: '' };
+        }
+        return prev;
+      });
+    } catch (err) {
+      setCustomTypeError(err.message || 'Failed to remove custom type.');
+    } finally {
+      setIsUpdatingTypes(false);
     }
   }
 
@@ -333,7 +534,11 @@ export default function OrganizationalStructure() {
     const errors = {};
     if (!formData.name.trim()) errors.name = 'Name required';
     if (!formData.code.trim()) errors.code = 'Code required';
-    if (!formData.type) errors.type = 'Type required';
+    if (!formData.type) {
+      errors.type = 'Type required';
+    } else if (formData.type === 'Others') {
+      errors.type = 'Please add and select a custom type after choosing Others';
+    }
     return errors;
   }
 
@@ -368,6 +573,8 @@ export default function OrganizationalStructure() {
     setParentOrgId(null);
     setFormData({ name: '', code: '', type: '', description: '' });
     setFormErrors({});
+    setCustomTypeInput('');
+    setCustomTypeError('');
     setShowModal(true);
   }
 
@@ -376,6 +583,8 @@ export default function OrganizationalStructure() {
     setParentOrgId(parentId);
     setFormData({ name: '', code: '', type: '', description: '' });
     setFormErrors({});
+    setCustomTypeInput('');
+    setCustomTypeError('');
     setShowModal(true);
   }
 
@@ -389,6 +598,8 @@ export default function OrganizationalStructure() {
       description: org.description || ''
     });
     setFormErrors({});
+    setCustomTypeInput('');
+    setCustomTypeError('');
     setShowModal(true);
   }
 
@@ -398,6 +609,8 @@ export default function OrganizationalStructure() {
     setParentOrgId(null);
     setFormData({ name: '', code: '', type: '', description: '' });
     setFormErrors({});
+    setCustomTypeInput('');
+    setCustomTypeError('');
   }
 
   function toggleNode(nodeId) {

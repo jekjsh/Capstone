@@ -3,6 +3,22 @@ import { Mail, Briefcase, Building2, AlertCircle, CheckCircle2, ChevronLeft, Pho
 import { authAPI, organizationAPI } from './services/api';
 import './LoginForm.css';
 
+const AGREEMENT_SCROLL_BOTTOM_OFFSET = 8;
+
+const REGISTRATION_INFO_CONFIRMATION = [
+  'Registration Information Accuracy Confirmation',
+  '',
+  'Before submitting this registration request, please review all details carefully.',
+  '',
+  'By selecting Agree, you confirm the following:',
+  '1. The information you entered is true, complete, and correct.',
+  '2. Your contact details and organization details are valid and up to date.',
+  '3. You understand that incorrect or misleading information may delay or deny account creation.',
+  '4. You understand that submitted details may be used for verification and audit records.',
+  '',
+  'I confirm that my information is true and correct.'
+].join('\n');
+
 export default function RegistrationForm({ themeData, onBackToLogin, onRegistrationSuccess }) {
   const suffixOptions = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V', 'Esq.', 'PhD'];
   const [formData, setFormData] = useState({
@@ -19,9 +35,20 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
   const [organizations, setOrganizations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-    const [showError, setShowError] = useState(false);
+  const [showError, setShowError] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
+  const [hasScrolledAgreementToBottom, setHasScrolledAgreementToBottom] = useState(false);
+  const [hasAgreedToTruthConfirmation, setHasAgreedToTruthConfirmation] = useState(false);
+
+  const handleAgreementScroll = (event) => {
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+    const reachedBottom = scrollHeight - (scrollTop + clientHeight) <= AGREEMENT_SCROLL_BOTTOM_OFFSET;
+    if (reachedBottom) {
+      setHasScrolledAgreementToBottom(true);
+    }
+  };
 
   // Fetch organizations on component mount
   useEffect(() => {
@@ -85,6 +112,9 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
       }
       if (!formData.user_birthdate) {
         throw new Error('Birthdate is required');
+      }
+      if (!hasAgreedToTruthConfirmation) {
+        throw new Error('Please read and agree to the information accuracy confirmation.');
       }
 
       const birthDate = new Date(formData.user_birthdate);
@@ -380,9 +410,33 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
           </div>
 
           {/* Submit Button */}
+          <div className="border border-gray-200 rounded-md p-3 bg-gray-50">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasAgreedToTruthConfirmation}
+                readOnly
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-gray-700">
+                I confirm that my information is true and correct.
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setIsAgreementModalOpen(true);
+                setHasScrolledAgreementToBottom(false);
+              }}
+              className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
+            >
+              Read and Agree to Confirmation
+            </button>
+          </div>
+
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || !hasAgreedToTruthConfirmation}
             className="w-full text-white py-3 mt-8 rounded-md font-medium hover:opacity-90 transition-all disabled:opacity-70 bg-indigo-600"
           >
             {isLoading ? 'Submitting...' : 'Submit Registration Request'}
@@ -394,6 +448,51 @@ export default function RegistrationForm({ themeData, onBackToLogin, onRegistrat
           After submission, please coordinate with the IS Manager for account activation.
         </p>
       </div>
+
+      {isAgreementModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl border border-gray-200 p-6">
+            <div className="flex items-start justify-between gap-4">
+              <h3 className="text-lg font-semibold text-gray-900">Information Accuracy Confirmation</h3>
+              <button
+                type="button"
+                onClick={() => setIsAgreementModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close agreement"
+              >
+                ×
+              </button>
+            </div>
+            <div
+              onScroll={handleAgreementScroll}
+              className="mt-4 h-64 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4"
+            >
+              <p className="whitespace-pre-line text-sm leading-6 text-gray-700">{REGISTRATION_INFO_CONFIRMATION}</p>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">Scroll to the bottom to enable the Agree button.</p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsAgreementModalOpen(false)}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-gray-700 font-medium hover:bg-gray-50"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                disabled={!hasScrolledAgreementToBottom}
+                onClick={() => {
+                  setHasAgreedToTruthConfirmation(true);
+                  setIsAgreementModalOpen(false);
+                }}
+                className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Agree
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

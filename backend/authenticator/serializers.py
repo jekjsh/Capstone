@@ -123,6 +123,7 @@ class IdFormatSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
+    prefix = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     class Meta:
         model = IdFormat

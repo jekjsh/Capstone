@@ -971,9 +971,35 @@ const [viewingDocument, setViewingDocument] = useState(null);
       }
     };
 
-    refreshAdminData();
-    const intervalId = setInterval(refreshAdminData, 5000);
-    return () => clearInterval(intervalId);
+    let intervalId = null;
+
+    const startPolling = () => {
+      if (intervalId) return;
+      intervalId = setInterval(refreshAdminData, 30000);
+    };
+
+    const stopPolling = () => {
+      if (!intervalId) return;
+      clearInterval(intervalId);
+      intervalId = null;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshAdminData();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    handleVisibilityChange();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [activeSection]);
 
   useEffect(() => {
@@ -2153,9 +2179,79 @@ const buildSuggestedUploadNameFromCategory = (fileName, detectedCategoryName) =>
   return `${safeLastName}_${safeCategory}${extension}`;
 };
 
+const normalizeTextForMatching = (value) => {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const toInitials = (value) => {
+  const words = normalizeTextForMatching(value).split(' ').filter(Boolean);
+  if (words.length < 2) return '';
+  return words.map((word) => word[0]).join('');
+};
+
+const findMatchedFolderForCategoryName = (categoryName, folders = []) => {
+  const normalizedCategory = normalizeTextForMatching(categoryName);
+  if (!normalizedCategory) return null;
+
+  const exact = (folders || []).find((folder) => normalizeTextForMatching(folder?.folder_name) === normalizedCategory);
+  if (exact) return exact;
+
+  const partial = (folders || []).find((folder) => {
+    const folderName = normalizeTextForMatching(folder?.folder_name);
+    return folderName && (folderName.includes(normalizedCategory) || normalizedCategory.includes(folderName));
+  });
+
+  return partial || null;
+};
+
+const findMatchedFolderFromText = (fileName, extractedText, folders = []) => {
+  const combined = normalizeTextForMatching(`${fileName || ''} ${extractedText || ''}`);
+  if (!combined) return { folder: null, confidence: 0 };
+
+  let bestFolder = null;
+  let bestScore = 0;
+  let bestPercent = 0;
+
+  (folders || []).forEach((folder) => {
+    const folderName = normalizeTextForMatching(folder?.folder_name || '');
+    if (!folderName) return;
+
+    let score = 0;
+    if (combined.includes(folderName)) {
+      score += folderName.length + 8;
+    }
+
+    folderName.split(' ').forEach((word) => {
+      if (word.length >= 3 && combined.includes(word)) {
+        score += word.length;
+      }
+    });
+
+    const maxScore =
+      (folderName ? folderName.length + 8 : 0) +
+      folderName.split(' ').reduce((sum, word) => (word.length >= 3 ? sum + word.length : sum), 0);
+    const percent = maxScore > 0 ? Math.min(100, Math.round((score / maxScore) * 100)) : 0;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPercent = percent;
+      bestFolder = folder;
+    }
+  });
+
+  return {
+    folder: bestScore > 0 ? bestFolder : null,
+    confidence: bestScore > 0 ? bestPercent : 0,
+  };
+};
+
 const pickBestCategoryFromDetectedText = (fileName, extractedText, categories = []) => {
-  const combined = `${String(fileName || '')} ${String(extractedText || '')}`.toLowerCase();
-  if (!combined.trim() || !Array.isArray(categories) || categories.length === 0) {
+  const combined = normalizeTextForMatching(`${String(fileName || '')} ${String(extractedText || '')}`);
+  if (!combined || !Array.isArray(categories) || categories.length === 0) {
     return { category: null, confidence: 0 };
   }
 
@@ -2164,8 +2260,8 @@ const pickBestCategoryFromDetectedText = (fileName, extractedText, categories = 
   let bestPercent = 0;
 
   categories.forEach((category) => {
-    const categoryName = String(category?.category_name || '').toLowerCase().trim();
-    const categoryDesc = String(category?.category_desc || '').toLowerCase().trim();
+    const categoryName = normalizeTextForMatching(category?.category_name || '');
+    const categoryDesc = normalizeTextForMatching(category?.category_desc || '');
     if (!categoryName && !categoryDesc) return;
 
     const categoryText = `${categoryName} ${categoryDesc}`.trim();
@@ -2174,6 +2270,16 @@ const pickBestCategoryFromDetectedText = (fileName, extractedText, categories = 
     let score = 0;
     if (categoryName && combined.includes(categoryName)) score += categoryName.length + 5;
     if (categoryDesc && combined.includes(categoryDesc)) score += categoryDesc.length + 3;
+
+    const nameInitials = toInitials(categoryName);
+    if (nameInitials && combined.includes(nameInitials)) {
+      score += nameInitials.length + 2;
+    }
+
+    const descInitials = toInitials(categoryDesc);
+    if (descInitials && combined.includes(descInitials)) {
+      score += descInitials.length + 1;
+    }
 
     const words = categoryText.split(/\s+/).filter(Boolean);
     words.forEach((word) => {
@@ -2282,6 +2388,18 @@ const runAdminDetectionForUploads = async () => {
 
         const predicted = pickBestCategoryFromDetectedText(file.name, extractedText, adminCategories);
         const predictedCategory = predicted.category;
+        const matchedFolderByCategory = findMatchedFolderForCategoryName(predictedCategory?.category_name || '', adminFolders);
+        const folderNameMatch = findMatchedFolderFromText(file.name, extractedText, adminFolders);
+        const matchedFolderByName = matchedFolderByCategory ? null : folderNameMatch.folder;
+        const matchedFolder = matchedFolderByCategory || matchedFolderByName;
+        const matchReason = matchedFolderByCategory
+          ? 'category'
+          : matchedFolderByName
+            ? 'folder-name'
+            : '';
+        const matchConfidence = matchedFolderByCategory
+          ? (predicted.confidence || 0)
+          : (matchedFolderByName ? (folderNameMatch.confidence || 0) : 0);
 
         return {
           fileName: file.name,
@@ -2290,6 +2408,11 @@ const runAdminDetectionForUploads = async () => {
           isOcrFile,
           predictedCategoryName: predictedCategory?.category_name || '',
           predictedMatchPercent: predicted.confidence || 0,
+          matchedFolderId: matchedFolder?.folder_id || null,
+          matchedFolderName: matchedFolder?.folder_name || '',
+          routeToMatchedFolder: Boolean(matchedFolder?.folder_id),
+          matchReason,
+          matchConfidence,
         };
       })
     );
@@ -2301,18 +2424,21 @@ const runAdminDetectionForUploads = async () => {
   }
 };
 
-const performAdminUploadDocument = async (namesOverride = null) => {
+const performAdminUploadDocument = async (namesOverride = null, folderTargetsOverride = null) => {
   if (!adminUploadedDocFiles.length) return;
 
   try {
     for (let index = 0; index < adminUploadedDocFiles.length; index += 1) {
       const file = adminUploadedDocFiles[index];
       const resolvedDocName = ((namesOverride || adminUploadFileNames)[index] || file.name || '').trim() || file.name;
+      const resolvedFolderId = Array.isArray(folderTargetsOverride)
+        ? (folderTargetsOverride[index] ?? currentAdminFolder ?? null)
+        : (currentAdminFolder || null);
       await documentAPI.uploadFiles(
         [file],
         resolvedDocName,
         '',
-        currentAdminFolder || null,
+        resolvedFolderId,
         undefined,
         { autoCategorize: adminAutoCategorizeUploads }
       );
@@ -2375,8 +2501,14 @@ const handleAdminConfirmDetectedUpload = async () => {
   setIsAdminSubmittingDetectedUpload(true);
   try {
     const confirmedNames = adminDetectedUploadItems.map((item, index) => item.finalName || adminUploadedDocFiles[index]?.name || 'file');
+    const folderTargets = adminDetectedUploadItems.map((item) => {
+      if (item.routeToMatchedFolder && item.matchedFolderId) {
+        return item.matchedFolderId;
+      }
+      return currentAdminFolder || null;
+    });
     setAdminUploadFileNames(confirmedNames);
-    await performAdminUploadDocument(confirmedNames);
+    await performAdminUploadDocument(confirmedNames, folderTargets);
   } finally {
     setIsAdminSubmittingDetectedUpload(false);
   }

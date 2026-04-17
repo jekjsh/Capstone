@@ -24,6 +24,8 @@ export default function UploadDocumentModal({
 }) {
   if (!show) return null;
 
+  const currentPreview = uploadPreviews[currentPreviewIndex];
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 relative">
@@ -35,25 +37,125 @@ export default function UploadDocumentModal({
         </div>
         
         <div className="space-y-6">
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors">
-            <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-2">Upload document files (PDF, DOCX, XLSX, Images, Text, etc.)</p>
-            <p className="text-sm text-gray-500 mb-4">You can select multiple files at once</p>
-            <input
-              type="file"
-              onChange={onFileUpload}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,image/*"
-              multiple
-              disabled={lockInteractionWhenLoading && primaryActionLoading}
-              className="hidden"
-              id="doc-file-upload"
-            />
-            <label
-              htmlFor="doc-file-upload"
-              className={`inline-block bg-blue-500 text-white px-6 py-2 rounded-lg transition-colors ${lockInteractionWhenLoading && primaryActionLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600 cursor-pointer'}`}
-            >
-              Choose Files
-            </label>
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-500 transition-colors">
+            {!currentPreview && (
+              <div className="text-center py-6">
+                <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600 mb-2">Upload document files (PDF, DOCX, XLSX, Images, Text, etc.)</p>
+                <p className="text-sm text-gray-500 mb-4">You can select multiple files at once</p>
+              </div>
+            )}
+
+            {currentPreview && (
+              <div className="rounded-lg overflow-hidden border border-gray-200 bg-white">
+                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                    Preview: {currentPreview.fileName}
+                  </h3>
+                  {uploadedDocFiles.length > 1 && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentPreviewIndex(Math.max(0, currentPreviewIndex - 1))}
+                        disabled={currentPreviewIndex === 0}
+                        className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      </button>
+                      <span className="text-sm text-gray-600">
+                        {currentPreviewIndex + 1} / {uploadedDocFiles.length}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPreviewIndex(Math.min(uploadedDocFiles.length - 1, currentPreviewIndex + 1))}
+                        disabled={currentPreviewIndex === uploadedDocFiles.length - 1}
+                        className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 bg-white">
+                  {currentPreview.type === 'image' && (
+                    <div className="flex justify-center items-center bg-gray-100 rounded-lg p-4">
+                      <img
+                        src={currentPreview.url}
+                        alt="Preview"
+                        className="max-w-full max-h-96 object-contain rounded shadow-lg"
+                      />
+                    </div>
+                  )}
+
+                  {currentPreview.type === 'pdf' && (
+                    <div className="w-full" style={{ height: '500px' }}>
+                      <embed
+                        src={currentPreview.url}
+                        type="application/pdf"
+                        className="w-full h-full rounded shadow-lg"
+                      />
+                      <p className="text-xs text-gray-500 mt-2 text-center">
+                        PDF preview may not be supported in all browsers. The document will be saved correctly.
+                      </p>
+                    </div>
+                  )}
+
+                  {currentPreview.type === 'text' && (
+                    <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
+                      <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
+                        {currentPreview.content.substring(0, 2000)}
+                        {currentPreview.content.length > 2000 && '\n\n... (Content truncated for preview)'}
+                      </pre>
+                    </div>
+                  )}
+
+                  {currentPreview.type === 'docx' && (
+                    <div className="bg-white rounded-lg p-6 max-h-96 overflow-y-auto border border-gray-200">
+                      <div
+                        className="prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: currentPreview.content }}
+                      />
+                    </div>
+                  )}
+
+                  {currentPreview.type === 'other' && (
+                    <div className="bg-gray-50 rounded-lg p-6 text-center">
+                      <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-800 font-medium mb-2">{currentPreview.fileName}</p>
+                      <div className="space-y-1 text-sm text-gray-600">
+                        <p>Size: {currentPreview.fileSize}</p>
+                        <p>Type: {currentPreview.fileType}</p>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-4">
+                        Preview not available for this file type, but it will be saved correctly.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="text-center mt-4">
+              <input
+                type="file"
+                onChange={onFileUpload}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,image/*"
+                multiple
+                disabled={lockInteractionWhenLoading && primaryActionLoading}
+                className="hidden"
+                id="doc-file-upload"
+              />
+              <label
+                htmlFor="doc-file-upload"
+                className={`inline-block bg-blue-500 text-white px-6 py-2 rounded-lg transition-colors ${lockInteractionWhenLoading && primaryActionLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600 cursor-pointer'}`}
+              >
+                Choose Files
+              </label>
+            </div>
           </div>
 
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -121,97 +223,7 @@ export default function UploadDocumentModal({
             </div>
           )}
 
-          {uploadPreviews.length > 0 && uploadPreviews[currentPreviewIndex] && (
-            <div className="border-2 border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  Preview: {uploadPreviews[currentPreviewIndex].fileName}
-                </h3>
-                {uploadedDocFiles.length > 1 && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setCurrentPreviewIndex(Math.max(0, currentPreviewIndex - 1))}
-                      disabled={currentPreviewIndex === 0}
-                      className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                    <span className="text-sm text-gray-600">
-                      {currentPreviewIndex + 1} / {uploadedDocFiles.length}
-                    </span>
-                    <button
-                      onClick={() => setCurrentPreviewIndex(Math.min(uploadedDocFiles.length - 1, currentPreviewIndex + 1))}
-                      disabled={currentPreviewIndex === uploadedDocFiles.length - 1}
-                      className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="p-4 bg-white">
-                {uploadPreviews[currentPreviewIndex].type === 'image' && (
-                  <div className="flex justify-center items-center bg-gray-100 rounded-lg p-4">
-                    <img 
-                      src={uploadPreviews[currentPreviewIndex].url} 
-                      alt="Preview" 
-                      className="max-w-full max-h-96 object-contain rounded shadow-lg"
-                    />
-                  </div>
-                )}
-                
-                {uploadPreviews[currentPreviewIndex].type === 'pdf' && (
-                  <div className="w-full" style={{ height: '500px' }}>
-                    <embed
-                      src={uploadPreviews[currentPreviewIndex].url}
-                      type="application/pdf"
-                      className="w-full h-full rounded shadow-lg"
-                    />
-                    <p className="text-xs text-gray-500 mt-2 text-center">
-                      PDF preview may not be supported in all browsers. The document will be saved correctly.
-                    </p>
-                  </div>
-                )}
-                
-                {uploadPreviews[currentPreviewIndex].type === 'text' && (
-                  <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
-                    <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
-                      {uploadPreviews[currentPreviewIndex].content.substring(0, 2000)}
-                      {uploadPreviews[currentPreviewIndex].content.length > 2000 && '\n\n... (Content truncated for preview)'}
-                    </pre>
-                  </div>
-                )}
-                
-                {uploadPreviews[currentPreviewIndex].type === 'docx' && (
-                  <div className="bg-white rounded-lg p-6 max-h-96 overflow-y-auto border border-gray-200">
-                    <div 
-                      className="prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: uploadPreviews[currentPreviewIndex].content }}
-                    />
-                  </div>
-                )}
-                
-                {uploadPreviews[currentPreviewIndex].type === 'other' && (
-                  <div className="bg-gray-50 rounded-lg p-6 text-center">
-                    <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-800 font-medium mb-2">{uploadPreviews[currentPreviewIndex].fileName}</p>
-                    <div className="space-y-1 text-sm text-gray-600">
-                      <p>Size: {uploadPreviews[currentPreviewIndex].fileSize}</p>
-                      <p>Type: {uploadPreviews[currentPreviewIndex].fileType}</p>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-4">
-                      Preview not available for this file type, but it will be saved correctly.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+
         </div>
 
         {/* Display tags/custom fields */}
@@ -297,10 +309,10 @@ export default function UploadDocumentModal({
         </div>
 
         {lockInteractionWhenLoading && primaryActionLoading && (
-          <div className="absolute inset-0 bg-white/85 backdrop-blur-[1px] flex items-center justify-center z-10">
+          <div className="fixed inset-0 bg-black/45 backdrop-blur-[1px] flex items-center justify-center z-[70]">
             <div className="flex flex-col items-center gap-3">
               <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-              <p className="text-sm font-medium text-gray-700">{loadingOverlayText}</p>
+              <p className="text-sm font-medium text-white">{loadingOverlayText}</p>
             </div>
           </div>
         )}

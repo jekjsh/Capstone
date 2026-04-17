@@ -230,7 +230,7 @@ export default function SharedSidebar({
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white hover:bg-opacity-20 transition-colors border-l-4 border-transparent"
             >
               <Palette className="w-5 h-5 flex-shrink-0" />
-              <span>Customize System</span>
+              <span>Customize Theme</span>
             </button>
           )}
           {onConfigureUserId && (

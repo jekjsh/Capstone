@@ -106,7 +106,7 @@ export default function SystemAdminIDFormatter({
 
   const generateSampleId = (type, fmt) => {
     const separator = type === 'admin' ? fmt.adminSeparator : fmt.userSeparator;
-    let id = fmt.prefix;
+    let id = fmt.prefix || '';
     
     for (let i = 0; i < fmt.segmentCount; i++) {
       id += separator + 'X'.repeat(fmt.segmentLength[i] || 2);
@@ -122,7 +122,8 @@ export default function SystemAdminIDFormatter({
       const count = Number(value) || 1;
       const normalizedLengths = Array.from({ length: count }, (_, idx) => {
         const existing = Number(format.segmentLength[idx]);
-        return Number.isInteger(existing) && existing > 0 ? existing : 2;
+        if (!Number.isInteger(existing) || existing < 1) return 2;
+        return Math.min(existing, 6);
       });
       newFormat.segmentLength = normalizedLengths;
     }
@@ -139,15 +140,6 @@ export default function SystemAdminIDFormatter({
 
   const validateFormat = () => {
     const newErrors = {};
-    
-    if (!format.prefix.trim()) {
-      newErrors.prefix = 'Prefix is required';
-    }
-    
-    // Check that separators are not the same
-    if (format.adminSeparator === format.userSeparator) {
-      newErrors.separators = 'Admin and User separators cannot be the same';
-    }
     
     if (format.customFormat) {
       if (!customPattern.admin.trim()) {
@@ -250,7 +242,8 @@ export default function SystemAdminIDFormatter({
         .slice(0, Number(format.segmentCount) || 1)
         .map((len) => {
           const parsed = Number(len);
-          return Number.isInteger(parsed) && parsed > 0 ? parsed : 2;
+          if (!Number.isInteger(parsed) || parsed < 1) return 2;
+          return Math.min(parsed, 6);
         });
 
       // Convert UI format to backend format (org is now nullable)
@@ -421,7 +414,7 @@ export default function SystemAdminIDFormatter({
                 />
                 {errors.prefix && <p className="mt-1 text-sm text-red-500">{errors.prefix}</p>}
                 <p className="mt-1 text-xs text-gray-500">
-                  Your organization's unique identifier (2-10 characters)
+                  Optional organization identifier (up to 10 characters)
                 </p>
               </div>
 
@@ -461,13 +454,6 @@ export default function SystemAdminIDFormatter({
                 </div>
               </div>
 
-              {errors.separators && (
-                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-800">{errors.separators}</p>
-                </div>
-              )}
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Number of Segments
@@ -495,13 +481,13 @@ export default function SystemAdminIDFormatter({
                       <input
                         type="number"
                         min="1"
-                        max="10"
+                        max="6"
                         value={format.segmentLength[i] || 2}
                         onChange={(e) => {
                           let value = parseInt(e.target.value) || 2;
-                          // Enforce max of 10
-                          if (value > 10) {
-                            value = 10;
+                          // Enforce max of 6
+                          if (value > 6) {
+                            value = 6;
                           }
                           // Enforce min of 1
                           if (value < 1) {
@@ -512,18 +498,18 @@ export default function SystemAdminIDFormatter({
                           handleFormatChange('segmentLength', newLengths);
                         }}
                         className={`w-full px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 ${
-                          (format.segmentLength[i] || 2) > 10 
+                          (format.segmentLength[i] || 2) > 6 
                             ? 'border-red-500 focus:ring-red-500' 
                             : 'border-gray-300 focus:ring-indigo-500'
                         }`}
                       />
-                      {(format.segmentLength[i] || 2) > 10 && (
-                        <p className="text-xs text-red-600 mt-1">Max 10 characters</p>
+                      {(format.segmentLength[i] || 2) > 6 && (
+                        <p className="text-xs text-red-600 mt-1">Max 6 characters</p>
                       )}
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Each segment can be 1-10 characters maximum</p>
+                <p className="text-xs text-gray-500 mt-2">Each segment can be 1-6 characters maximum</p>
               </div>
             </div>
 

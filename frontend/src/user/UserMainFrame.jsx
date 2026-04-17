@@ -561,9 +561,35 @@ const [newField, setNewField] = useState({
       }
     };
 
-    refreshWorkspace();
-    const intervalId = setInterval(refreshWorkspace, 5000);
-    return () => clearInterval(intervalId);
+    let intervalId = null;
+
+    const startPolling = () => {
+      if (intervalId) return;
+      intervalId = setInterval(refreshWorkspace, 30000);
+    };
+
+    const stopPolling = () => {
+      if (!intervalId) return;
+      clearInterval(intervalId);
+      intervalId = null;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshWorkspace();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    handleVisibilityChange();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [activeSection, currentUser.user_index, loggedInUser?.full_data?.user_index]);
 
   // Fetch tags from backend
@@ -1787,9 +1813,79 @@ const handlePermanentDeleteFolder = async (folderId) => {
     return `${safeLastName}_${safeCategory}${extension}`;
   };
 
+  const normalizeTextForMatching = (value) => {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const toInitials = (value) => {
+    const words = normalizeTextForMatching(value).split(' ').filter(Boolean);
+    if (words.length < 2) return '';
+    return words.map((word) => word[0]).join('');
+  };
+
+  const findMatchedFolderForCategoryName = (categoryName, folderList = []) => {
+    const normalizedCategory = normalizeTextForMatching(categoryName);
+    if (!normalizedCategory) return null;
+
+    const exact = (folderList || []).find((folder) => normalizeTextForMatching(folder?.folder_name) === normalizedCategory);
+    if (exact) return exact;
+
+    const partial = (folderList || []).find((folder) => {
+      const folderName = normalizeTextForMatching(folder?.folder_name);
+      return folderName && (folderName.includes(normalizedCategory) || normalizedCategory.includes(folderName));
+    });
+
+    return partial || null;
+  };
+
+  const findMatchedFolderFromText = (fileName, extractedText, folderList = []) => {
+    const combined = normalizeTextForMatching(`${fileName || ''} ${extractedText || ''}`);
+    if (!combined) return { folder: null, confidence: 0 };
+
+    let bestFolder = null;
+    let bestScore = 0;
+    let bestPercent = 0;
+
+    (folderList || []).forEach((folder) => {
+      const folderName = normalizeTextForMatching(folder?.folder_name || '');
+      if (!folderName) return;
+
+      let score = 0;
+      if (combined.includes(folderName)) {
+        score += folderName.length + 8;
+      }
+
+      folderName.split(' ').forEach((word) => {
+        if (word.length >= 3 && combined.includes(word)) {
+          score += word.length;
+        }
+      });
+
+      const maxScore =
+        (folderName ? folderName.length + 8 : 0) +
+        folderName.split(' ').reduce((sum, word) => (word.length >= 3 ? sum + word.length : sum), 0);
+      const percent = maxScore > 0 ? Math.min(100, Math.round((score / maxScore) * 100)) : 0;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPercent = percent;
+        bestFolder = folder;
+      }
+    });
+
+    return {
+      folder: bestScore > 0 ? bestFolder : null,
+      confidence: bestScore > 0 ? bestPercent : 0,
+    };
+  };
+
   const pickBestCategoryFromDetectedText = (fileName, extractedText, categories = []) => {
-    const combined = `${String(fileName || '')} ${String(extractedText || '')}`.toLowerCase();
-    if (!combined.trim() || !Array.isArray(categories) || categories.length === 0) {
+    const combined = normalizeTextForMatching(`${String(fileName || '')} ${String(extractedText || '')}`);
+    if (!combined || !Array.isArray(categories) || categories.length === 0) {
       return { category: null, confidence: 0 };
     }
 
@@ -1798,8 +1894,8 @@ const handlePermanentDeleteFolder = async (folderId) => {
     let bestPercent = 0;
 
     categories.forEach((category) => {
-      const categoryName = String(category?.category_name || '').toLowerCase().trim();
-      const categoryDesc = String(category?.category_desc || '').toLowerCase().trim();
+      const categoryName = normalizeTextForMatching(category?.category_name || '');
+      const categoryDesc = normalizeTextForMatching(category?.category_desc || '');
       if (!categoryName && !categoryDesc) return;
 
       const categoryText = `${categoryName} ${categoryDesc}`.trim();
@@ -1808,6 +1904,16 @@ const handlePermanentDeleteFolder = async (folderId) => {
       let score = 0;
       if (categoryName && combined.includes(categoryName)) score += categoryName.length + 5;
       if (categoryDesc && combined.includes(categoryDesc)) score += categoryDesc.length + 3;
+
+      const nameInitials = toInitials(categoryName);
+      if (nameInitials && combined.includes(nameInitials)) {
+        score += nameInitials.length + 2;
+      }
+
+      const descInitials = toInitials(categoryDesc);
+      if (descInitials && combined.includes(descInitials)) {
+        score += descInitials.length + 1;
+      }
 
       const words = categoryText.split(/\s+/).filter(Boolean);
       words.forEach((word) => {
@@ -1917,6 +2023,18 @@ const handlePermanentDeleteFolder = async (folderId) => {
 
           const predicted = pickBestCategoryFromDetectedText(file.name, extractedText, userCategories);
           const predictedCategory = predicted.category;
+          const matchedFolderByCategory = findMatchedFolderForCategoryName(predictedCategory?.category_name || '', folders);
+          const folderNameMatch = findMatchedFolderFromText(file.name, extractedText, folders);
+          const matchedFolderByName = matchedFolderByCategory ? null : folderNameMatch.folder;
+          const matchedFolder = matchedFolderByCategory || matchedFolderByName;
+          const matchReason = matchedFolderByCategory
+            ? 'category'
+            : matchedFolderByName
+              ? 'folder-name'
+              : '';
+          const matchConfidence = matchedFolderByCategory
+            ? (predicted.confidence || 0)
+            : (matchedFolderByName ? (folderNameMatch.confidence || 0) : 0);
 
           return {
             fileName: file.name,
@@ -1925,6 +2043,11 @@ const handlePermanentDeleteFolder = async (folderId) => {
             isOcrFile,
             predictedCategoryName: predictedCategory?.category_name || '',
             predictedMatchPercent: predicted.confidence || 0,
+            matchedFolderId: matchedFolder?.folder_id || null,
+            matchedFolderName: matchedFolder?.folder_name || '',
+            routeToMatchedFolder: Boolean(matchedFolder?.folder_id),
+            matchReason,
+            matchConfidence,
           };
         })
       );
@@ -1936,7 +2059,7 @@ const handlePermanentDeleteFolder = async (folderId) => {
     }
   };
 
-  const performUploadDocument = async (namesOverride = null) => {
+  const performUploadDocument = async (namesOverride = null, folderTargetsOverride = null) => {
     if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
       alert('Please select at least one file to upload');
       return;
@@ -1946,13 +2069,16 @@ const handlePermanentDeleteFolder = async (folderId) => {
       const uploadPromises = uploadedDocFiles.map(async (file, index) => {
         try {
           const resolvedDocName = ((namesOverride || uploadFileNames)[index] || file.name || '').trim() || file.name;
+          const resolvedFolderId = Array.isArray(folderTargetsOverride)
+            ? (folderTargetsOverride[index] ?? currentFolder ?? null)
+            : currentFolder;
 
           // Upload file using multipart form data
           const uploadedDoc = await documentAPI.uploadFiles(
             [file],
             resolvedDocName,
             'Uploaded document',
-            currentFolder,
+            resolvedFolderId,
             undefined,
             { autoCategorize: autoCategorizeUploads }
           );
@@ -2027,8 +2153,14 @@ const handlePermanentDeleteFolder = async (folderId) => {
     setIsSubmittingDetectedUpload(true);
     try {
       const confirmedNames = detectedUploadItems.map((item, index) => item.finalName || uploadedDocFiles[index]?.name || 'file');
+      const folderTargets = detectedUploadItems.map((item) => {
+        if (item.routeToMatchedFolder && item.matchedFolderId) {
+          return item.matchedFolderId;
+        }
+        return currentFolder;
+      });
       setUploadFileNames(confirmedNames);
-      await performUploadDocument(confirmedNames);
+      await performUploadDocument(confirmedNames, folderTargets);
     } finally {
       setIsSubmittingDetectedUpload(false);
     }

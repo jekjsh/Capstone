@@ -8,16 +8,17 @@ export default function Notifications({ currentUser, onNotificationNavigate }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch notifications on mount and periodically
+  // Fetch notifications once on mount.
   useEffect(() => {
     loadNotifications();
-    // Check for new notifications every 30 seconds
-    const interval = setInterval(() => {
-      loadNotifications();
-    }, 30000);
-
-    return () => clearInterval(interval);
   }, []);
+
+  // Refresh notifications each time the panel is opened.
+  useEffect(() => {
+    if (showNotifications) {
+      loadNotifications();
+    }
+  }, [showNotifications]);
 
   const loadNotifications = async () => {
     try {

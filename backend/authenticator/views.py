@@ -9,14 +9,95 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from django.db.models import Q
+from pathlib import Path
 
 from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer, IdFormatSerializer, UserCreationRequestSerializer, UserCreationRequestCreateSerializer
 from monitoring.models import AuditLog, Notification
 
 User = get_user_model()
+
+BASE_ORGANIZATION_TYPE_OPTIONS = [
+    'Board',
+    'Administrator',
+    'Office',
+    'Department',
+    'Division',
+]
+ORGANIZATION_TYPE_FILE_PATH = Path(settings.BASE_DIR) / 'organization_unit_types.txt'
+
+
+def _read_custom_organization_types():
+    if not ORGANIZATION_TYPE_FILE_PATH.exists():
+        return []
+
+    custom_types = []
+    seen = set()
+
+    with ORGANIZATION_TYPE_FILE_PATH.open('r', encoding='utf-8') as handle:
+        for raw_line in handle:
+            item = raw_line.strip()
+            if not item:
+                continue
+
+            normalized = item.lower()
+            if normalized in seen:
+                continue
+
+            seen.add(normalized)
+            custom_types.append(item)
+
+    return custom_types
+
+
+def _write_custom_organization_types(custom_types):
+    ORGANIZATION_TYPE_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with ORGANIZATION_TYPE_FILE_PATH.open('w', encoding='utf-8') as handle:
+        for item in custom_types:
+            handle.write(f'{item}\n')
+
+
+class OrganizationUnitTypeView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, *args, **kwargs):
+        return Response({'types': _read_custom_organization_types()}, status=status.HTTP_200_OK)
+
+    def post(self, request, *args, **kwargs):
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return Response({'detail': 'Type name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        normalized_name = name.lower()
+        reserved = {item.lower() for item in BASE_ORGANIZATION_TYPE_OPTIONS}
+        if normalized_name in reserved:
+            return Response({'detail': 'This type is already part of the default list.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        custom_types = _read_custom_organization_types()
+        existing = {item.lower() for item in custom_types}
+        if normalized_name in existing:
+            return Response({'detail': 'This custom type already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        custom_types.append(name)
+        _write_custom_organization_types(custom_types)
+        return Response({'types': custom_types}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, *args, **kwargs):
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return Response({'detail': 'Type name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        custom_types = _read_custom_organization_types()
+        remaining = [item for item in custom_types if item.lower() != name.lower()]
+        if len(remaining) == len(custom_types):
+            return Response({'detail': 'Custom type not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        _write_custom_organization_types(remaining)
+        return Response({'types': remaining}, status=status.HTTP_200_OK)
 
 # 1. Login View (Uses our custom token serializer)
 class CustomTokenObtainPairView(TokenObtainPairView):

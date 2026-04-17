@@ -17,7 +17,7 @@ class Organization(models.Model):
 
 class IdFormat(models.Model):
     format_id = models.AutoField(primary_key=True)
-    prefix = models.CharField(max_length=20)
+    prefix = models.CharField(max_length=20, null=True, blank=True)
     admin_separator = models.CharField(max_length=5)
     user_separator = models.CharField(max_length=5)
     segment1_len = models.IntegerField()
