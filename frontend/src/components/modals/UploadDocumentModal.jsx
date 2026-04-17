@@ -41,8 +41,8 @@ export default function UploadDocumentModal({
             {!currentPreview && (
               <div className="text-center py-6">
                 <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">Upload document files (PDF, DOCX, XLSX, Images, Text, etc.)</p>
-                <p className="text-sm text-gray-500 mb-4">You can select multiple files at once</p>
+                <p className="text-gray-600 mb-2">Upload document file (PDF, DOCX, XLSX, Images, Text)</p>
+                <p className="text-sm text-gray-500 mb-4">Select one file at a time</p>
               </div>
             )}
 
@@ -144,7 +144,6 @@ export default function UploadDocumentModal({
                 type="file"
                 onChange={onFileUpload}
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,image/*"
-                multiple
                 disabled={lockInteractionWhenLoading && primaryActionLoading}
                 className="hidden"
                 id="doc-file-upload"
@@ -153,7 +152,7 @@ export default function UploadDocumentModal({
                 htmlFor="doc-file-upload"
                 className={`inline-block bg-blue-500 text-white px-6 py-2 rounded-lg transition-colors ${lockInteractionWhenLoading && primaryActionLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600 cursor-pointer'}`}
               >
-                Choose Files
+                Choose File
               </label>
             </div>
           </div>

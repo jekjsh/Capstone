@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from django.utils import timezone
 from datetime import datetime
 import uuid
@@ -72,6 +72,9 @@ class FolderViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def perform_destroy(self, instance):
+        if not self._can_manage_deletions(self.request.user, folder=instance):
+            raise PermissionDenied('Only the folder owner or an admin can delete this folder.')
+
         if instance.owning_org_id != self.request.user.org_id:
             raise PermissionDenied('Only the owner organization can delete this folder.')
         now = timezone.now()
@@ -106,6 +109,17 @@ class FolderViewSet(viewsets.ModelViewSet):
             return True
 
         return False
+
+    def _can_manage_deletions(self, user, folder=None):
+        role = getattr(user, 'role_type', None)
+        if bool(user and (getattr(user, 'is_superuser', False) or role in {'admin', 'system_admin'})):
+            return True
+
+        if folder is None:
+            return False
+
+        owner_user_index = getattr(folder, 'created_by_user_id', None) or getattr(folder, 'user_index_id', None)
+        return str(owner_user_index or '') == str(getattr(user, 'pk', '') or '')
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated, IsOrgMember, CanAccessFolder], url_path='download-zip')
     def download_zip(self, request, pk=None):
@@ -180,6 +194,17 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         zip_buffer.seek(0)
         filename = self._sanitize_zip_part(root_folder.folder_name, f'folder_{root_folder.folder_id}') + '.zip'
+
+        try:
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Download Folder ZIP',
+                audit_desc=f"Downloaded folder ZIP '{root_folder.folder_name}' (folder_id={root_folder.folder_id}, files={added_files})",
+                audit_status='Success'
+            )
+        except Exception:
+            pass
+
         response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -374,6 +399,9 @@ class FolderViewSet(viewsets.ModelViewSet):
         if folder is None:
             return Response({'detail': 'Folder not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        if not self._can_manage_deletions(request.user, folder=folder):
+            return Response({'detail': 'Only the folder owner or an admin can restore this folder.'}, status=status.HTTP_403_FORBIDDEN)
+
         if folder.owning_org_id != request.user.org_id:
             return Response({'detail': 'Only owner organization can restore this folder.'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -391,6 +419,9 @@ class FolderViewSet(viewsets.ModelViewSet):
         folder = Folder.objects.filter(folder_id=pk).first()
         if folder is None:
             return Response({'detail': 'Folder not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not self._can_manage_deletions(request.user, folder=folder):
+            return Response({'detail': 'Only the folder owner or an admin can permanently delete this folder.'}, status=status.HTTP_403_FORBIDDEN)
 
         if folder.owning_org_id != request.user.org_id:
             return Response({'detail': 'Only owner organization can permanently delete this folder.'}, status=status.HTTP_403_FORBIDDEN)
@@ -819,6 +850,37 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return
 
         DocumentCategory.objects.get_or_create(doc=document, category=matched_category)
+
+    def _can_download_document_for_user(self, document, user):
+        owner_user_index = document.uploaded_by_user_id or document.user_index_id
+        user_index = getattr(user, 'user_index', None)
+        user_org_id = getattr(user, 'org_id', None)
+        user_role = getattr(user, 'role_type', '') or ''
+
+        if owner_user_index and owner_user_index == user_index:
+            return True
+
+        if user_role == 'admin' and user_org_id is not None and getattr(document, 'owning_org_id', None) == user_org_id:
+            return True
+
+        if not owner_user_index and user_role == 'admin' and getattr(document, 'owning_org_id', None) == user_org_id:
+            return True
+
+        if DocumentShare.objects.filter(doc=document, shared_to_user=user).exists():
+            return True
+
+        return False
+
+    def _can_manage_deletions(self, user, document=None):
+        role = getattr(user, 'role_type', None)
+        if bool(user and (getattr(user, 'is_superuser', False) or role in {'admin', 'system_admin'})):
+            return True
+
+        if document is None:
+            return False
+
+        owner_user_index = getattr(document, 'uploaded_by_user_id', None) or getattr(document, 'user_index_id', None)
+        return str(owner_user_index or '') == str(getattr(user, 'pk', '') or '')
     
     def get_queryset(self):
         user = self.request.user
@@ -873,6 +935,31 @@ class DocumentViewSet(viewsets.ModelViewSet):
         )
 
         self._run_auto_categorization(document)
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated, IsOrgMember], url_path='download-file')
+    def download_file(self, request, pk=None):
+        document = self.get_object()
+
+        if not self._can_download_document_for_user(document, request.user):
+            raise PermissionDenied('You do not have permission to download this document.')
+
+        if not document.doc_file:
+            return Response({'detail': 'Document file is not available.'}, status=status.HTTP_404_NOT_FOUND)
+
+        download_name = document.doc_name or getattr(document.doc_file, 'name', f'document_{document.doc_id}')
+
+        try:
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Download Document',
+                audit_desc=f"Downloaded document '{document.doc_name}' (doc_id={document.doc_id})",
+                audit_status='Success'
+            )
+        except Exception:
+            pass
+
+        document.doc_file.open('rb')
+        return FileResponse(document.doc_file, as_attachment=True, filename=download_name)
 
     def perform_update(self, serializer):
         instance = self.get_object()
@@ -965,6 +1052,12 @@ class DocumentViewSet(viewsets.ModelViewSet):
             document = self.get_object()
             doc_id = getattr(document, 'doc_id', self.kwargs.get('pk', 'unknown'))
 
+            if not self._can_manage_deletions(request.user, document=document):
+                return Response(
+                    {'detail': 'Only the document owner or an admin can delete this document.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
             if document.owning_org_id != request.user.org_id:
                 return Response(
                     {'detail': 'Only the owner organization can delete this document.'},
@@ -1027,6 +1120,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if document is None:
             return Response({'detail': 'Document not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        if not self._can_manage_deletions(request.user, document=document):
+            return Response({'detail': 'Only the document owner or an admin can restore this document.'}, status=status.HTTP_403_FORBIDDEN)
+
         user_org_id = request.user.org_id
         if document.owning_org_id != user_org_id and (not document.folder or document.folder.owning_org_id != user_org_id):
             return Response({'detail': 'You do not have permission to restore this document.'}, status=status.HTTP_403_FORBIDDEN)
@@ -1042,6 +1138,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         document = Document.objects.filter(doc_id=pk).first()
         if document is None:
             return Response({'detail': 'Document not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not self._can_manage_deletions(request.user, document=document):
+            return Response({'detail': 'Only the document owner or an admin can permanently delete this document.'}, status=status.HTTP_403_FORBIDDEN)
 
         user_org_id = request.user.org_id
         if document.owning_org_id != user_org_id and (not document.folder or document.folder.owning_org_id != user_org_id):
@@ -1060,7 +1159,16 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if not user.org:
             return Response({'deleted_count': 0}, status=status.HTTP_200_OK)
 
-        deleted_queryset = Document.objects.filter(owning_org=user.org, is_deleted=True)
+        if self._can_manage_deletions(user):
+            deleted_queryset = Document.objects.filter(owning_org=user.org, is_deleted=True)
+        else:
+            from django.db.models import Q
+            deleted_queryset = Document.objects.filter(
+                owning_org=user.org,
+                is_deleted=True,
+            ).filter(
+                Q(uploaded_by_user=user) | Q(user_index=user)
+            )
         deleted_count = deleted_queryset.count()
         batch_id = str(uuid.uuid4())
 
@@ -1298,6 +1406,16 @@ class DocumentShareViewSet(viewsets.ModelViewSet):
                 shared_to_user_id=shared_to_user_id,
             ).first()
             if existing_share is not None:
+                try:
+                    target_user = getattr(existing_share.shared_to_user, 'user_id', 'Unknown User')
+                    AuditLog.objects.create(
+                        user_index=request.user,
+                        audit_action='Share Document',
+                        audit_desc=f"Share already exists for document '{document.doc_name}' to user '{target_user}'",
+                        audit_status='Success'
+                    )
+                except Exception:
+                    pass
                 serializer = self.get_serializer(existing_share)
                 return Response(serializer.data, status=status.HTTP_200_OK)
 

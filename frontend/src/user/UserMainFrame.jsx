@@ -650,6 +650,9 @@ const [newField, setNewField] = useState({
  };
 
  const userOrgCode = findOrgCodeById(loggedInUser?.full_data?.org || loggedInUser?.org || currentUser?.org);
+ const hasPrivilegedDeleteRole = ['admin', 'system_admin'].includes(
+  String(loggedInUser?.full_data?.role_type || loggedInUser?.role_type || currentUser?.role_type || currentUser?.role || '').toLowerCase()
+ );
 
  const menuItems = [
   { id: 'documents', label: `${userOrgCode || 'Organization'} Files`, icon: FileText },
@@ -803,6 +806,16 @@ const handleToggleFieldActive = async (fieldId) => {
  const handleDeleteFolder = async (folderId) => {
     // Get folder name
     const folder = folders.find(f => f.folder_id === folderId);
+    if (!folder) {
+      alert('Folder not found.');
+      return;
+    }
+
+    if (!hasPrivilegedDeleteRole && !isFolderOwnedByCurrentUser(folder)) {
+      alert('You can only delete folders that you own.');
+      return;
+    }
+
     const folderName = folder?.folder_name || 'Folder';
     
     // Get documents in this folder
@@ -1151,6 +1164,16 @@ Document ID: ${Date.now()}
   
   const handleDeleteDocument = async (docId) => {
     const docToDelete = userDocuments.find(doc => String(doc.id || doc.doc_id) === String(docId));
+    if (!docToDelete) {
+      alert('Document not found.');
+      return;
+    }
+
+    if (!hasPrivilegedDeleteRole && !isDocumentOwnedByCurrentUser(docToDelete)) {
+      alert('You can only delete documents that you own.');
+      return;
+    }
+
   if (window.confirm('Move this document to Recycle Bin?')) {
     try {
       // Soft delete via API (sets is_deleted = true)
@@ -1503,21 +1526,24 @@ const handlePermanentDeleteFolder = async (folderId) => {
     }
   };
 
-  const handleDownloadDocument = (doc) => {
+  const handleDownloadDocument = async (doc) => {
     try {
       if (doc.can_open === false) {
         alert('Download is restricted by ownership policy for this shared file.');
         return;
       }
 
-      if (doc.doc_file_url) {
+      const docId = doc.doc_id || doc.id;
+      if (docId) {
+        const { blob, filename } = await documentAPI.downloadFile(docId);
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = doc.doc_file_url;
-        link.download = doc.doc_name || doc.title || 'document';
-        link.target = '_blank';
+        link.href = url;
+        link.download = filename || doc.doc_name || doc.title || 'document';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
         return;
       }
 
@@ -2395,6 +2421,16 @@ const handlePermanentDeleteFolder = async (folderId) => {
     const ownerRef = doc.uploaded_by_user || doc.user_index || null;
     const ownerIndex = String(ownerRef?.user_index || doc.uploaded_by_user_id || doc.user_index_id || '').trim();
     const owningOrgId = String(doc?.owning_org || doc?.org || '').trim();
+    return Boolean(currentUserIndex) && Boolean(ownerIndex) && currentUserIndex === ownerIndex && Boolean(currentOrgId) && currentOrgId === owningOrgId;
+  };
+
+  const isFolderOwnedByCurrentUser = (folder) => {
+    if (!folder) return false;
+    const currentUserIndex = String(loggedInUser?.full_data?.user_index || loggedInUser?.user_index || currentUser?.user_index || '').trim();
+    const currentOrgId = String(loggedInUser?.full_data?.org || loggedInUser?.org || currentUser?.org || '').trim();
+    const ownerRef = folder.created_by_user || folder.user_index || null;
+    const ownerIndex = String(ownerRef?.user_index || folder.created_by_user_id || folder.user_index_id || '').trim();
+    const owningOrgId = String(folder?.owning_org || folder?.org || '').trim();
     return Boolean(currentUserIndex) && Boolean(ownerIndex) && currentUserIndex === ownerIndex && Boolean(currentOrgId) && currentOrgId === owningOrgId;
   };
 

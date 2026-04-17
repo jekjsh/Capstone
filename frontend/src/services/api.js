@@ -601,6 +601,28 @@ export const documentAPI = {
     }
     return await response.json();
   },
+
+  // Download a document file through backend endpoint (server-side audit logging)
+  downloadFile: async (documentId) => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/${documentId}/download-file/`);
+    if (!response.ok) {
+      let errorMessage = 'Failed to download document';
+      try {
+        const error = await response.json();
+        errorMessage = error.detail || error.error || errorMessage;
+      } catch (_) {
+        // Ignore JSON parse failures for non-JSON responses.
+      }
+      throw new Error(errorMessage);
+    }
+
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match ? decodeURIComponent(match[1]) : `document-${documentId}`;
+    const blob = await response.blob();
+
+    return { blob, filename };
+  },
 };
 
 export const ocrAPI = {

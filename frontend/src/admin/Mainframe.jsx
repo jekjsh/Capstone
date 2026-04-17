@@ -1701,21 +1701,34 @@ const handleViewDocumentHistory = async (doc) => {
   }
 };
 
-const handleDownloadDocument = (doc) => {
+const handleDownloadDocument = async (doc) => {
   if (doc.can_open === false) {
     alert('Download is restricted by ownership policy for this shared file.');
     return;
   }
 
-  if (doc.doc_file_url) {
-    const link = document.createElement('a');
-    link.href = doc.doc_file_url;
-    link.download = doc.doc_name || doc.title || 'document';
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } else if (doc.fileData) {
+  const docId = doc.doc_id || doc.id;
+
+  if (docId) {
+    try {
+      const { blob, filename } = await documentAPI.downloadFile(docId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || doc.doc_name || doc.title || 'document';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    } catch (error) {
+      console.error('Failed to download document via backend endpoint:', error);
+      alert(`Failed to download document: ${error.message}`);
+      return;
+    }
+  }
+
+  if (doc.fileData) {
     const link = document.createElement('a');
     link.href = doc.fileData;
     link.download = doc.fileName || doc.doc_name || doc.title;
@@ -1734,8 +1747,6 @@ const handleDownloadDocument = (doc) => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
-  
-  addAuditLog('Document Downloaded', `Admin downloaded: ${doc.doc_name || doc.title} (ID: ${doc.doc_id || doc.id})`, 'Success');
 };
 
 const handleDownloadFolder = async (folder) => {

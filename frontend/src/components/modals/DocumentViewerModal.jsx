@@ -54,7 +54,11 @@ export default function DocumentViewerModal({ show, document, onClose, onPrint, 
                   style={{ border: 'none' }}
                 />
               </div>
-            ) : document.fileData && (document.mimeType?.startsWith('image/')) ? (
+            ) : document.fileData && (
+              document.mimeType?.startsWith('image/') ||
+              String(document.format || '').toLowerCase() === 'image' ||
+              ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(String(document.format || '').toLowerCase())
+            ) ? (
               <div className="flex items-center justify-center h-full">
                 <img 
                   src={document.fileData} 

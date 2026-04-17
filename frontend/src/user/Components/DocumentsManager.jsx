@@ -797,7 +797,6 @@ export default function FileManagement({
                       onRename={onRenameDocument}
                       onDelete={() => onDeleteDocument(item.data.doc_id)}
                       onAddCategories={() => onAddCategories(item.data)}
-                      onPermissions={() => console.log('Permissions')}
                       onMoveToFolder={() => onMoveToFolder(item.data.doc_id)}
                     />
                   )}
@@ -901,7 +900,6 @@ export default function FileManagement({
                         onRename={onRenameDocument}
                         onDelete={() => onDeleteDocument(doc.doc_id)}
                         onAddCategories={() => onAddCategories(doc)}
-                        onPermissions={() => console.log('Permissions')}
                       />
                     </div>
                   </div>
