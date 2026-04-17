@@ -1,4 +1,4 @@
-import { MoreVertical, Share2, Edit, Trash2, Lock, Tag, Folder, Eye } from 'lucide-react';
+import { MoreVertical, Share2, Edit, Trash2, Tag, Folder, Eye } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
 export default function ContextMenu({
@@ -8,7 +8,6 @@ export default function ContextMenu({
   hideShareOption = false,
   onRename,
   onDelete,
-  onPermissions,
   onAddCategories,
   onDownload,
   onOpen,
@@ -163,17 +162,6 @@ export default function ContextMenu({
             >
               <Tag className="w-4 h-4" />
               <span>{itemType === 'folder' ? 'Set Category' : 'Add Categories'}</span>
-            </button>
-          )}
-
-          {/* Permissions */}
-          {onPermissions && (
-            <button
-              onClick={() => handleMenuClick(onPermissions)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 transition-colors border-b border-gray-100 text-sm"
-            >
-              <Lock className="w-4 h-4" />
-              <span>Permissions</span>
             </button>
           )}
 
