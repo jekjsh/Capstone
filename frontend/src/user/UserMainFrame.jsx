@@ -19,6 +19,7 @@ import DocumentHistoryModal from '../components/modals/DocumentHistoryModal';
 import UploadDocumentModal from '../components/modals/UploadDocumentModal';
 import RenameDetectedDocumentsModal from '../components/modals/RenameDetectedDocumentsModal';
 import CategoryMatchConfirmationModal from '../components/modals/CategoryMatchConfirmationModal';
+import FileConflictModal from '../components/modals/FileConflictModal';
 import OCRModal from '../components/modals/OCRModal';
 import PersonalInfoFormModal from '../components/modals/PersonalInfoFormModal';
 import SaveOptionsModal from '../components/modals/SaveOptionsModal';
@@ -329,6 +330,10 @@ export default function UserMainFrame({
   const [filterByTag, setFilterByTag] = useState({});
   const [uploadTagValues, setUploadTagValues] = useState({});
   const [autoCategorizeUploads, setAutoCategorizeUploads] = useState(false);
+  const [showFileConflictModal, setShowFileConflictModal] = useState(false);
+  const [fileConflict, setFileConflict] = useState(null); // { fileName, fileIndex, suggestedName, file }
+  const [isHandlingConflict, setIsHandlingConflict] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState(null); // { files, namesOverride, folderTargets, currentIndex }
 
   const [personalInfo, setPersonalInfo] = useState({
     fullName: '',
@@ -2085,29 +2090,60 @@ const handlePermanentDeleteFolder = async (folderId) => {
     }
   };
 
-  const performUploadDocument = async (namesOverride = null, folderTargetsOverride = null) => {
+  const performUploadDocument = async (namesOverride = null, folderTargetsOverride = null, startIndex = 0) => {
     if (!uploadedDocFiles || uploadedDocFiles.length === 0) {
       alert('Please select at least one file to upload');
       return;
     }
     
     try {
-      const uploadPromises = uploadedDocFiles.map(async (file, index) => {
-        try {
-          const resolvedDocName = ((namesOverride || uploadFileNames)[index] || file.name || '').trim() || file.name;
-          const resolvedFolderId = Array.isArray(folderTargetsOverride)
-            ? (folderTargetsOverride[index] ?? currentFolder ?? null)
-            : currentFolder;
+      const uploadedDocs = [];
+      
+      for (let index = startIndex; index < uploadedDocFiles.length; index++) {
+        const file = uploadedDocFiles[index];
+        const resolvedDocName = ((namesOverride || uploadFileNames)[index] || file.name || '').trim() || file.name;
+        const resolvedFolderId = Array.isArray(folderTargetsOverride)
+          ? (folderTargetsOverride[index] ?? currentFolder ?? null)
+          : currentFolder;
 
-          // Upload file using multipart form data
+        try {
+          // Check if file exists before uploading
+          const fileExistenceCheck = await documentAPI.checkFileExists(resolvedDocName, resolvedFolderId);
+          
+          if (fileExistenceCheck.exists) {
+            // Set conflict state and pause upload
+            setFileConflict({
+              fileName: resolvedDocName,
+              fileIndex: index,
+              suggestedName: fileExistenceCheck.suggested_name,
+              file: file,
+              action: null // Will be set when user responds
+            });
+            setUploadQueue({
+              files: uploadedDocFiles,
+              namesOverride: namesOverride,
+              folderTargets: folderTargetsOverride,
+              currentIndex: index
+            });
+            setShowFileConflictModal(true);
+            
+            // Return and wait for user to handle the conflict
+            return;
+          }
+
+          // No conflict, proceed with upload
+          const uploadOptions = { autoCategorize: autoCategorizeUploads };
+          
           const uploadedDoc = await documentAPI.uploadFiles(
             [file],
             resolvedDocName,
             'Uploaded document',
             resolvedFolderId,
             undefined,
-            { autoCategorize: autoCategorizeUploads }
+            uploadOptions
           );
+
+          uploadedDocs.push(uploadedDoc);
 
           // Audit log
           addAuditLog(
@@ -2115,16 +2151,13 @@ const handlePermanentDeleteFolder = async (folderId) => {
             `${resolvedDocName} (${(file.size / 1024).toFixed(2)} KB)`,
             'Success'
           );
-          
-          return uploadedDoc;
         } catch (error) {
           console.error('Failed to upload file:', file.name, error);
-          throw error;
+          alert(`Failed to upload ${file.name}: ${error.message}`);
         }
-      });
+      }
       
-      const uploadedDocs = await Promise.all(uploadPromises);
-      
+      // All files uploaded successfully
       // Refresh documents list from backend
       const allDocs = await documentAPI.getAll();
       setUserDocuments(allDocs);
@@ -2143,11 +2176,129 @@ const handlePermanentDeleteFolder = async (folderId) => {
       setCurrentPreviewIndex(0);
       setUploadTagValues({});
       setAutoCategorizeUploads(false);
-      alert(`${uploadedDocs.length} document${uploadedDocs.length > 1 ? 's' : ''} uploaded successfully!`);
+      setShowFileConflictModal(false);
+      setFileConflict(null);
+      setUploadQueue(null);
+      
+      if (uploadedDocs.length > 0) {
+        alert(`${uploadedDocs.length} document${uploadedDocs.length > 1 ? 's' : ''} uploaded successfully!`);
+      }
     } catch (error) {
       console.error('Failed to upload documents:', error);
       alert(`Failed to upload documents: ${error.message}`);
     }
+  };
+
+  const handleFileConflictOverride = async () => {
+    if (!fileConflict || !uploadQueue) return;
+    
+    setIsHandlingConflict(true);
+    try {
+      const file = uploadQueue.files[fileConflict.fileIndex];
+      const resolvedDocName = fileConflict.fileName;
+      const resolvedFolderId = Array.isArray(uploadQueue.folderTargets)
+        ? (uploadQueue.folderTargets[fileConflict.fileIndex] ?? currentFolder ?? null)
+        : currentFolder;
+
+      // Upload with override flag
+      const uploadOptions = { 
+        autoCategorize: autoCategorizeUploads,
+        overrideExisting: true 
+      };
+      
+      await documentAPI.uploadFiles(
+        [file],
+        resolvedDocName,
+        'Uploaded document',
+        resolvedFolderId,
+        undefined,
+        uploadOptions
+      );
+
+      // Audit log
+      addAuditLog(
+        'Document Uploaded (Override)',
+        `${resolvedDocName} (${(file.size / 1024).toFixed(2)} KB)`,
+        'Success'
+      );
+
+      setShowFileConflictModal(false);
+      setFileConflict(null);
+      setIsHandlingConflict(false);
+      
+      // Continue with remaining files
+      await performUploadDocument(uploadQueue.namesOverride, uploadQueue.folderTargets, uploadQueue.currentIndex + 1);
+    } catch (error) {
+      console.error('Failed to override file:', error);
+      alert(`Failed to override file: ${error.message}`);
+      setIsHandlingConflict(false);
+    }
+  };
+
+  const handleFileConflictRename = async () => {
+    if (!fileConflict || !uploadQueue) return;
+    
+    setIsHandlingConflict(true);
+    try {
+      const file = uploadQueue.files[fileConflict.fileIndex];
+      const suggestedName = fileConflict.suggestedName;
+      const resolvedFolderId = Array.isArray(uploadQueue.folderTargets)
+        ? (uploadQueue.folderTargets[fileConflict.fileIndex] ?? currentFolder ?? null)
+        : currentFolder;
+
+      // Update the filename to the suggested name
+      const updatedNamesOverride = uploadQueue.namesOverride ? [...uploadQueue.namesOverride] : uploadedDocFiles.map((_, i) => uploadFileNames[i]);
+      updatedNamesOverride[fileConflict.fileIndex] = suggestedName;
+
+      // Upload with new name
+      const uploadOptions = { 
+        autoCategorize: autoCategorizeUploads,
+        wasRenamed: true  // Flag to indicate this was a rename due to conflict
+      };
+      
+      await documentAPI.uploadFiles(
+        [file],
+        suggestedName,
+        'Uploaded document',
+        resolvedFolderId,
+        undefined,
+        uploadOptions
+      );
+
+      // Audit log
+      addAuditLog(
+        'Document Uploaded (Renamed)',
+        `${suggestedName} (${(file.size / 1024).toFixed(2)} KB)`,
+        'Success'
+      );
+
+      setShowFileConflictModal(false);
+      setFileConflict(null);
+      setIsHandlingConflict(false);
+      
+      // Continue with remaining files
+      await performUploadDocument(updatedNamesOverride, uploadQueue.folderTargets, uploadQueue.currentIndex + 1);
+    } catch (error) {
+      console.error('Failed to upload file with rename:', error);
+      alert(`Failed to upload file: ${error.message}`);
+      setIsHandlingConflict(false);
+    }
+  };
+
+  const handleFileConflictCancel = () => {
+    setShowFileConflictModal(false);
+    setFileConflict(null);
+    setUploadQueue(null);
+  };
+
+  const generateSuggestedName = (fileName) => {
+    const lastDotIndex = fileName.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+      return `${fileName}(1)`;
+    }
+    const name = fileName.substring(0, lastDotIndex);
+    const ext = fileName.substring(lastDotIndex);
+    return `${name}(1)${ext}`;
   };
 
   const handleUploadDocument = async () => {
@@ -2960,6 +3111,16 @@ const handleSaveToMyDocuments = (document, source) => {
         primaryActionLoadingLabel="Detecting documents..."
         lockInteractionWhenLoading
         loadingOverlayText="Detection in progress. Please wait until it finishes."
+      />
+
+      <FileConflictModal
+        show={showFileConflictModal}
+        fileName={fileConflict?.fileName}
+        suggestedName={fileConflict?.suggestedName}
+        onOverride={handleFileConflictOverride}
+        onRename={handleFileConflictRename}
+        onCancel={handleFileConflictCancel}
+        isLoading={isHandlingConflict}
       />
 
       <RenameDetectedDocumentsModal

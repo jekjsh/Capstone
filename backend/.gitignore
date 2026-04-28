@@ -8,3 +8,5 @@ env/
 
 # Ignore local environment variables (if the file is in this folder)
 .env
+
+media/
