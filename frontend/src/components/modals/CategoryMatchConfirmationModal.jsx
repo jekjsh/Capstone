@@ -33,13 +33,12 @@ export default function CategoryMatchConfirmationModal({
                   {item.predictedCategoryName ? (
                     <>
                       <p>
-                        We detected {item.predictedMatchPercent ?? 0}% match from the {item.predictedCategoryName} category.
+                        We detected a match from the {item.predictedCategoryName} category.
                         Do you want to apply this category?
                       </p>
                       {item.matchedFolderName ? (
                         <p className="mt-1 text-xs text-emerald-700">
-                          Matching folder found: {item.matchedFolderName}
-                          {item.matchConfidence > 0 && ` (${item.matchConfidence}% confidence)`}. After rename, this file will upload directly to that folder.
+                          Matching folder found: {item.matchedFolderName}. After rename, this file will upload directly to that folder.
                         </p>
                       ) : (
                         <p className="mt-1 text-xs text-amber-700">
@@ -55,8 +54,7 @@ export default function CategoryMatchConfirmationModal({
                       </p>
                       {item.matchedFolderName && (
                         <p className="mt-1 text-xs text-emerald-700">
-                          Folder name match found: {item.matchedFolderName}
-                          {item.matchConfidence > 0 && ` (${item.matchConfidence}% confidence)`}. After rename, this file will upload directly to that folder.
+                          Folder name match found: {item.matchedFolderName}. After rename, this file will upload directly to that folder.
                         </p>
                       )}
                     </>
