@@ -112,7 +112,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": "rkms",
         "USER": "postgres",
-        "PASSWORD": "capstone1",
+        "PASSWORD": "capston1",
         "HOST": "localhost",
         "PORT": "5432",
         "OPTIONS": {"sslmode": "prefer"},

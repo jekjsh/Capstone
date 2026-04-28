@@ -1732,6 +1732,13 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
+        """
+        Create a document approval request.
+        
+        This method handles approval requests where:
+        - Regular users request document access from their own organization
+        - The request is marked as pending and awaits approval from org admins
+        """
         serializer.save(
             requested_by_user=self.request.user,
             requesting_org=self.request.user.org,
@@ -1967,3 +1974,239 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(approval)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
+    def request_letter_from_parent(self, request):
+        """
+        Allow child organization admin to request a document letter from parent organization.
+        This action creates an approval request and automatically passes it to the parent org.
+        
+        Expected POST data:
+        {
+            'doc_id': <document_id>,
+            'approval_message': 'Request message'
+        }
+        """
+        # Only org admins can use this action
+        if getattr(request.user, 'role_type', None) != 'admin':
+            raise PermissionDenied('Only organization admins can request documents from parent organization.')
+        
+        user_org = request.user.org
+        if not user_org:
+            raise PermissionDenied('User must belong to an organization.')
+        
+        # Check if the organization has a parent (is not root)
+        if not user_org.parent_org:
+            return Response(
+                {'detail': 'Your organization is root. Cannot request from higher authority.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get document
+        doc_id = request.data.get('doc_id')
+        if not doc_id:
+            return Response(
+                {'detail': 'doc_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            doc = Document.objects.get(doc_id=doc_id)
+        except Document.DoesNotExist:
+            return Response(
+                {'detail': f'Document with id {doc_id} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        approval_message = request.data.get('approval_message', '')
+        
+        # Check if document already has a pending request to parent org
+        existing_request = DocumentApprovalRequest.objects.filter(
+            doc=doc,
+            requested_org=user_org.parent_org,
+            status='pending'
+        ).first()
+        
+        if existing_request:
+            return Response(
+                {'detail': f'A pending approval request for this document already exists for {user_org.parent_org.org_name}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create approval request
+        try:
+            approval = DocumentApprovalRequest.objects.create(
+                doc=doc,
+                requested_by_user=request.user,
+                requesting_org=user_org,
+                requested_org=user_org.parent_org,  # Request goes directly to parent
+                approval_message=approval_message,
+                status='passed_to_higher',  # Automatically passed to parent
+                reviewed_by_user=request.user,
+                reviewed_at=timezone.now(),
+                review_message=f"Requested by {user_org.org_name} admin for parent organization",
+                passed_to_org=user_org.parent_org
+            )
+            
+            # Share the document with all admins of the parent organization
+            try:
+                parent_admins = CustomUser.objects.filter(
+                    org=user_org.parent_org,
+                    role_type='admin',
+                    is_active=True
+                )
+                
+                for admin in parent_admins:
+                    DocumentShare.objects.get_or_create(
+                        doc=doc,
+                        shared_by_user=request.user,
+                        shared_to_user=admin,
+                        defaults={'share_msg': f"Document letter request from {user_org.org_name}"}
+                    )
+            except Exception as share_error:
+                print(f"Warning: Failed to create document shares for parent org admins: {str(share_error)}")
+            
+            # Notify admins of the parent organization
+            parent_admins = CustomUser.objects.filter(
+                org=user_org.parent_org,
+                role_type='admin',
+                is_active=True
+            )
+            
+            for admin in parent_admins:
+                Notification.objects.create(
+                    recipient_user=admin,
+                    actor_user=request.user,
+                    doc=doc,
+                    notif_msg=f"Document letter request from {user_org.org_name} admin {request.user.get_full_name()} for document '{doc.doc_name}'",
+                )
+            
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Request Document Letter from Parent',
+                audit_desc=f"Requested document letter from parent organization {user_org.parent_org.org_name} for document '{doc.doc_name}'",
+                audit_status='Success'
+            )
+            
+            serializer = self.get_serializer(approval)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Request Document Letter from Parent',
+                audit_desc=f"Failed to request document letter from parent: {error_msg}",
+                audit_status='Failed'
+            )
+            
+            return Response(
+                {'detail': f'Failed to create document letter request: {error_msg}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
+    def admin_request_from_organization(self, request):
+        """
+        Allow organization admin to request a document from their own organization.
+        This is useful when an admin needs to formally request a document on behalf of the organization.
+        
+        Expected POST data:
+        {
+            'doc_id': <document_id>,
+            'approval_message': 'Request message'
+        }
+        """
+        # Only org admins can use this action
+        if getattr(request.user, 'role_type', None) != 'admin':
+            raise PermissionDenied('Only organization admins can submit organization document requests.')
+        
+        user_org = request.user.org
+        if not user_org:
+            raise PermissionDenied('User must belong to an organization.')
+        
+        # Get document
+        doc_id = request.data.get('doc_id')
+        if not doc_id:
+            return Response(
+                {'detail': 'doc_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            doc = Document.objects.get(doc_id=doc_id)
+        except Document.DoesNotExist:
+            return Response(
+                {'detail': f'Document with id {doc_id} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        approval_message = request.data.get('approval_message', '')
+        
+        # Check if document already has a pending request from same org
+        existing_request = DocumentApprovalRequest.objects.filter(
+            doc=doc,
+            requested_org=user_org,
+            status='pending'
+        ).first()
+        
+        if existing_request:
+            return Response(
+                {'detail': f'A pending approval request for this document already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create approval request
+        try:
+            approval = DocumentApprovalRequest.objects.create(
+                doc=doc,
+                requested_by_user=request.user,
+                requesting_org=user_org,
+                requested_org=user_org,  # Request is for own organization
+                approval_message=approval_message,
+                status='pending'  # Awaits approval from other admins
+            )
+            
+            # Notify all admins in the organization (except the requester)
+            try:
+                other_admins = CustomUser.objects.filter(
+                    org=user_org,
+                    role_type='admin',
+                    is_active=True
+                ).exclude(user_index=request.user.user_index)
+                
+                for admin in other_admins:
+                    Notification.objects.create(
+                        recipient_user=admin,
+                        actor_user=request.user,
+                        doc=doc,
+                        notif_msg=f"Admin {request.user.get_full_name()} requested approval for document '{doc.doc_name}'",
+                    )
+            except Exception as notify_error:
+                print(f"Warning: Failed to notify admins: {str(notify_error)}")
+            
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Admin Request Document from Organization',
+                audit_desc=f"Requested document '{doc.doc_name}' for organization {user_org.org_name}",
+                audit_status='Success'
+            )
+            
+            serializer = self.get_serializer(approval)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Admin Request Document from Organization',
+                audit_desc=f"Failed to request document: {error_msg}",
+                audit_status='Failed'
+            )
+            
+            return Response(
+                {'detail': f'Failed to create document request: {error_msg}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
