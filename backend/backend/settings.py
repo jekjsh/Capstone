@@ -179,3 +179,12 @@ AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',  # Default Django auth (for admin)
     'authenticator.backends.CustomUserBackend',   # Custom auth (for API with user_id)
 ]
+
+# Email Configuration (Gmail SMTP for 2FA)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'auth.rkms@gmail.com'
+EMAIL_HOST_PASSWORD = 'bzux bdjj wlim euuq'  # Gmail App Password (with spaces as provided)
+DEFAULT_FROM_EMAIL = 'noreply@rkms.com'  # No-reply email address

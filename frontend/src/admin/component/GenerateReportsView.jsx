@@ -1,6 +1,6 @@
 import { FileText, Search, Download, Filter, ArrowUpDown, X } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
-import { documentAPI, folderShareAPI, organizationAPI } from '../../services/api';
+import { documentAPI, folderShareAPI, organizationAPI, categoryAPI } from '../../services/api';
 import Pagination from '../../components/Pagination';
 
 function MultiSelectChecklist({ label, options = [], selectedValues = [], onToggle }) {
@@ -46,6 +46,7 @@ export default function GenerateReportsView({
   const [allDocuments, setAllDocuments] = useState([]);
   const [folderShares, setFolderShares] = useState([]);
   const [organizationUnits, setOrganizationUnits] = useState([]);
+  const [allCategories, setAllCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -85,10 +86,11 @@ export default function GenerateReportsView({
     try {
       setIsLoading(true);
       setError('');
-      const [documentsData, sharesData, organizationsData] = await Promise.all([
+      const [documentsData, sharesData, organizationsData, categoriesData] = await Promise.all([
         documentAPI.getAll(),
         folderShareAPI.getAll(),
         organizationAPI.getAll(),
+        categoryAPI.getAll(),
       ]);
       const normalizedDocuments = Array.isArray(documentsData)
         ? documentsData
@@ -99,10 +101,14 @@ export default function GenerateReportsView({
       const normalizedOrganizations = Array.isArray(organizationsData)
         ? organizationsData
         : (Array.isArray(organizationsData?.results) ? organizationsData.results : []);
+      const normalizedCategories = Array.isArray(categoriesData)
+        ? categoriesData
+        : (Array.isArray(categoriesData?.results) ? categoriesData.results : []);
 
       setAllDocuments(normalizedDocuments);
       setFolderShares(normalizedShares);
       setOrganizationUnits(flattenOrganizations(normalizedOrganizations));
+      setAllCategories(normalizedCategories);
     } catch (err) {
       console.error('Failed to fetch report data:', err);
       setError('Failed to load report data: ' + err.message);
@@ -197,17 +203,24 @@ export default function GenerateReportsView({
     return categories.map((cat) => cat.category_name).join('; ');
   };
 
-  const categories = useMemo(() => (
-    Array.from(
-      new Set(
-        allDocuments.flatMap((doc) =>
-          Array.isArray(doc.categories)
-            ? doc.categories.map((cat) => cat.category_name).filter(Boolean)
-            : []
-        )
-      )
-    ).sort((a, b) => a.localeCompare(b))
-  ), [allDocuments]);
+  const categories = useMemo(() => {
+    const categorySet = new Set();
+    // Add all categories from the organization
+    allCategories.forEach((cat) => {
+      const categoryName = cat.category_name || cat.name;
+      if (categoryName) categorySet.add(categoryName);
+    });
+    // Also add categories from documents that might not be in the org list
+    allDocuments.forEach((doc) => {
+      if (Array.isArray(doc.categories)) {
+        doc.categories.forEach((cat) => {
+          const categoryName = cat.category_name || cat.name;
+          if (categoryName) categorySet.add(categoryName);
+        });
+      }
+    });
+    return Array.from(categorySet).sort((a, b) => a.localeCompare(b));
+  }, [allCategories, allDocuments]);
 
   const categoryOptions = useMemo(() => ([
     { value: 'Uncategorized', label: 'Uncategorized' },
@@ -611,10 +624,9 @@ export default function GenerateReportsView({
       return;
     }
 
-    const headers = ['Owner', 'User ID', 'Department', 'Document Name', 'Description', 'Categories', 'Folder', 'Uploaded', 'Updated'];
-    const rows = dateFilteredDocuments.map((doc) => [
-      getUserFullName(doc.user_index),
-      doc.user_index?.user_id || '-',
+const headers = ['Owner', 'Department', 'Document Name', 'Description', 'Categories', 'Folder', 'Uploaded', 'Updated'];
+      const rows = dateFilteredDocuments.map((doc) => [
+        getUserFullName(doc.user_index),
       getDepartmentName(doc),
       doc.doc_name,
       doc.doc_desc || '-',
@@ -701,19 +713,6 @@ export default function GenerateReportsView({
           <div className="relative lg:col-span-4">
             <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <MultiSelectChecklist
-              label="All Departments"
-              options={departmentOptions}
-              selectedValues={selectedDepartments}
-              onToggle={(value) => {
-                toggleSelection(value, setSelectedDepartments);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
-
-          <div className="relative lg:col-span-4">
-            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <MultiSelectChecklist
               label="All Uploaders"
               options={uploaderOptions}
               selectedValues={selectedUploaders}
@@ -722,6 +721,32 @@ export default function GenerateReportsView({
                 setCurrentPage(1);
               }}
             />
+          </div>
+
+          <div className="relative lg:col-span-4">
+            <ArrowUpDown className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              title="Sort report rows"
+            >
+              <option value="uploaded-desc">Newest Upload</option>
+              <option value="uploaded-asc">Oldest Upload</option>
+              <option value="updated-desc">Latest Update</option>
+              <option value="updated-asc">Earliest Update</option>
+              <option value="name-asc">Document Name (A-Z)</option>
+              <option value="name-desc">Document Name (Z-A)</option>
+              <option value="owner-asc">Uploader (A-Z)</option>
+              <option value="owner-desc">Uploader (Z-A)</option>
+              <option value="department-asc">Department (A-Z)</option>
+              <option value="department-desc">Department (Z-A)</option>
+              <option value="category-asc">Category (A-Z)</option>
+              <option value="category-desc">Category (Z-A)</option>
+            </select>
           </div>
         </div>
 
@@ -759,35 +784,8 @@ export default function GenerateReportsView({
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
-          <div className="relative lg:col-span-4">
-            <ArrowUpDown className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <select
-              value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              title="Sort report rows"
-            >
-              <option value="uploaded-desc">Newest Upload</option>
-              <option value="uploaded-asc">Oldest Upload</option>
-              <option value="updated-desc">Latest Update</option>
-              <option value="updated-asc">Earliest Update</option>
-              <option value="name-asc">Document Name (A-Z)</option>
-              <option value="name-desc">Document Name (Z-A)</option>
-              <option value="owner-asc">Uploader (A-Z)</option>
-              <option value="owner-desc">Uploader (Z-A)</option>
-              <option value="department-asc">Department (A-Z)</option>
-              <option value="department-desc">Department (Z-A)</option>
-              <option value="category-asc">Category (A-Z)</option>
-              <option value="category-desc">Category (Z-A)</option>
-            </select>
-          </div>
-
-          {(searchQuery || selectedCategories.length > 0 || selectedDepartments.length > 0 || selectedUploaders.length > 0 || selectedSharedFolders.length > 0 || selectedUploadStatus !== 'all') && (
-            <div className="lg:col-span-8 flex items-center lg:justify-end">
+        {(searchQuery || selectedCategories.length > 0 || selectedDepartments.length > 0 || selectedUploaders.length > 0 || selectedSharedFolders.length > 0 || selectedUploadStatus !== 'all') && (
+          <div className="flex items-center justify-end">
               <button
                 onClick={() => {
                   setSearchQuery('');
@@ -804,7 +802,6 @@ export default function GenerateReportsView({
               </button>
             </div>
           )}
-        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
@@ -856,7 +853,6 @@ export default function GenerateReportsView({
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Owner</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">User ID</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Department</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Document Name</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Description</th>
@@ -870,7 +866,6 @@ export default function GenerateReportsView({
                   {pagedRows.map((doc) => (
                     <tr key={doc.doc_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm font-medium text-gray-900 text-center">{getUserFullName(doc.user_index)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600 text-center">{doc.user_index?.user_id || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 text-center">{getDepartmentName(doc)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-medium text-center">{doc.doc_name}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate text-center">{doc.doc_desc || '-'}</td>

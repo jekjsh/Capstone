@@ -12,6 +12,8 @@ from authenticator.views import (
     UserProfileView,
     UpdateUserProfileView,
     VerifyPasswordView,
+    VerifyOTPView,
+    TestEmailView,
     UserViewSet,
     OrganizationViewSet,
     IdFormatViewSet,
@@ -46,6 +48,8 @@ urlpatterns = [
     
     # Authentication endpoints
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('auth/verify-otp/', VerifyOTPView.as_view(), name='verify_otp'),
+    path('auth/test-email/', TestEmailView.as_view(), name='test_email'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
     path('auth/register/', RegisterView.as_view(), name='register'),

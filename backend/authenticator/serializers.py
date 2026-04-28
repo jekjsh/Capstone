@@ -199,3 +199,15 @@ class UserCreationRequestCreateSerializer(serializers.ModelSerializer):
             status='pending'
         )
         return user_creation_request
+
+
+# 8. 2FA Verification Serializer
+class VerifyOTPSerializer(serializers.Serializer):
+    """Serializer for verifying OTP codes during 2FA"""
+    otp_code = serializers.CharField(max_length=6, min_length=6)
+    
+    def validate_otp_code(self, value):
+        """Ensure OTP code is numeric"""
+        if not value.isdigit():
+            raise serializers.ValidationError("OTP code must contain only digits.")
+        return value

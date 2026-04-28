@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.utils import timezone
 
 class Organization(models.Model):
     org_id = models.AutoField(primary_key=True)
@@ -138,3 +139,31 @@ class UserCreationRequest(models.Model):
     
     def __str__(self):
         return f"{self.request_id} - {self.email_add} ({self.status})"
+
+
+class TwoFactorAuthCode(models.Model):
+    """Model to store OTP codes for 2FA"""
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='two_factor_codes')
+    code = models.CharField(max_length=6)  # 6-digit OTP
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()  # OTP expires after 10 minutes
+    is_used = models.BooleanField(default=False)
+    used_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.IntegerField(default=0)  # Track failed attempts
+    
+    class Meta:
+        db_table = 'two_factor_auth_codes'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"2FA Code for {self.user.user_id}"
+    
+    @property
+    def is_expired(self):
+        """Check if the OTP has expired"""
+        return timezone.now() > self.expires_at
+    
+    @property
+    def is_valid(self):
+        """Check if the OTP is still valid for use"""
+        return not self.is_used and not self.is_expired and self.attempts < 3

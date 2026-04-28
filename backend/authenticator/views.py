@@ -11,12 +11,14 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.exceptions import AuthenticationFailed
+from django.contrib.auth import get_user_model, authenticate
 from django.conf import settings
 from django.db.models import Q
 from pathlib import Path
 
-from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer, IdFormatSerializer, UserCreationRequestSerializer, UserCreationRequestCreateSerializer
+from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer, IdFormatSerializer, UserCreationRequestSerializer, UserCreationRequestCreateSerializer, VerifyOTPSerializer
+from .two_factor_utils import create_and_send_otp, verify_otp
 from monitoring.models import AuditLog, Notification
 
 User = get_user_model()
@@ -99,43 +101,221 @@ class OrganizationUnitTypeView(APIView):
         _write_custom_organization_types(remaining)
         return Response({'types': remaining}, status=status.HTTP_200_OK)
 
-# 1. Login View (Uses our custom token serializer)
+# 1. Login View (Uses our custom token serializer - Step 1 of 2FA: Send OTP)
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     permission_classes = (AllowAny,)
     
     def post(self, request, *args, **kwargs):
-        """Handle login and log the action"""
+        """
+        Step 1 of 2FA: Verify credentials and send OTP code
+        Returns: {'message': 'OTP sent', 'user_id': 'xxx'} instead of tokens
+        """
+        username = request.data.get('user_id') or request.data.get('username')
+        password = request.data.get('password')
+        
+        if not username or not password:
+            return Response(
+                {'detail': 'user_id and password are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
-            response = super().post(request, *args, **kwargs)
-            # Get the user who just logged in
-            username = request.data.get('user_id') or request.data.get('username')
-            try:
-                user = User.objects.get(user_id=username)
-                # Log successful login
-                AuditLog.objects.create(
-                    user_index=user,
-                    audit_action='Login',
-                    audit_desc=f"User logged in",
-                    audit_status='Success'
-                )
-            except User.DoesNotExist:
-                pass
-            return response
-        except Exception:
-            # Log failed login
-            username = request.data.get('user_id') or request.data.get('username')
-            try:
-                user = User.objects.get(user_id=username)
-                AuditLog.objects.create(
-                    user_index=user,
-                    audit_action='Login',
-                    audit_desc=f"Failed login attempt",
-                    audit_status='Failed'
-                )
-            except User.DoesNotExist:
-                pass
-            raise
+            user = User.objects.get(user_id=username)
+        except User.DoesNotExist:
+            AuditLog.objects.create(
+                user_index=None,
+                audit_action='Login',
+                audit_desc=f"Failed login attempt - user not found: {username}",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': 'Invalid user_id or password.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Verify password
+        if not user.check_password(password):
+            AuditLog.objects.create(
+                user_index=user,
+                audit_action='Login',
+                audit_desc=f"Failed login attempt - invalid password",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': 'Invalid user_id or password.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Check if user is active
+        if not user.is_active:
+            AuditLog.objects.create(
+                user_index=user,
+                audit_action='Login',
+                audit_desc=f"Failed login attempt - user inactive",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': 'User account is inactive.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Credentials are valid, send OTP
+        otp_code = create_and_send_otp(user)
+        
+        if otp_code is None:
+            AuditLog.objects.create(
+                user_index=user,
+                audit_action='Login',
+                audit_desc=f"Failed login attempt - OTP email send failed",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': 'Failed to send OTP. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        AuditLog.objects.create(
+            user_index=user,
+            audit_action='Login',
+            audit_desc=f"OTP sent for 2FA",
+            audit_status='Success'
+        )
+        
+        return Response(
+            {
+                'message': 'OTP code sent to your email.',
+                'user_id': user.user_id,
+                'email': user.email_add,
+                'requires_2fa': True
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+# 1b. OTP Verification View (Step 2 of 2FA: Verify OTP and issue tokens)
+class VerifyOTPView(generics.GenericAPIView):
+    """
+    Step 2 of 2FA: Verify OTP code and issue JWT tokens
+    """
+    permission_classes = (AllowAny,)
+    serializer_class = VerifyOTPSerializer
+    
+    def post(self, request, *args, **kwargs):
+        """
+        Verify OTP code and return JWT tokens if valid
+        Expected input: {'user_id': 'xxx', 'otp_code': '123456'}
+        """
+        user_id = request.data.get('user_id')
+        otp_code = request.data.get('otp_code')
+        
+        if not user_id or not otp_code:
+            return Response(
+                {'detail': 'user_id and otp_code are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user = User.objects.get(user_id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'Invalid user_id or OTP code.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Verify OTP
+        is_valid, message = verify_otp(user, otp_code)
+        
+        if not is_valid:
+            AuditLog.objects.create(
+                user_index=user,
+                audit_action='Login',
+                audit_desc=f"Failed OTP verification - {message}",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': message},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # OTP is valid, issue JWT tokens
+        from rest_framework_simplejwt.tokens import RefreshToken
+        
+        refresh = RefreshToken.for_user(user)
+        
+        # Add custom claims to access token
+        access_token = refresh.access_token
+        access_token['user_id'] = user.user_id
+        access_token['role_type'] = user.role_type
+        access_token['first_name'] = user.first_name
+        
+        AuditLog.objects.create(
+            user_index=user,
+            audit_action='Login',
+            audit_desc=f"User logged in successfully after 2FA",
+            audit_status='Success'
+        )
+        
+        return Response(
+            {
+                'access': str(access_token),
+                'refresh': str(refresh),
+                'user_id': user.user_id,
+                'role_type': user.role_type,
+                'first_name': user.first_name,
+                'message': 'Login successful!'
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+# 1c. Test Email Endpoint (Development/Debugging)
+class TestEmailView(generics.GenericAPIView):
+    """
+    Test endpoint for debugging email configuration
+    POST with {'email': 'test@example.com'} to send a test email
+    """
+    permission_classes = (AllowAny,)
+    
+    def post(self, request, *args, **kwargs):
+        """Send a test email"""
+        test_email = request.data.get('email', 'test@example.com')
+        
+        from django.core.mail import send_mail
+        
+        print(f"\n{'='*60}")
+        print(f"[TEST EMAIL]")
+        print(f"To: {test_email}")
+        print(f"From: {settings.DEFAULT_FROM_EMAIL}")
+        print(f"Host: {settings.EMAIL_HOST}:{settings.EMAIL_PORT}")
+        print(f"User: {settings.EMAIL_HOST_USER}")
+        print(f"TLS: {settings.EMAIL_USE_TLS}")
+        print(f"{'='*60}\n")
+        
+        try:
+            send_mail(
+                subject='Test Email from RKMS',
+                message='This is a test email to verify your email configuration is working.',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[test_email],
+                fail_silently=False
+            )
+            print(f"✓ Test email sent successfully to {test_email}")
+            return Response(
+                {'message': f'Test email sent to {test_email}'},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            print(f"\n✗ TEST EMAIL FAILED")
+            print(f"Error: {str(e)}")
+            print(f"{'='*60}\n")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 # 2. Token Refresh View
 class CustomTokenRefreshView(TokenRefreshView):
