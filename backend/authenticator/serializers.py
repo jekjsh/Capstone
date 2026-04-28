@@ -108,12 +108,25 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
 
-# 4. Organization Serializer
+# 4. Organization Serializer (with nested parent_org)
 class OrganizationSerializer(serializers.ModelSerializer):
+    parent_org = serializers.SerializerMethodField()
+    
     class Meta:
         model = Organization
         fields = ['org_id', 'parent_org', 'org_name', 'org_desc', 'org_code', 'org_type']
         read_only_fields = ['org_id']  # org_id cannot be changed
+    
+    def get_parent_org(self, obj):
+        """Return parent organization details if it exists"""
+        if obj.parent_org:
+            return {
+                'org_id': obj.parent_org.org_id,
+                'org_name': obj.parent_org.org_name,
+                'org_code': obj.parent_org.org_code,
+                'org_type': obj.parent_org.org_type,
+            }
+        return None
 
 
 # 5. IdFormat Serializer

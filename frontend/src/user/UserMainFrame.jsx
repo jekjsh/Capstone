@@ -2483,6 +2483,31 @@ const handlePermanentDeleteFolder = async (folderId) => {
   }
 };
 
+  const handleRequestApproval = async (document) => {
+    if (!document) {
+      alert('❌ Error: Document not found');
+      return;
+    }
+
+    try {
+      await documentAPI.createApproval(document.doc_id || document.id, 'Please approve this document for sharing');
+      
+      addAuditLog(
+        'Request Document Approval',
+        `Requested approval for "${getDocumentName(document)}"`,
+        'Success'
+      );
+
+      alert(`✅ Approval request sent for "${getDocumentName(document)}" to your organization admin!`);
+      setShowShareModal(false);
+      setDocumentToShare(null);
+    } catch (error) {
+      console.error('❌ Failed to request approval:', error);
+      const errorMsg = error.message || 'Unknown error occurred';
+      alert(`❌ Failed to request approval:\n\n${errorMsg}`);
+    }
+  };
+
   const handleShareFolder = async (shareData) => {
     const folderToShare = folders.find(f => f.folder_id === shareData.folderId);
     
@@ -3024,6 +3049,8 @@ const handleSaveToMyDocuments = (document, source) => {
         currentUser={currentUser}
         onShareDocument={handleShareDocument}
         onSharesUpdated={refreshWorkspaceAfterShare}
+        allowOrgSharing={false}
+        onRequestApproval={handleRequestApproval}
       />
 
       <ShareFolderModal

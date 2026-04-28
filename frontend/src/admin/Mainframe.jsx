@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, ClipboardList, CheckCircle } from 'lucide-react';
 
 import SharedHeader from '../components/SharedHeader';
 import AdminSidebar from './component/AdminSidebar';
 import AdminDashboard from './component/AdminDashboard';
 import AdminDocuments from './component/AdminDocuments';
 import AdminLogAudits from './component/AdminLogAudits';
+import ApprovalRequests from './component/ApprovalRequests';
 import ErrorBoundary from './component/ErrorBoundary';
 import OrgUnitModal from './component/OrgUnitModal';
 import OrgUnitUsersView from './component/OrgUnitUsersView';
@@ -65,6 +66,7 @@ export default function Mainframe({
     'org-shares': '/admin/file-sharing',
     'categories': '/admin/categories',
     'recycle-bin': '/admin/recycle-bin',
+    'approvals': '/admin/approvals',
     'logs': '/admin/audit-logs'
   };
 
@@ -778,6 +780,7 @@ const [viewingDocument, setViewingDocument] = useState(null);
         { id: 'recycle-bin', label: 'Recycle Bin', icon: null },
       ],
     },
+    { id: 'approvals', label: 'Approvals', icon: CheckCircle },
     { id: 'all-documents', label: 'Generate Reports', icon: FileText },
     { id: 'logs', label: 'Activity Logs', icon: ClipboardList },
   ];
@@ -3096,7 +3099,7 @@ const closeAdminOCRModal = () => {
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
           Notifications={Notifications}
-          onNotificationNavigate={() => setActiveSection('org-shares')}
+          onNotificationNavigate={() => setActiveSection('approvals')}
         />
 
         <div className="flex-1 overflow-auto p-6">
@@ -3257,6 +3260,12 @@ const closeAdminOCRModal = () => {
                 getActions={getActions}
                 getFilteredLogs={getFilteredLogs}
               />
+            </ErrorBoundary>
+          )}
+
+          {activeSection === 'approvals' && (
+            <ErrorBoundary>
+              <ApprovalRequests />
             </ErrorBoundary>
           )}
         </div>

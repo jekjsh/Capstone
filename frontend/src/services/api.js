@@ -623,6 +623,148 @@ export const documentAPI = {
 
     return { blob, filename };
   },
+
+  // Get all approval requests
+  getApprovals: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch approval requests');
+    }
+    return await response.json();
+  },
+
+  // Approve an approval request
+  approveApproval: async (approvalId, reviewMessage = '') => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/${approvalId}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ review_message: reviewMessage }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to approve request');
+    }
+    return await response.json();
+  },
+
+  // Deny an approval request
+  denyApproval: async (approvalId, reviewMessage = '') => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/${approvalId}/deny/`, {
+      method: 'POST',
+      body: JSON.stringify({ review_message: reviewMessage }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to deny request');
+    }
+    return await response.json();
+  },
+
+  // Pass approval request to higher authority
+  passApprovalToHigher: async (approvalId, reviewMessage = '') => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/${approvalId}/pass_to_higher/`, {
+      method: 'POST',
+      body: JSON.stringify({ review_message: reviewMessage }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to pass to higher authority');
+    }
+    return await response.json();
+  },
+
+  // Create an approval request
+  createApproval: async (docId, message = '') => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/`, {
+      method: 'POST',
+      body: JSON.stringify({ 
+        doc: docId, 
+        approval_message: message 
+      }),
+    });
+    if (!response.ok) {
+      try {
+        const error = await response.json();
+        // Handle various error response formats
+        const errorMsg = error.detail || error.doc?.[0] || error.non_field_errors?.[0] || JSON.stringify(error) || 'Failed to create approval request';
+        throw new Error(errorMsg);
+      } catch (parseError) {
+        throw new Error(`Failed to create approval request: ${response.status} ${response.statusText}`);
+      }
+    }
+    return await response.json();
+  },
+};
+
+// Document Approval Request API
+export const documentApprovalAPI = {
+  // Get all approval requests
+  getAll: async () => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch approval requests');
+    }
+    return await response.json();
+  },
+
+  // Create an approval request
+  create: async (docId, message = '') => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/`, {
+      method: 'POST',
+      body: JSON.stringify({ 
+        doc: docId, 
+        approval_message: message 
+      }),
+    });
+    if (!response.ok) {
+      try {
+        const error = await response.json();
+        const errorMsg = error.detail || error.doc?.[0] || error.non_field_errors?.[0] || JSON.stringify(error) || 'Failed to create approval request';
+        throw new Error(errorMsg);
+      } catch (parseError) {
+        throw new Error(`Failed to create approval request: ${response.status} ${response.statusText}`);
+      }
+    }
+    return await response.json();
+  },
+
+  // Approve an approval request
+  approve: async (approvalId, reviewMessage = '') => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/${approvalId}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ review_message: reviewMessage }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to approve request');
+    }
+    return await response.json();
+  },
+
+  // Deny an approval request
+  deny: async (approvalId, reviewMessage = '') => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/${approvalId}/deny/`, {
+      method: 'POST',
+      body: JSON.stringify({ review_message: reviewMessage }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to deny request');
+    }
+    return await response.json();
+  },
+
+  // Pass approval request to higher authority
+  passToHigher: async (approvalId, reviewMessage = '') => {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/document-approvals/${approvalId}/pass_to_higher/`, {
+      method: 'POST',
+      body: JSON.stringify({ review_message: reviewMessage }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to pass to higher authority');
+    }
+    return await response.json();
+  },
 };
 
 export const ocrAPI = {

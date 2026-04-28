@@ -1,0 +1,24 @@
+.approval-requests-container {
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  min-height: 100vh;
+}
+
+.approval-card {
+  transition: all 0.3s ease;
+}
+
+.approval-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-color: #bfdbfe;
+}
+
+.approval-card button {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.approval-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

@@ -1,4 +1,4 @@
-import { X, Share2, Users } from 'lucide-react';
+import { X, Share2, Users, CheckCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { documentShareAPI } from '../../services/api';
 
@@ -10,7 +10,9 @@ export default function ShareDocumentModal({
   organizationTree = [],
   currentUser,
   onShareDocument,
-  onSharesUpdated
+  onSharesUpdated,
+  allowOrgSharing = true,
+  onRequestApproval
 }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [shareMessage, setShareMessage] = useState('');
@@ -251,22 +253,24 @@ export default function ShareDocumentModal({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Share Target
             </label>
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className={`grid gap-2 mb-3 ${allowOrgSharing ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <button
                 onClick={() => setShareScope('users')}
                 className={`px-3 py-2 rounded-lg border text-sm font-medium ${shareScope === 'users' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-700'}`}
               >
                 Users
               </button>
-              <button
-                onClick={() => setShareScope('organization')}
-                className={`px-3 py-2 rounded-lg border text-sm font-medium ${shareScope === 'organization' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-700'}`}
-              >
-                Organization Units
-              </button>
+              {allowOrgSharing && (
+                <button
+                  onClick={() => setShareScope('organization')}
+                  className={`px-3 py-2 rounded-lg border text-sm font-medium ${shareScope === 'organization' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-700'}`}
+                >
+                  Organization Units
+                </button>
+              )}
             </div>
 
-            {shareScope === 'organization' && (
+            {shareScope === 'organization' && allowOrgSharing && (
               <div className="mb-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
                 <p className="text-sm text-gray-700 mb-2">
                   Select organization units that should receive this file.
@@ -396,6 +400,19 @@ export default function ShareDocumentModal({
           >
             Cancel
           </button>
+          {!allowOrgSharing && onRequestApproval && (
+            <button
+              onClick={() => {
+                onRequestApproval(document);
+                onClose();
+              }}
+              className="flex-1 px-4 py-2 border-2 border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center gap-2 font-medium"
+              disabled={isLoading}
+            >
+              <CheckCircle className="w-4 h-4" />
+              Request Approval
+            </button>
+          )}
           <button
             onClick={handleShare}
             disabled={isLoading || (effectiveSelectedUsers.length === 0 && currentlySharedWith.length === 0)}

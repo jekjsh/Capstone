@@ -134,3 +134,31 @@ class DocumentArchive(models.Model):
     class Meta:
         db_table = 'document_archive'
         indexes = [models.Index(fields=['source_doc_id'])]
+
+
+class DocumentApprovalRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('denied', 'Denied'),
+        ('passed_to_higher', 'Passed to Higher'),
+    ]
+    
+    approval_id = models.AutoField(primary_key=True)
+    doc = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='approval_requests')
+    requested_by_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='approval_requests_sent')
+    requested_org = models.ForeignKey('authenticator.Organization', on_delete=models.CASCADE, related_name='approval_requests_received')
+    requesting_org = models.ForeignKey('authenticator.Organization', on_delete=models.CASCADE, related_name='approval_requests_made', null=True, blank=True)
+    approval_message = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    reviewed_by_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='approvals_reviewed', null=True, blank=True)
+    review_message = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    passed_to_org = models.ForeignKey('authenticator.Organization', on_delete=models.SET_NULL, related_name='approval_requests_received_higher', null=True, blank=True)
+
+    class Meta:
+        db_table = 'document_approval_requests'
+        
+    def __str__(self):
+        return f"Approval for {self.doc.doc_name} - {self.status}"

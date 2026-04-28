@@ -10,8 +10,8 @@ from os.path import splitext
 import zipfile
 import xml.etree.ElementTree as ET
 import io
-from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory, DocumentArchive, FolderArchive
-from .serializers import DocumentSerializer, DocumentShareSerializer, OcrDataSerializer, FolderSerializer, FolderShareSerializer, CategorySerializer
+from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory, DocumentArchive, FolderArchive, DocumentApprovalRequest
+from .serializers import DocumentSerializer, DocumentShareSerializer, OcrDataSerializer, FolderSerializer, FolderShareSerializer, CategorySerializer, DocumentApprovalRequestSerializer
 from .permissions import IsOrgMember, CanAccessFolder, CanAccessDocument, CanEditDocument, CanShareFolder, CanAccessDocumentShare
 from monitoring.models import AuditLog
 from authenticator.models import CustomUser
@@ -961,6 +961,61 @@ class DocumentViewSet(viewsets.ModelViewSet):
         document.doc_file.open('rb')
         return FileResponse(document.doc_file, as_attachment=True, filename=download_name)
 
+    @action(detail=True, methods=['get'], permission_classes=[], url_path='view-file')
+    def view_file(self, request, pk=None):
+        """Serve document file for inline viewing (not as attachment)
+        Supports token authentication via query parameter for iframe usage.
+        """
+        from rest_framework_simplejwt.tokens import AccessToken
+        
+        # Try to authenticate from Authorization header first
+        user = request.user
+        
+        # If not authenticated via header, try query parameter (for iframe requests)
+        if not user or not user.is_authenticated:
+            token = request.query_params.get('token')
+            if token:
+                try:
+                    access_token = AccessToken(token)
+                    user_id = access_token['user_id']  # This is the user_id field (CharField)
+                    from authenticator.models import CustomUser
+                    user = CustomUser.objects.get(user_id=user_id)
+                    # Manually set user on request for permission checks
+                    request.user = user
+                except Exception as e:
+                    return Response({'detail': 'Invalid or expired token.'}, status=status.HTTP_401_UNAUTHORIZED)
+            else:
+                return Response({'detail': 'Authentication credentials were not provided.'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Check org membership
+        if not hasattr(user, 'org') or not user.org:
+            return Response({'detail': 'User is not part of an organization.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            document = self.get_object()
+        except Exception:
+            return Response({'detail': 'Document not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not self._can_download_document_for_user(document, user):
+            raise PermissionDenied('You do not have permission to view this document.')
+
+        if not document.doc_file:
+            return Response({'detail': 'Document file is not available.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            AuditLog.objects.create(
+                user_index=user,
+                audit_action='View Document',
+                audit_desc=f"Viewed document '{document.doc_name}' (doc_id={document.doc_id})",
+                audit_status='Success'
+            )
+        except Exception:
+            pass
+
+        document.doc_file.open('rb')
+        # Serve file inline (not as attachment) so PDFs display in iframes
+        return FileResponse(document.doc_file, as_attachment=False)
+
     def perform_update(self, serializer):
         instance = self.get_object()
         user_org = self.request.user.org
@@ -1643,3 +1698,272 @@ class CategoryViewSet(viewsets.ModelViewSet):
             except:
                 pass  # Ignore audit log failures
             raise
+
+
+class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
+    serializer_class = DocumentApprovalRequestSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOrgMember]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'status']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.org:
+            return DocumentApprovalRequest.objects.none()
+
+        from django.db.models import Q
+        
+        # Org admins see approval requests for their org
+        if getattr(user, 'role_type', None) == 'admin':
+            return DocumentApprovalRequest.objects.filter(
+                requested_org=user.org
+            ).select_related(
+                'doc', 'requested_by_user', 'reviewed_by_user',
+                'requested_org', 'requesting_org', 'passed_to_org'
+            )
+        
+        # Regular users only see their own approval requests
+        return DocumentApprovalRequest.objects.filter(
+            requested_by_user=user
+        ).select_related(
+            'doc', 'requested_by_user', 'reviewed_by_user',
+            'requested_org', 'requesting_org', 'passed_to_org'
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(
+            requested_by_user=self.request.user,
+            requesting_org=self.request.user.org,
+            requested_org=self.request.user.org
+        )
+
+    def create(self, request, *args, **kwargs):
+        """Create approval request and notify org admins"""
+        approval = None
+        try:
+            response = super().create(request, *args, **kwargs)
+            
+            # Notify org admins about the new approval request
+            try:
+                approval_id = response.data.get('approval_id')
+                approval = DocumentApprovalRequest.objects.select_related(
+                    'doc', 'requested_by_user', 'requested_org'
+                ).get(approval_id=approval_id)
+                
+                # Get all admins in the requesting org
+                admins = CustomUser.objects.filter(
+                    org=approval.requested_org,
+                    role_type='admin',
+                    is_active=True
+                )
+                
+                notif_msg = f"New document approval request from {approval.requested_by_user.get_full_name()} for document '{approval.doc.doc_name}'"
+                
+                for admin in admins:
+                    Notification.objects.create(
+                        recipient_user=admin,
+                        actor_user=request.user,
+                        doc=approval.doc,
+                        notif_msg=notif_msg,
+                    )
+            except Exception as notify_error:
+                # Notification delivery should not block the approval creation
+                print(f"Warning: Failed to notify admins: {str(notify_error)}")
+
+            if approval:
+                AuditLog.objects.create(
+                    user_index=request.user,
+                    audit_action='Request Document Approval',
+                    audit_desc=f"Requested approval for document '{approval.doc.doc_name}'",
+                    audit_status='Success'
+                )
+            return response
+        except Exception as e:
+            error_msg = str(e)
+            # Try to extract detail from response errors
+            if hasattr(e, 'detail'):
+                error_msg = str(e.detail)
+            
+            AuditLog.objects.create(
+                user_index=request.user,
+                audit_action='Request Document Approval',
+                audit_desc=f"Failed to request document approval: {error_msg}",
+                audit_status='Failed'
+            )
+            raise
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
+    def approve(self, request, pk=None):
+        """Approve a document sharing request"""
+        approval = self.get_object()
+        
+        # Only org admins can approve
+        if getattr(request.user, 'role_type', None) != 'admin':
+            raise PermissionDenied('Only organization admins can approve requests.')
+        
+        if approval.requested_org_id != request.user.org_id:
+            raise PermissionDenied('You can only approve requests for your organization.')
+        
+        # Allow approving both pending and passed_to_higher status
+        if approval.status not in ['pending', 'passed_to_higher']:
+            return Response(
+                {'detail': f'Cannot approve request with status {approval.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        approval.status = 'approved'
+        approval.reviewed_by_user = request.user
+        approval.reviewed_at = timezone.now()
+        approval.review_message = request.data.get('review_message', '')
+        approval.save()
+
+        # Share the document with the requester
+        try:
+            DocumentShare.objects.get_or_create(
+                doc=approval.doc,
+                shared_by_user=request.user,
+                shared_to_user=approval.requested_by_user,
+                defaults={'share_msg': f"Approved via document sharing request"}
+            )
+        except Exception as share_error:
+            print(f"Warning: Failed to create document share: {str(share_error)}")
+
+        # Notify the requester
+        Notification.objects.create(
+            recipient_user=approval.requested_by_user,
+            actor_user=request.user,
+            doc=approval.doc,
+            notif_msg=f"Your document sharing request for '{approval.doc.doc_name}' has been approved",
+        )
+
+        AuditLog.objects.create(
+            user_index=request.user,
+            audit_action='Approve Document Sharing',
+            audit_desc=f"Approved document sharing request from {approval.requested_by_user.get_full_name()} for document '{approval.doc.doc_name}'",
+            audit_status='Success'
+        )
+
+        serializer = self.get_serializer(approval)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
+    def deny(self, request, pk=None):
+        """Deny a document sharing request"""
+        approval = self.get_object()
+        
+        # Only org admins can deny
+        if getattr(request.user, 'role_type', None) != 'admin':
+            raise PermissionDenied('Only organization admins can deny requests.')
+        
+        if approval.requested_org_id != request.user.org_id:
+            raise PermissionDenied('You can only deny requests for your organization.')
+        
+        # Allow denying both pending and passed_to_higher status
+        if approval.status not in ['pending', 'passed_to_higher']:
+            return Response(
+                {'detail': f'Cannot deny request with status {approval.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        approval.status = 'denied'
+        approval.reviewed_by_user = request.user
+        approval.reviewed_at = timezone.now()
+        approval.review_message = request.data.get('review_message', '')
+        approval.save()
+
+        # Notify the requester
+        Notification.objects.create(
+            recipient_user=approval.requested_by_user,
+            actor_user=request.user,
+            doc=approval.doc,
+            notif_msg=f"Your document sharing request for '{approval.doc.doc_name}' has been denied",
+        )
+
+        AuditLog.objects.create(
+            user_index=request.user,
+            audit_action='Deny Document Sharing',
+            audit_desc=f"Denied document sharing request from {approval.requested_by_user.get_full_name()} for document '{approval.doc.doc_name}'",
+            audit_status='Success'
+        )
+
+        serializer = self.get_serializer(approval)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
+    def pass_to_higher(self, request, pk=None):
+        """Pass approval request to parent organization"""
+        approval = self.get_object()
+        
+        # Only org admins can pass to higher
+        if getattr(request.user, 'role_type', None) != 'admin':
+            raise PermissionDenied('Only organization admins can pass to higher authority.')
+        
+        if approval.requested_org_id != request.user.org_id:
+            raise PermissionDenied('You can only pass requests for your organization.')
+        
+        if approval.status != 'pending':
+            return Response(
+                {'detail': f'Cannot pass request with status {approval.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if the organization has a parent (not root)
+        current_org = approval.requested_org
+        if not current_org.parent_org:
+            return Response(
+                {'detail': 'This organization is root. Cannot pass to higher authority.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Pass to parent organization
+        approval.status = 'passed_to_higher'
+        approval.reviewed_by_user = request.user
+        approval.reviewed_at = timezone.now()
+        approval.review_message = request.data.get('review_message', '')
+        approval.passed_to_org = current_org.parent_org
+        approval.requested_org = current_org.parent_org
+        approval.save()
+
+        # Share the document with all admins of the parent organization
+        try:
+            parent_admins = CustomUser.objects.filter(
+                org=current_org.parent_org,
+                role_type='admin',
+                is_active=True
+            )
+            
+            for admin in parent_admins:
+                DocumentShare.objects.get_or_create(
+                    doc=approval.doc,
+                    shared_by_user=request.user,
+                    shared_to_user=admin,
+                    defaults={'share_msg': f"Document for approval by {current_org.parent_org.org_name}"}
+                )
+        except Exception as share_error:
+            print(f"Warning: Failed to create document shares for parent org admins: {str(share_error)}")
+
+        # Notify admins of the parent organization
+        parent_admins = CustomUser.objects.filter(
+            org=current_org.parent_org,
+            role_type='admin',
+            is_active=True
+        )
+        
+        for admin in parent_admins:
+            Notification.objects.create(
+                recipient_user=admin,
+                actor_user=request.user,
+                doc=approval.doc,
+                notif_msg=f"Document approval request from {current_org.org_name} requires your review for document '{approval.doc.doc_name}'",
+            )
+
+        AuditLog.objects.create(
+            user_index=request.user,
+            audit_action='Pass Document Approval to Higher',
+            audit_desc=f"Passed approval request from {approval.requested_by_user.get_full_name()} to {current_org.parent_org.org_name} for document '{approval.doc.doc_name}'",
+            audit_status='Success'
+        )
+
+        serializer = self.get_serializer(approval)
+        return Response(serializer.data, status=status.HTTP_200_OK)

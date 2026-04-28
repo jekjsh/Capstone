@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory
-from authenticator.serializers import UserSerializer
+from .models import Document, DocumentShare, OcrData, Folder, FolderShare, Category, DocumentCategory, DocumentApprovalRequest
+from authenticator.serializers import UserSerializer, OrganizationSerializer
 
 
 class FolderSerializer(serializers.ModelSerializer):
@@ -25,13 +25,43 @@ class DocumentSerializer(serializers.ModelSerializer):
     uploaded_by_user = UserSerializer(read_only=True)
     folder_name = serializers.CharField(source='folder.folder_name', read_only=True, allow_null=True)
     doc_file_url = serializers.SerializerMethodField()
+    format = serializers.SerializerMethodField()
     categories = serializers.SerializerMethodField()
     owning_org_name = serializers.CharField(source='owning_org.org_name', read_only=True, allow_null=True)
     
     class Meta:
         model = Document
-        fields = ['doc_id', 'user_index', 'uploaded_by_user', 'owning_org', 'owning_org_name', 'folder', 'folder_name', 'doc_name', 'doc_desc', 'doc_path', 'doc_file', 'doc_file_url', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'doc_uploaded', 'updated_at', 'categories']
+        fields = ['doc_id', 'user_index', 'uploaded_by_user', 'owning_org', 'owning_org_name', 'folder', 'folder_name', 'doc_name', 'doc_desc', 'doc_path', 'doc_file', 'doc_file_url', 'format', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'doc_uploaded', 'updated_at', 'categories']
         read_only_fields = ['doc_id', 'user_index', 'uploaded_by_user', 'owning_org', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'doc_uploaded', 'updated_at']
+    
+    def get_format(self, obj):
+        """Extract file format from document name or file extension"""
+        filename = obj.doc_name or ''
+        if not filename:
+            return 'document'
+        
+        # Get the file extension
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        
+        # Map extensions to format types
+        format_map = {
+            'pdf': 'pdf',
+            'doc': 'docx',
+            'docx': 'docx',
+            'txt': 'text',
+            'jpg': 'image',
+            'jpeg': 'image',
+            'png': 'image',
+            'gif': 'image',
+            'bmp': 'image',
+            'webp': 'image',
+            'svg': 'image',
+            'xlsx': 'spreadsheet',
+            'xls': 'spreadsheet',
+            'csv': 'spreadsheet',
+        }
+        
+        return format_map.get(ext, 'document')
     
     def get_categories(self, obj):
         """Return categories linked to this document"""
@@ -46,15 +76,16 @@ class DocumentSerializer(serializers.ModelSerializer):
         ]
     
     def get_doc_file_url(self, obj):
-        """Return the URL for the uploaded file"""
+        """Return the URL for the uploaded file for inline viewing"""
         if not self._can_open_document(obj):
             return None
 
         if obj.doc_file:
             request = self.context.get('request')
             if request:
-                return request.build_absolute_uri(obj.doc_file.url)
-            return obj.doc_file.url
+                # Use the view-file endpoint for inline display instead of raw file URL
+                return request.build_absolute_uri(f'/api/documents/{obj.doc_id}/view-file/')
+            return f'/api/documents/{obj.doc_id}/view-file/'
         return None
 
     def _can_open_document(self, obj):
@@ -81,6 +112,17 @@ class DocumentSerializer(serializers.ModelSerializer):
         # Organization admins can open all files owned by their organization.
         if user_role == 'admin' and user_org_id is not None and getattr(obj, 'owning_org_id', None) == user_org_id:
             return True
+
+        # Organization admins can open ANY document with pending approval requests from their organization (needed for approval review)
+        if user_role == 'admin' and user_org_id is not None:
+            from .models import DocumentApprovalRequest
+            has_pending_approval = DocumentApprovalRequest.objects.filter(
+                doc=obj,
+                requested_org_id=user_org_id,
+                status='pending'
+            ).exists()
+            if has_pending_approval:
+                return True
 
         # Fallback for legacy records missing owner linkage.
         # Keep this admin-only so regular users cannot open peers' files.
@@ -196,3 +238,61 @@ class DocumentCategorySerializer(serializers.ModelSerializer):
         model = DocumentCategory
         fields = ['doc_category_id', 'doc', 'category', 'category_name', 'added_at']
         read_only_fields = ['doc_category_id', 'added_at']
+
+
+class DocumentApprovalRequestSerializer(serializers.ModelSerializer):
+    requested_by_user = UserSerializer(read_only=True)
+    reviewed_by_user = UserSerializer(read_only=True)
+    requested_org = OrganizationSerializer(read_only=True)
+    requesting_org = OrganizationSerializer(read_only=True, allow_null=True)
+    passed_to_org = OrganizationSerializer(read_only=True, allow_null=True)
+    doc_name = serializers.CharField(source='doc.doc_name', read_only=True)
+    requested_org_name = serializers.CharField(source='requested_org.org_name', read_only=True)
+    requesting_org_name = serializers.CharField(source='requesting_org.org_name', read_only=True, allow_null=True)
+    passed_to_org_name = serializers.CharField(source='passed_to_org.org_name', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = DocumentApprovalRequest
+        fields = [
+            'approval_id',
+            'doc',
+            'doc_name',
+            'requested_by_user',
+            'requested_org',
+            'requested_org_name',
+            'requesting_org',
+            'requesting_org_name',
+            'approval_message',
+            'status',
+            'reviewed_by_user',
+            'review_message',
+            'created_at',
+            'reviewed_at',
+            'passed_to_org',
+            'passed_to_org_name',
+        ]
+        read_only_fields = [
+            'approval_id',
+            'requested_by_user',
+            'requested_org',
+            'requesting_org',
+            'reviewed_by_user',
+            'status',
+            'created_at',
+            'reviewed_at',
+            'passed_to_org',
+        ]
+    
+    def validate_doc(self, value):
+        """Validate that the document exists and is accessible by the user"""
+        if not value:
+            raise serializers.ValidationError("Document is required")
+        return value
+    
+    def to_representation(self, instance):
+        """Override to return full document details instead of just the ID"""
+        data = super().to_representation(instance)
+        # Replace the doc ID with the full document object
+        if instance.doc:
+            data['doc'] = DocumentSerializer(instance.doc, context=self.context).data
+        return data
