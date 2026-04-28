@@ -74,7 +74,6 @@ export default function RenameDetectedDocumentsModal({
                       Upload target folder: {item.matchedFolderName}
                       {item.matchReason === 'category' && ' (matched by category)'}
                       {item.matchReason === 'folder-name' && ' (matched by folder name)'}
-                      {item.matchConfidence > 0 && ` - ${item.matchConfidence}% confidence`}
                     </p>
                   ) : (
                     <p className="text-xs text-gray-600 mt-1">
