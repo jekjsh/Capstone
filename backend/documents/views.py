@@ -913,6 +913,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
         user_org = self.request.user.org
         target_owning_org = user_org
         requested_doc_name = serializer.validated_data.get('doc_name')
+        override_existing = self._parse_bool(self.request.data.get('override_existing', False))
+        was_renamed = self._parse_bool(self.request.data.get('was_renamed', False))
 
         if folder is not None:
             has_folder_access = (
@@ -927,12 +929,38 @@ class DocumentViewSet(viewsets.ModelViewSet):
             if folder.owning_org_id != user_org.org_id:
                 target_owning_org = folder.owning_org
 
+        # Check if document with same name exists and handle override
+        existing_doc = Document.objects.filter(
+            owning_org=target_owning_org,
+            folder=folder,
+            doc_name=requested_doc_name,
+            is_deleted=False,
+            is_archived=False
+        ).first()
+
+        upload_action = 'Upload Document'
+        if override_existing and existing_doc:
+            # Delete the existing document
+            existing_doc.is_deleted = True
+            existing_doc.deleted_at = timezone.now()
+            existing_doc.save(update_fields=['is_deleted', 'deleted_at'])
+            upload_action = 'Upload Document (Override)'
+        elif was_renamed:
+            # File was renamed to avoid conflict
+            upload_action = 'Upload Document (Renamed)'
+
+        # Determine final document name
+        final_doc_name = self._build_unique_doc_name(requested_doc_name, folder, target_owning_org)
+
         document = serializer.save(
             user_index=self.request.user,
             owning_org=target_owning_org,
             uploaded_by_user=self.request.user,
-            doc_name=self._build_unique_doc_name(requested_doc_name, folder, target_owning_org),
+            doc_name=final_doc_name,
         )
+
+        # Store the action type for logging in the create method
+        self.request._upload_action = upload_action
 
         self._run_auto_categorization(document)
 
@@ -1050,9 +1078,11 @@ class DocumentViewSet(viewsets.ModelViewSet):
             response = super().create(request, *args, **kwargs)
             # Log successful document creation (non-blocking)
             try:
+                # Get the upload action type from perform_create if it was set
+                upload_action = getattr(request, '_upload_action', 'Upload Document')
                 AuditLog.objects.create(
                     user_index=request.user,
-                    audit_action='Upload Document',
+                    audit_action=upload_action,
                     audit_desc=f"Uploaded document {response.data.get('doc_name', 'unknown')}",
                     audit_status='Success'
                 )
@@ -1146,6 +1176,47 @@ class DocumentViewSet(viewsets.ModelViewSet):
             except:
                 pass  # Ignore audit log failures
             raise
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
+    def check_file_exists(self, request):
+        """Check if a file with the given name exists in the specified folder"""
+        file_name = request.query_params.get('file_name', '').strip()
+        folder_id = request.query_params.get('folder_id')
+        
+        if not file_name:
+            return Response({'exists': False, 'suggested_name': None})
+        
+        user_org = request.user.org
+        folder = None
+        
+        if folder_id:
+            folder = Folder.objects.filter(folder_id=folder_id).first()
+            if not folder:
+                return Response({'error': 'Folder not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+            # Check if user has access to the folder
+            has_folder_access = (
+                folder.owning_org_id == user_org.org_id or
+                FolderShare.objects.filter(folder=folder, shared_with_org=user_org).exists()
+            )
+            if not has_folder_access:
+                return Response({'error': 'No access to this folder'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if document with this name exists
+        existing_doc = Document.objects.filter(
+            owning_org=user_org,
+            folder=folder,
+            doc_name=file_name,
+            is_deleted=False,
+            is_archived=False
+        ).exists()
+        
+        if existing_doc:
+            # Generate suggested name for rename option
+            suggested_name = self._build_unique_doc_name(file_name, folder, user_org)
+            return Response({'exists': True, 'suggested_name': suggested_name})
+        
+        return Response({'exists': False, 'suggested_name': None})
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated, IsOrgMember])
     def deleted(self, request):

@@ -461,6 +461,12 @@ export const documentAPI = {
     if (options && typeof options.autoCategorize !== 'undefined') {
       formData.append('auto_categorize', options.autoCategorize ? 'true' : 'false');
     }
+    if (options && typeof options.overrideExisting !== 'undefined') {
+      formData.append('override_existing', options.overrideExisting ? 'true' : 'false');
+    }
+    if (options && typeof options.wasRenamed !== 'undefined') {
+      formData.append('was_renamed', options.wasRenamed ? 'true' : 'false');
+    }
     
     const token = localStorage.getItem('access_token');
     const response = await fetch(`${API_BASE_URL}/api/documents/`, {
@@ -481,6 +487,22 @@ export const documentAPI = {
         errorMsg = `Upload failed (${response.status}: ${response.statusText})`;
       }
       throw new Error(errorMsg);
+    }
+    return await response.json();
+  },
+
+  // Check if a file exists with the same name in a folder
+  checkFileExists: async (fileName, folderId = null) => {
+    const params = new URLSearchParams({
+      file_name: fileName,
+    });
+    if (folderId) {
+      params.append('folder_id', folderId);
+    }
+
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/documents/check_file_exists/?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error('Failed to check file existence');
     }
     return await response.json();
   },
