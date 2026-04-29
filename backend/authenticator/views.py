@@ -263,7 +263,6 @@ class VerifyOTPView(generics.GenericAPIView):
                 'user_id': user.user_id,
                 'role_type': user.role_type,
                 'first_name': user.first_name,
-                'must_change_password': user.must_change_password,
                 'message': 'Login successful!'
             },
             status=status.HTTP_200_OK
@@ -660,8 +659,6 @@ class UserViewSet(ModelViewSet):
         
         try:
             user.set_password(new_password)
-            user.must_change_password = False
-            user.password_changed_at = timezone.now()
             user.save()
             
             # Log password change

@@ -11,7 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['user_index', 'user_id', 'name', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'user_contact', 'user_birthdate', 'email_add', 'role_type', 'org', 'is_active', 'joined_at', 'must_change_password', 'password_changed_at']
+        fields = ['user_index', 'user_id', 'name', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'user_contact', 'user_birthdate', 'email_add', 'role_type', 'org', 'is_active', 'joined_at']
         # We don't include the password here for security
     
     def get_name(self, obj):
@@ -110,14 +110,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 # 4. Organization Serializer (with nested parent_org)
 class OrganizationSerializer(serializers.ModelSerializer):
-<<<<<<< HEAD
-    parent_org_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-    parent_org = serializers.SerializerMethodField(read_only=True)
-    
-    class Meta:
-        model = Organization
-        fields = ['org_id', 'parent_org_id', 'parent_org', 'org_name', 'org_desc', 'org_code', 'org_type']
-=======
     parent_org = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.all(),
         required=False,
@@ -128,7 +120,6 @@ class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = ['org_id', 'parent_org', 'parent_org_detail', 'org_name', 'org_desc', 'org_code', 'org_type']
->>>>>>> bb8a881 (Fix org)
         read_only_fields = ['org_id']  # org_id cannot be changed
     
     def get_parent_org_detail(self, obj):
@@ -141,43 +132,6 @@ class OrganizationSerializer(serializers.ModelSerializer):
                 'org_type': obj.parent_org.org_type,
             }
         return None
-    
-    def create(self, validated_data):
-        """Create organization with parent_org relationship"""
-        parent_org_id = validated_data.pop('parent_org_id', None)
-        organization = Organization.objects.create(**validated_data)
-        
-        if parent_org_id:
-            try:
-                parent_org = Organization.objects.get(org_id=parent_org_id)
-                organization.parent_org = parent_org
-                organization.save()
-            except Organization.DoesNotExist:
-                raise serializers.ValidationError({'parent_org_id': f'Parent organization with id {parent_org_id} does not exist'})
-        
-        return organization
-    
-    def update(self, instance, validated_data):
-        """Update organization with parent_org relationship"""
-        parent_org_id = validated_data.pop('parent_org_id', None)
-        
-        # Update other fields
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        
-        # Update parent_org if provided
-        if parent_org_id is not None:
-            if parent_org_id is None or parent_org_id == '':
-                instance.parent_org = None
-            else:
-                try:
-                    parent_org = Organization.objects.get(org_id=parent_org_id)
-                    instance.parent_org = parent_org
-                except Organization.DoesNotExist:
-                    raise serializers.ValidationError({'parent_org_id': f'Parent organization with id {parent_org_id} does not exist'})
-        
-        instance.save()
-        return instance
 
 
 # 5. IdFormat Serializer

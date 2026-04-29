@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import LoginInterface from './LoginInterface';
-import RequiredPasswordChange from './RequiredPasswordChange';
 import { authAPI, clearAuthTokens, getAccessToken, systemThemeAPI } from './services/api';
 import ProtectedRoute from './components/ProtectedRoute';
 import Unauthorized from './components/Unauthorized';
@@ -202,7 +201,6 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginInterface />} />
-        <Route path="/change-password-required" element={<RequiredPasswordChange />} />
         <Route path="/unauthorized" element={<Unauthorized currentUser={currentUser} />} />
         <Route 
           path="/user/*" 

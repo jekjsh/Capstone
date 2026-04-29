@@ -109,14 +109,6 @@ export default function LoginForm({ themeData, onShowRegistration }) {
           localStorage.removeItem(REMEMBER_ME_STORAGE_KEY);
         }
         
-        // Check if user must change password on first login
-        if (data.must_change_password) {
-          // Store the flag and redirect to password change page
-          localStorage.setItem('mustChangePassword', 'true');
-          window.location.href = '/change-password-required';
-          return;
-        }
-        
         // Fetch user profile to determine which dashboard to redirect to
         try {
           const userData = await authAPI.getCurrentProfile();

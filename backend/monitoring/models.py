@@ -14,21 +14,12 @@ class AuditLog(models.Model):
         db_table = 'audit_logs'
 
 class Notification(models.Model):
-    APPROVAL_STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('passed_to_higher', 'Passed to Higher'),
-        ('approved', 'Approved'),
-        ('denied', 'Denied'),
-        ('other', 'Other'),
-    ]
-    
     notif_id = models.AutoField(primary_key=True)
     recipient_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifs_received')
     actor_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifs_triggered')
     doc = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True)
     notif_msg = models.CharField(max_length=255)
     is_read = models.BooleanField(default=False)
-    approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default='other', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

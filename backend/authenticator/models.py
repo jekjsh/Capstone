@@ -59,8 +59,6 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     email_add = models.EmailField(unique=True)
     role_type = models.CharField(max_length=50, default='user')
     joined_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    must_change_password = models.BooleanField(default=True)
-    password_changed_at = models.DateTimeField(null=True, blank=True)
     
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
