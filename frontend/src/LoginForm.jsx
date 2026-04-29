@@ -17,6 +17,12 @@ export default function LoginForm({ themeData, onShowRegistration }) {
   const [showError, setShowError] = useState(false);
   const [requires2FA, setRequires2FA] = useState(false);
   const [tempUserId, setTempUserId] = useState('');
+  const [forcePasswordChange, setForcePasswordChange] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
 
   useEffect(() => {
     try {
@@ -109,6 +115,13 @@ export default function LoginForm({ themeData, onShowRegistration }) {
           localStorage.removeItem(REMEMBER_ME_STORAGE_KEY);
         }
         
+        // Check if user must change password on first login
+        if (data.force_password_change) {
+          setForcePasswordChange(true);
+          setRequires2FA(false);
+          return;
+        }
+        
         // Fetch user profile to determine which dashboard to redirect to
         try {
           const userData = await authAPI.getCurrentProfile();
@@ -144,12 +157,168 @@ export default function LoginForm({ themeData, onShowRegistration }) {
     }
   };
 
+  const handleForcePasswordChange = async (e) => {
+    e.preventDefault();
+    
+    if (!newPassword || !confirmPassword) {
+      setErrorMessage('Please fill in all fields.');
+      setShowError(true);
+      return;
+    }
+    
+    if (newPassword.length < 8) {
+      setErrorMessage('Password must be at least 8 characters long.');
+      setShowError(true);
+      return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+      setErrorMessage('Passwords do not match.');
+      setShowError(true);
+      return;
+    }
+    
+    setPasswordChangeLoading(true);
+    setErrorMessage('');
+    setShowError(false);
+    
+    try {
+      const response = await fetch('http://localhost:8000/api/users/force_change_password/', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({ new_password: newPassword, confirm_password: confirmPassword })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        // Password changed successfully, now redirect
+        try {
+          const userData = await authAPI.getCurrentProfile();
+          const roleType = userData.role_type;
+          
+          if (roleType === 'admin') {
+            window.location.href = '/admin/dashboard';
+          } else if (roleType === 'system_admin') {
+            window.location.href = '/system-admin/dashboard';
+          } else {
+            window.location.href = '/user/documents';
+          }
+        } catch (error) {
+          console.error('Failed to fetch user profile:', error);
+          window.location.href = '/user/documents';
+        }
+      } else {
+        setErrorMessage(data.detail || 'Failed to change password. Please try again.');
+        setShowError(true);
+      }
+    } catch (error) {
+      console.error('Password change error:', error);
+      setErrorMessage('An error occurred. Please try again.');
+      setShowError(true);
+    } finally {
+      setPasswordChangeLoading(false);
+    }
+  };
+
   const handleBackToLogin = () => {
     setRequires2FA(false);
     setOtpCode('');
     setErrorMessage('');
     setShowError(false);
   };
+
+  // Force Password Change Screen (First Login)
+  if (forcePasswordChange) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute inset-0 bg-black/30"></div>
+        </div>
+
+        {showError && (
+          <div className="fixed inset-0 flex items-center justify-center z-50">
+            <div className="fixed inset-0 bg-black bg-opacity-50"></div>
+            <div className="relative bg-white rounded-lg shadow-lg p-6 max-w-sm mx-4">
+              <h3 className="text-red-600 font-semibold mb-2">Error</h3>
+              <p className="text-gray-700 mb-4">{errorMessage}</p>
+              <button
+                onClick={() => setShowError(false)}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="relative z-10 w-full max-w-md">
+          <form onSubmit={handleForcePasswordChange} className="bg-white rounded-2xl shadow-2xl p-8">
+            <h2 className="text-2xl font-bold text-center mb-2">Change Password</h2>
+            <p className="text-gray-600 text-center mb-6 text-sm">
+              You must change your password before proceeding to the system.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-gray-700 font-semibold mb-2">New Password</label>
+              <div className="relative">
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  placeholder="Enter new password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  disabled={passwordChangeLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute right-3 top-3 text-gray-500"
+                  disabled={passwordChangeLoading}
+                >
+                  {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+              <p className="text-gray-500 text-xs mt-1">Minimum 8 characters</p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-gray-700 font-semibold mb-2">Confirm Password</label>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  placeholder="Confirm password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  disabled={passwordChangeLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-3 text-gray-500"
+                  disabled={passwordChangeLoading}
+                >
+                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={passwordChangeLoading}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {passwordChangeLoading ? 'Changing Password...' : 'Change Password & Continue'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // 2FA OTP Verification Screen
   if (requires2FA) {

@@ -256,6 +256,14 @@ class VerifyOTPView(generics.GenericAPIView):
             audit_status='Success'
         )
         
+        # Determine if user must change password on first login
+        # Only 'admin' (org admin) and 'user' roles must change password on first login
+        # System admins are excluded
+        force_password_change = (
+            not user.password_changed and 
+            user.role_type in ['admin', 'user']
+        )
+        
         return Response(
             {
                 'access': str(access_token),
@@ -263,6 +271,7 @@ class VerifyOTPView(generics.GenericAPIView):
                 'user_id': user.user_id,
                 'role_type': user.role_type,
                 'first_name': user.first_name,
+                'force_password_change': force_password_change,
                 'message': 'Login successful!'
             },
             status=status.HTTP_200_OK
@@ -677,6 +686,63 @@ class UserViewSet(ModelViewSet):
             AuditLog.objects.create(
                 user_index=request.user,
                 audit_action='Change Password',
+                audit_desc=f"Failed to change password for user {user.user_id}: {str(e)}",
+                audit_status='Failed'
+            )
+            return Response(
+                {'detail': f'Failed to change password: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def force_change_password(self, request, *args, **kwargs):
+        """
+        Force password change on first login (does not require current password)
+        This endpoint is used when force_password_change flag is True in login response
+        """
+        user = request.user
+        new_password = request.data.get('new_password')
+        confirm_password = request.data.get('confirm_password')
+        
+        if not new_password or not confirm_password:
+            return Response(
+                {'detail': 'Both new_password and confirm_password are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if new_password != confirm_password:
+            return Response(
+                {'detail': 'New passwords do not match.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(new_password) < 8:
+            return Response(
+                {'detail': 'Password must be at least 8 characters long.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user.set_password(new_password)
+            user.password_changed = True
+            user.save()
+            
+            # Log password change
+            AuditLog.objects.create(
+                user_index=user,
+                audit_action='Force Change Password',
+                audit_desc=f"User {user.user_id} changed their password on first login",
+                audit_status='Success'
+            )
+            
+            return Response(
+                {'detail': 'Password changed successfully. You can now proceed to the system.', 'success': True},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            AuditLog.objects.create(
+                user_index=user,
+                audit_action='Force Change Password',
                 audit_desc=f"Failed to change password for user {user.user_id}: {str(e)}",
                 audit_status='Failed'
             )
