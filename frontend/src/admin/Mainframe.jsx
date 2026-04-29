@@ -3100,13 +3100,14 @@ const closeAdminOCRModal = () => {
           setSidebarOpen={setSidebarOpen}
           Notifications={Notifications}
           onNotificationNavigate={(notification) => {
-            // Check if this is an approval notification
-            if (notification?.approvalStatus) {
+            // Check if this is an approval notification (not 'other' which is normal sharing)
+            if (notification?.approvalStatus && notification.approvalStatus !== 'other') {
               setApprovalFilter(notification.approvalStatus);
+              setActiveSection('approvals');
             } else {
-              setApprovalFilter('pending');
+              // Normal file sharing - route to File Sharing section
+              setActiveSection('org-shares');
             }
-            setActiveSection('approvals');
           }}
         />
 

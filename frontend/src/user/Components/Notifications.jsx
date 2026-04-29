@@ -24,16 +24,25 @@ export default function Notifications({ currentUser, onNotificationNavigate }) {
     try {
       setIsLoading(true);
       const data = await notificationAPI.getAll();
-      const normalized = (data || []).map((item) => ({
-        id: item.notif_id,
-        isRead: Boolean(item.is_read),
-        createdAt: item.created_at,
-        message: item.notif_msg || '',
-        title: item.doc_name ? 'Document Shared' : 'Notification',
-        senderName: item.actor_name || '',
-        approvalStatus: item.approval_status || 'other',
-        originalData: item, // Keep original data for passing to parent
-      }));
+      const normalized = (data || []).map((item) => {
+        // Build sender display name from first and last name
+        const firstName = item.actor_first_name || '';
+        const lastName = item.actor_last_name || '';
+        const position = item.actor_position || '';
+        const senderDisplay = [firstName, lastName].filter(Boolean).join(' ') || item.actor_name || '';
+        
+        return {
+          id: item.notif_id,
+          isRead: Boolean(item.is_read),
+          createdAt: item.created_at,
+          message: item.notif_msg || '',
+          title: item.doc_name ? 'Document Shared' : 'Notification',
+          senderName: senderDisplay,
+          senderPosition: position,
+          approvalStatus: item.approval_status || 'other',
+          originalData: item, // Keep original data for passing to parent
+        };
+      });
 
       setNotifications(normalized);
 
@@ -203,7 +212,7 @@ export default function Notifications({ currentUser, onNotificationNavigate }) {
                           </p>
                           {notification.senderName && (
                             <p className="text-xs text-gray-500 mt-1">
-                              From: {notification.senderName}
+                              From: {notification.senderName}{notification.senderPosition && ` • ${notification.senderPosition}`}
                             </p>
                           )}
                           <div className="flex items-center justify-between mt-2">

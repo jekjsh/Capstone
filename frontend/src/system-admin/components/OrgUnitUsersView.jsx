@@ -1,4 +1,4 @@
-import { Users, Search, Briefcase, Plus, Trash2 } from 'lucide-react';
+import { Users, Search, Briefcase, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 const ORG_TYPE_COLORS = {
@@ -23,6 +23,7 @@ export default function OrgUnitUsersView({
   onRefreshUsers
 }) {
   const [selectedOrgId, setSelectedOrgId] = useState(null);
+  const [expandedNodes, setExpandedNodes] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
@@ -61,8 +62,8 @@ export default function OrgUnitUsersView({
     const roots = [];
     organizations.forEach(org => {
       const orgNode = orgsMap.get(org.org_id);
-      // Get parent org ID - handle both cases: parent_org is object or null
-      const parentOrgId = org.parent_org ? org.parent_org.org_id : null;
+      // Get parent org ID - parent_org is already an integer ID from the serializer
+      const parentOrgId = org.parent_org || null;
       
       if (!parentOrgId) {
         roots.push(orgNode);
@@ -236,10 +237,16 @@ export default function OrgUnitUsersView({
   const renderOrgTree = (orgs, level = 0) => {
     return orgs.map(org => {
       const hasChildren = org.children && org.children.length > 0;
+      const isExpanded = expandedNodes[org.org_id];
       const memberCount = getOrgMemberCount(org.org_id);
       const isSelected = selectedOrgId === org.org_id;
       const paddingLeft = level * 12;
       const color = getOrgTypeColor(org.org_type);
+      
+      const toggleExpand = (e) => {
+        e.stopPropagation();
+        setExpandedNodes(prev => ({ ...prev, [org.org_id]: !prev[org.org_id] }));
+      };
       
       return (
         <div key={org.org_id} className="w-full">
@@ -254,9 +261,25 @@ export default function OrgUnitUsersView({
             style={{ paddingLeft: `calc(0.75rem + ${paddingLeft}px)` }}
           >
             <div className="flex items-center justify-between min-w-0">
-              <div className="min-w-0">
-                <p className={`font-semibold text-sm truncate ${color.text}`}>{org.org_name}</p>
-                <p className="text-xs text-gray-500 truncate">{org.org_code || 'No code'}</p>
+              <div className="flex items-center gap-2 min-w-0">
+                {hasChildren && (
+                  <button
+                    onClick={toggleExpand}
+                    className="flex-shrink-0 p-0 hover:bg-white rounded transition-colors"
+                    title={isExpanded ? 'Collapse' : 'Expand'}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-gray-600" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-gray-600" />
+                    )}
+                  </button>
+                )}
+                {!hasChildren && <div className="w-4" />}
+                <div className="min-w-0">
+                  <p className={`font-semibold text-sm truncate ${color.text}`}>{org.org_name}</p>
+                  <p className="text-xs text-gray-500 truncate">{org.org_code || 'No code'}</p>
+                </div>
               </div>
               <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ml-2 flex-shrink-0 ${color.badge}`}>
                 {memberCount}
@@ -264,7 +287,7 @@ export default function OrgUnitUsersView({
             </div>
           </button>
           
-          {hasChildren && (
+          {hasChildren && isExpanded && (
             <div className="ml-4 pl-3 border-l border-slate-200 space-y-1 mt-1">
               {renderOrgTree(org.children, level + 1)}
             </div>
