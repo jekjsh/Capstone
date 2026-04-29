@@ -31,6 +31,8 @@ export default function Notifications({ currentUser, onNotificationNavigate }) {
         message: item.notif_msg || '',
         title: item.doc_name ? 'Document Shared' : 'Notification',
         senderName: item.actor_name || '',
+        approvalStatus: item.approval_status || 'other',
+        originalData: item, // Keep original data for passing to parent
       }));
 
       setNotifications(normalized);

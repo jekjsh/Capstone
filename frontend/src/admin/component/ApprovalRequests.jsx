@@ -9,17 +9,24 @@ import {
 import { documentAPI } from '../../services/api';
 import './ApprovalRequests.css';
 
-const ApprovalRequests = () => {
+const ApprovalRequests = ({ initialFilter = 'pending' }) => {
   const [approvals, setApprovals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedApproval, setSelectedApproval] = useState(null);
   const [actionInProgress, setActionInProgress] = useState(false);
   const [reviewMessage, setReviewMessage] = useState('');
-  const [filter, setFilter] = useState('pending');
+  const [filter, setFilter] = useState(initialFilter);
   const [showActionModal, setShowActionModal] = useState(false);
   const [actionType, setActionType] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+
+  useEffect(() => {
+    // Update filter when initialFilter prop changes
+    if (initialFilter && initialFilter !== filter) {
+      setFilter(initialFilter);
+    }
+  }, [initialFilter]);
 
   useEffect(() => {
     fetchApprovals();

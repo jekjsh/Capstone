@@ -11,7 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['user_index', 'user_id', 'name', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'user_contact', 'user_birthdate', 'email_add', 'role_type', 'org', 'is_active', 'joined_at']
+        fields = ['user_index', 'user_id', 'name', 'first_name', 'middle_name', 'last_name', 'suffix', 'user_pos', 'user_contact', 'user_birthdate', 'email_add', 'role_type', 'org', 'is_active', 'joined_at', 'must_change_password', 'password_changed_at']
         # We don't include the password here for security
     
     def get_name(self, obj):
@@ -110,16 +110,29 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 # 4. Organization Serializer (with nested parent_org)
 class OrganizationSerializer(serializers.ModelSerializer):
+<<<<<<< HEAD
     parent_org_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     parent_org = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Organization
         fields = ['org_id', 'parent_org_id', 'parent_org', 'org_name', 'org_desc', 'org_code', 'org_type']
+=======
+    parent_org = serializers.PrimaryKeyRelatedField(
+        queryset=Organization.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    parent_org_detail = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Organization
+        fields = ['org_id', 'parent_org', 'parent_org_detail', 'org_name', 'org_desc', 'org_code', 'org_type']
+>>>>>>> bb8a881 (Fix org)
         read_only_fields = ['org_id']  # org_id cannot be changed
     
-    def get_parent_org(self, obj):
-        """Return parent organization details if it exists"""
+    def get_parent_org_detail(self, obj):
+        """Return parent organization details if it exists (for read responses)"""
         if obj.parent_org:
             return {
                 'org_id': obj.parent_org.org_id,

@@ -1913,6 +1913,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
             actor_user=request.user,
             doc=approval.doc,
             notif_msg=f"Your document sharing request for '{approval.doc.doc_name}' has been approved",
+            approval_status='approved',
         )
 
         AuditLog.objects.create(
@@ -1956,6 +1957,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
             actor_user=request.user,
             doc=approval.doc,
             notif_msg=f"Your document sharing request for '{approval.doc.doc_name}' has been denied",
+            approval_status='denied',
         )
 
         AuditLog.objects.create(
@@ -2034,6 +2036,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
                 actor_user=request.user,
                 doc=approval.doc,
                 notif_msg=f"Document approval request from {current_org.org_name} requires your review for document '{approval.doc.doc_name}'",
+                approval_status='passed_to_higher',
             )
 
         AuditLog.objects.create(

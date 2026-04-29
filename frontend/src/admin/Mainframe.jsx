@@ -84,6 +84,7 @@ export default function Mainframe({
     const path = location.pathname;
     return pathToSection[path] || 'dashboard';
   });
+  const [approvalFilter, setApprovalFilter] = useState('pending'); // Track which tab to show in approvals
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showCustomizationModal, setShowCustomizationModal] = useState(false);
    const [showUserIdFormatModal, setShowUserIdFormatModal] = useState(false);  // ✅ ADD THIS
@@ -1194,13 +1195,12 @@ const [viewingDocument, setViewingDocument] = useState(null);
             middle_name: newUser.middleName || '',
             last_name: newUser.lastName,
             suffix: newUser.suffix || '',
-            email: newUser.email,
+            email_add: newUser.email,
             user_contact: newUser.userContact || '',
             user_birthdate: newUser.userBirthdate || null,
             user_pos: newUser.organizationPosition || '',
-            role: newUser.role,
-            organization_unit_id: newUser.organizationUnitId || null,
-            organization_position: newUser.organizationPosition || ''
+            role_type: newUser.role,
+            org: newUser.organizationUnitId || null
           };
 
           await userAPI.update(editingUserId, updateData);
@@ -3099,7 +3099,15 @@ const closeAdminOCRModal = () => {
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
           Notifications={Notifications}
-          onNotificationNavigate={() => setActiveSection('approvals')}
+          onNotificationNavigate={(notification) => {
+            // Check if this is an approval notification
+            if (notification?.approvalStatus) {
+              setApprovalFilter(notification.approvalStatus);
+            } else {
+              setApprovalFilter('pending');
+            }
+            setActiveSection('approvals');
+          }}
         />
 
         <div className="flex-1 overflow-auto p-6">
@@ -3265,7 +3273,7 @@ const closeAdminOCRModal = () => {
 
           {activeSection === 'approvals' && (
             <ErrorBoundary>
-              <ApprovalRequests />
+              <ApprovalRequests initialFilter={approvalFilter} />
             </ErrorBoundary>
           )}
         </div>
