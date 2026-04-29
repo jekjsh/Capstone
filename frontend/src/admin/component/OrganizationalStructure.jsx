@@ -212,14 +212,14 @@ export default function OrganizationalStructure() {
         name: org.org_name,
         code: org.org_code,
         type: org.org_type,
-        parentOrgId: org.parent_org ? org.parent_org.org_id : null,
+        parentOrgId: org.parent_org || null,
         children: []
       };
     });
 
     organizations.forEach(org => {
-      // Get parent org ID - handle both cases: parent_org is object or null
-      const parentOrgId = org.parent_org ? org.parent_org.org_id : null;
+      // Get parent org ID - parent_org is already an integer ID from the serializer
+      const parentOrgId = org.parent_org || null;
       
       if (parentOrgId === null) {
         rootOrgs.push(orgMap[org.org_id]);
@@ -246,7 +246,7 @@ export default function OrganizationalStructure() {
           org_code: orgData.code,
           org_type: orgData.type,
           org_desc: orgData.description || '',
-          parent_org_id: parentId
+          parent_org: parentId
         })
       });
 
@@ -273,7 +273,7 @@ export default function OrganizationalStructure() {
           org_code: orgData.code,
           org_type: orgData.type,
           org_desc: orgData.description || '',
-          parent_org_id: orgData.parentOrgId || null
+          parent_org: orgData.parentOrgId || null
         })
       });
 
