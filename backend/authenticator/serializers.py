@@ -110,11 +110,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 # 4. Organization Serializer (with nested parent_org)
 class OrganizationSerializer(serializers.ModelSerializer):
-    parent_org = serializers.SerializerMethodField()
+    parent_org_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    parent_org = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Organization
-        fields = ['org_id', 'parent_org', 'org_name', 'org_desc', 'org_code', 'org_type']
+        fields = ['org_id', 'parent_org_id', 'parent_org', 'org_name', 'org_desc', 'org_code', 'org_type']
         read_only_fields = ['org_id']  # org_id cannot be changed
     
     def get_parent_org(self, obj):
@@ -127,6 +128,43 @@ class OrganizationSerializer(serializers.ModelSerializer):
                 'org_type': obj.parent_org.org_type,
             }
         return None
+    
+    def create(self, validated_data):
+        """Create organization with parent_org relationship"""
+        parent_org_id = validated_data.pop('parent_org_id', None)
+        organization = Organization.objects.create(**validated_data)
+        
+        if parent_org_id:
+            try:
+                parent_org = Organization.objects.get(org_id=parent_org_id)
+                organization.parent_org = parent_org
+                organization.save()
+            except Organization.DoesNotExist:
+                raise serializers.ValidationError({'parent_org_id': f'Parent organization with id {parent_org_id} does not exist'})
+        
+        return organization
+    
+    def update(self, instance, validated_data):
+        """Update organization with parent_org relationship"""
+        parent_org_id = validated_data.pop('parent_org_id', None)
+        
+        # Update other fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Update parent_org if provided
+        if parent_org_id is not None:
+            if parent_org_id is None or parent_org_id == '':
+                instance.parent_org = None
+            else:
+                try:
+                    parent_org = Organization.objects.get(org_id=parent_org_id)
+                    instance.parent_org = parent_org
+                except Organization.DoesNotExist:
+                    raise serializers.ValidationError({'parent_org_id': f'Parent organization with id {parent_org_id} does not exist'})
+        
+        instance.save()
+        return instance
 
 
 # 5. IdFormat Serializer

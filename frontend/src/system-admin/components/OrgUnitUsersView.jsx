@@ -61,10 +61,13 @@ export default function OrgUnitUsersView({
     const roots = [];
     organizations.forEach(org => {
       const orgNode = orgsMap.get(org.org_id);
-      if (!org.parent_org) {
+      // Get parent org ID - handle both cases: parent_org is object or null
+      const parentOrgId = org.parent_org ? org.parent_org.org_id : null;
+      
+      if (!parentOrgId) {
         roots.push(orgNode);
       } else {
-        const parent = orgsMap.get(org.parent_org);
+        const parent = orgsMap.get(parentOrgId);
         if (parent) {
           parent.children.push(orgNode);
         }
