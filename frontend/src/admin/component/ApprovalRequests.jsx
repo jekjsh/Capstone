@@ -4,7 +4,9 @@ import {
   XCircle, 
   ArrowUp, 
   AlertCircle,
-  Loader
+  Loader,
+  Grid3x3,
+  List
 } from 'lucide-react';
 import { documentAPI } from '../../services/api';
 import './ApprovalRequests.css';
@@ -20,6 +22,7 @@ const ApprovalRequests = ({ initialFilter = 'pending' }) => {
   const [actionType, setActionType] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [viewMode, setViewMode] = useState('table');
 
   useEffect(() => {
     // Update filter when initialFilter prop changes
@@ -162,25 +165,126 @@ const ApprovalRequests = ({ initialFilter = 'pending' }) => {
         )}
 
         {/* Filter Tabs */}
-        <div className="flex gap-2 mb-4">
-          {['pending', 'approved', 'denied', 'passed_to_higher', 'all'].map(status => (
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex gap-2">
+            {['pending', 'approved', 'denied', 'passed_to_higher', 'all'].map(status => (
+              <button
+                key={status}
+                onClick={() => setFilter(status)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  filter === status
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                }`}
+              >
+                {status === 'passed_to_higher' ? 'Passed Up' : status.charAt(0).toUpperCase() + status.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
             <button
-              key={status}
-              onClick={() => setFilter(status)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === status
+              onClick={() => setViewMode('table')}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === 'table'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
               }`}
+              title="Table view"
             >
-              {status === 'passed_to_higher' ? 'Passed Up' : status.charAt(0).toUpperCase() + status.slice(1)}
+              <List className="w-5 h-5" />
             </button>
-          ))}
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === 'card'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+              }`}
+              title="Card view"
+            >
+              <Grid3x3 className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Approvals List */}
-      <div className="space-y-4">
+      {viewMode === 'table' ? (
+        <div className="overflow-x-auto bg-white rounded-lg border border-gray-200">
+          {filteredApprovals.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg">No approval requests found</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Document Name</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Requested By</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Organization</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Created Date</th>
+                  <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredApprovals.map(approval => (
+                  <tr key={approval.approval_id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm text-gray-900 font-medium">{approval.doc_name}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {approval.requested_by_user?.first_name} {approval.requested_by_user?.last_name}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{approval.requesting_org_name || '-'}</td>
+                    <td className="px-6 py-4 text-sm">{getStatusBadge(approval.status)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(approval.created_at)}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <div className="flex gap-2 justify-center">
+                        {(approval.status === 'pending' || approval.status === 'passed_to_higher') && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setSelectedApproval(approval);
+                                handleApprove();
+                              }}
+                              className="p-2 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
+                              title="Approve"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedApproval(approval);
+                                handleDeny();
+                              }}
+                              className="p-2 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                              title="Deny"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                            {approval.status === 'pending' && approval.requested_org?.parent_org && (
+                              <button
+                                onClick={() => {
+                                  setSelectedApproval(approval);
+                                  handlePassToHigher();
+                                }}
+                                className="p-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                                title="Pass to Higher"
+                              >
+                                <ArrowUp className="w-4 h-4" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
         {filteredApprovals.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg">No approval requests found</p>
@@ -273,6 +377,7 @@ const ApprovalRequests = ({ initialFilter = 'pending' }) => {
           ))
         )}
       </div>
+      )}
 
       {/* Action Modal */}
       {showActionModal && selectedApproval && (

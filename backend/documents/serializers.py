@@ -28,10 +28,11 @@ class DocumentSerializer(serializers.ModelSerializer):
     format = serializers.SerializerMethodField()
     categories = serializers.SerializerMethodField()
     owning_org_name = serializers.CharField(source='owning_org.org_name', read_only=True, allow_null=True)
+    approval_status = serializers.SerializerMethodField()
     
     class Meta:
         model = Document
-        fields = ['doc_id', 'user_index', 'uploaded_by_user', 'owning_org', 'owning_org_name', 'folder', 'folder_name', 'doc_name', 'doc_desc', 'doc_path', 'doc_file', 'doc_file_url', 'format', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'doc_uploaded', 'updated_at', 'categories']
+        fields = ['doc_id', 'user_index', 'uploaded_by_user', 'owning_org', 'owning_org_name', 'folder', 'folder_name', 'doc_name', 'doc_desc', 'doc_path', 'doc_file', 'doc_file_url', 'format', 'approval_status', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'doc_uploaded', 'updated_at', 'categories']
         read_only_fields = ['doc_id', 'user_index', 'uploaded_by_user', 'owning_org', 'is_deleted', 'deleted_at', 'is_archived', 'archived_at', 'doc_uploaded', 'updated_at']
     
     def get_format(self, obj):
@@ -74,6 +75,21 @@ class DocumentSerializer(serializers.ModelSerializer):
             }
             for dc in doc_categories
         ]
+    
+    def get_approval_status(self, obj):
+        """Return the approval status of the document"""
+        # Check if document has any approved approval requests
+        approved_request = obj.approval_requests.filter(status='approved').exists()
+        if approved_request:
+            return 'approved'
+        
+        # Check if document has pending approval requests
+        pending_request = obj.approval_requests.filter(status='pending').exists()
+        if pending_request:
+            return 'pending'
+        
+        # Default to none if no approval requests
+        return None
     
     def get_doc_file_url(self, obj):
         """Return the URL for the uploaded file for inline viewing"""

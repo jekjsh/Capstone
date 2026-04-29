@@ -585,6 +585,7 @@ class FolderShareViewSet(viewsets.ModelViewSet):
                         recipient_user=recipient,
                         actor_user=request.user,
                         notif_msg=notif_msg,
+                        approval_status='other',
                     )
             except Exception:
                 # Notification delivery should not block the share operation.
@@ -1559,6 +1560,7 @@ class DocumentShareViewSet(viewsets.ModelViewSet):
                     actor_user=request.user,
                     doc=created_share.doc,
                     notif_msg=notif_msg,
+                    approval_status='other',
                 )
             except Exception:
                 # Notification delivery should not block the share operation.
@@ -1837,6 +1839,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
                         actor_user=request.user,
                         doc=approval.doc,
                         notif_msg=notif_msg,
+                        approval_status='pending',
                     )
             except Exception as notify_error:
                 # Notification delivery should not block the approval creation
@@ -1906,6 +1909,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
             actor_user=request.user,
             doc=approval.doc,
             notif_msg=f"Your document sharing request for '{approval.doc.doc_name}' has been approved",
+            approval_status='approved',
         )
 
         AuditLog.objects.create(
@@ -1949,6 +1953,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
             actor_user=request.user,
             doc=approval.doc,
             notif_msg=f"Your document sharing request for '{approval.doc.doc_name}' has been denied",
+            approval_status='denied',
         )
 
         AuditLog.objects.create(
@@ -2027,6 +2032,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
                 actor_user=request.user,
                 doc=approval.doc,
                 notif_msg=f"Document approval request from {current_org.org_name} requires your review for document '{approval.doc.doc_name}'",
+                approval_status='passed_to_higher',
             )
 
         AuditLog.objects.create(

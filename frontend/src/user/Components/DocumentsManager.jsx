@@ -875,6 +875,16 @@ export default function FileManagement({
                             {getDocumentCategoryBadge(doc)}
                           </span>
                         )}
+                        {doc.approval_status === 'approved' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-800 border border-green-200">
+                            Approved
+                          </span>
+                        )}
+                        {doc.approval_status === 'pending' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-100 text-yellow-800 border border-yellow-200">
+                            Pending
+                          </span>
+                        )}
                         {sharedDocumentIdSet.has(String(doc.doc_id || doc.id)) && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
                             {getDocumentSharedLabel(doc.doc_id || doc.id) || 'Shared'}
