@@ -213,6 +213,25 @@ export default function FileManagement({
     return `${firstCategoryName} +${categories.length - 1}`;
   };
 
+  const getApprovalStatusBadge = (doc) => {
+    if (!doc?.approval_status) return null;
+
+    const statusConfig = {
+      approved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Approved' },
+      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending' },
+      rejected: { bg: 'bg-red-100', text: 'text-red-800', label: 'Rejected' },
+    };
+
+    const config = statusConfig[doc.approval_status];
+    if (!config) return null;
+
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${config.bg} ${config.text}`}>
+        {config.label}
+      </span>
+    );
+  };
+
   const pageTitle = isInFolder ? currentFolderData?.folder_name : 'My Files';
 
   const getOwnerLabel = (item) => {
@@ -674,8 +693,9 @@ export default function FileManagement({
         combinedListItems.length > 0 && (
           <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-visible">
             <div className="grid grid-cols-12 px-4 py-3 border-b border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500">
-              <div className="col-span-6">Name</div>
-              <div className="col-span-2">Type</div>
+              <div className="col-span-5">Name</div>
+              <div className="col-span-1">Type</div>
+              <div className="col-span-2">Approval Status</div>
               <div className="col-span-2">Owner</div>
               <div className="col-span-2 text-right">Actions</div>
             </div>
@@ -723,8 +743,7 @@ export default function FileManagement({
                       : undefined
                 }
               >
-                <div
-                  className="col-span-6 flex items-center gap-3 min-w-0 cursor-pointer select-none"
+                <div className="col-span-5 flex items-center gap-3 min-w-0 cursor-pointer select-none"
                   onDoubleClick={() => {
                     if (item.type === 'folder') {
                       setCurrentFolder(item.id);
@@ -764,7 +783,10 @@ export default function FileManagement({
                   </div>
                 </div>
 
-                <div className="col-span-2 text-sm text-gray-600 capitalize">{item.type}</div>
+                <div className="col-span-1 text-sm text-gray-600 capitalize">{item.type}</div>
+                <div className="col-span-2 text-sm flex items-center">
+                  {item.type === 'document' ? (getApprovalStatusBadge(item.data) || <span className="text-gray-400">-</span>) : <span className="text-gray-400">-</span>}
+                </div>
                 <div className="col-span-2 text-sm text-gray-700 truncate">{item.owner}</div>
 
                 <div className="col-span-2 flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
