@@ -400,7 +400,7 @@ export default function ShareDocumentModal({
           >
             Cancel
           </button>
-          {!allowOrgSharing && onRequestApproval && (
+          {onRequestApproval && (
             <button
               onClick={() => {
                 onRequestApproval(document);

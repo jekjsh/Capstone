@@ -820,6 +820,7 @@ const headers = ['Owner', 'Department', 'Document Name', 'Description', 'Categor
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Full Name</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">User ID</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Department</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Document Name</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Categories</th>
@@ -833,6 +834,7 @@ const headers = ['Owner', 'Department', 'Document Name', 'Description', 'Categor
                   {pagedRows.map((row, idx) => (
                     <tr key={`${row.userId}-${row.folder}-${idx}`} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm font-medium text-gray-900 text-center">{row.fullName}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600 text-center">{row.userId || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 text-center">{row.department || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-medium text-center">{row.documentName || '-'}</td>
                       <td className="px-6 py-4 text-sm text-center">{row.categories || '-'}</td>
@@ -853,6 +855,7 @@ const headers = ['Owner', 'Department', 'Document Name', 'Description', 'Categor
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Owner</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">User ID</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Department</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Document Name</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Description</th>
@@ -866,6 +869,7 @@ const headers = ['Owner', 'Department', 'Document Name', 'Description', 'Categor
                   {pagedRows.map((doc) => (
                     <tr key={doc.doc_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm font-medium text-gray-900 text-center">{getUserFullName(doc.user_index)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600 text-center">{doc.user_index?.user_id || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 text-center">{getDepartmentName(doc)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-medium text-center">{doc.doc_name}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate text-center">{doc.doc_desc || '-'}</td>

@@ -2,7 +2,7 @@ from django.shortcuts import render
 from rest_framework import generics
 from rest_framework.decorators import action
 from .serializers import UserSerializer
-from .models import CustomUser, IdFormat, UserCreationRequest
+from .models import CustomUser, IdFormat, UserCreationRequest, RememberedDevice
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.viewsets import ModelViewSet
 
@@ -16,6 +16,9 @@ from django.contrib.auth import get_user_model, authenticate
 from django.conf import settings
 from django.db.models import Q
 from pathlib import Path
+from django.utils import timezone
+from datetime import timedelta
+import hashlib
 
 from .serializers import UserSerializer, RegisterSerializer, CustomTokenObtainPairSerializer, OrganizationSerializer, IdFormatSerializer, UserCreationRequestSerializer, UserCreationRequestCreateSerializer, VerifyOTPSerializer
 from .two_factor_utils import create_and_send_otp, verify_otp
@@ -109,10 +112,25 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         """
         Step 1 of 2FA: Verify credentials and send OTP code
-        Returns: {'message': 'OTP sent', 'user_id': 'xxx'} instead of tokens
+        Or: Skip OTP if device is remembered
+        
+        Parameters:
+        - user_id: username
+        - password: password
+        - device_token: unique device identifier (optional)
+        - device_fingerprint: browser fingerprint (optional)
+        - device_name: device name (optional)
+        - remember_me: whether to remember this device (optional)
+        
+        Returns:
+        - If OTP required: {'message': 'OTP sent', 'user_id': 'xxx', 'requires_otp': True}
+        - If device remembered: {'message': 'Login successful', 'access': '...', 'refresh': '...', 'requires_otp': False}
         """
         username = request.data.get('user_id') or request.data.get('username')
         password = request.data.get('password')
+        device_token = request.data.get('device_token')
+        device_fingerprint = request.data.get('device_fingerprint')
+        device_name = request.data.get('device_name')
         
         if not username or not password:
             return Response(
@@ -160,6 +178,63 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
+        # Check if device is remembered
+        if device_token and device_fingerprint:
+            try:
+                remembered_device = RememberedDevice.objects.get(
+                    user=user,
+                    device_token=device_token,
+                    device_fingerprint=device_fingerprint
+                )
+                
+                if remembered_device.is_valid:
+                    # Device is remembered and valid - skip OTP
+                    from rest_framework_simplejwt.tokens import RefreshToken
+                    
+                    refresh = RefreshToken.for_user(user)
+                    access_token = refresh.access_token
+                    access_token['user_id'] = user.user_id
+                    access_token['role_type'] = user.role_type
+                    access_token['first_name'] = user.first_name
+                    
+                    # Update last used timestamp
+                    remembered_device.last_used_at = timezone.now()
+                    remembered_device.save(update_fields=['last_used_at'])
+                    
+                    AuditLog.objects.create(
+                        user_index=user,
+                        audit_action='Login',
+                        audit_desc=f"User logged in via remembered device: {remembered_device.device_name}",
+                        audit_status='Success'
+                    )
+                    
+                    # Check if password change is required
+                    force_password_change = (
+                        not user.password_changed and 
+                        user.role_type in ['admin', 'user']
+                    )
+                    
+                    return Response(
+                        {
+                            'message': 'Login successful via remembered device!',
+                            'access': str(access_token),
+                            'refresh': str(refresh),
+                            'user_id': user.user_id,
+                            'role_type': user.role_type,
+                            'first_name': user.first_name,
+                            'requires_otp': False,
+                            'force_password_change': force_password_change
+                        },
+                        status=status.HTTP_200_OK
+                    )
+            except RememberedDevice.DoesNotExist:
+                # Device not found or invalid - fall through to OTP
+                print(f"Device not found for user {user.user_id} with token {device_token[:20]}...")
+                pass
+            except Exception as e:
+                print(f"Error checking remembered device: {str(e)}")
+                pass
+        
         # Credentials are valid, send OTP
         otp_code = create_and_send_otp(user)
         
@@ -187,7 +262,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 'message': 'OTP code sent to your email.',
                 'user_id': user.user_id,
                 'email': user.email_add,
-                'requires_2fa': True
+                'requires_otp': True,
+                'device_token': device_token,  # Echo back for frontend storage
+                'device_fingerprint': device_fingerprint  # Echo back for frontend storage
             },
             status=status.HTTP_200_OK
         )
@@ -204,10 +281,21 @@ class VerifyOTPView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         """
         Verify OTP code and return JWT tokens if valid
-        Expected input: {'user_id': 'xxx', 'otp_code': '123456'}
+        Expected input: {
+            'user_id': 'xxx', 
+            'otp_code': '123456',
+            'remember_me': True/False (optional),
+            'device_token': 'xxx' (optional),
+            'device_fingerprint': 'xxx' (optional),
+            'device_name': 'Chrome on Windows' (optional)
+        }
         """
         user_id = request.data.get('user_id')
         otp_code = request.data.get('otp_code')
+        remember_me = request.data.get('remember_me', False)
+        device_token = request.data.get('device_token')
+        device_fingerprint = request.data.get('device_fingerprint')
+        device_name = request.data.get('device_name', 'Unknown Device')
         
         if not user_id or not otp_code:
             return Response(
@@ -248,6 +336,44 @@ class VerifyOTPView(generics.GenericAPIView):
         access_token['user_id'] = user.user_id
         access_token['role_type'] = user.role_type
         access_token['first_name'] = user.first_name
+        
+        # Store remembered device if requested
+        if remember_me and device_token and device_fingerprint:
+            try:
+                # First try to find existing device
+                device = RememberedDevice.objects.get(
+                    user=user,
+                    device_token=device_token,
+                    device_fingerprint=device_fingerprint
+                )
+                # Update existing device
+                device.is_active = True
+                device.device_name = device_name
+                device.expires_at = timezone.now() + timedelta(days=30)
+                device.last_used_at = timezone.now()
+                device.save()
+            except RememberedDevice.DoesNotExist:
+                # Create new device
+                try:
+                    device = RememberedDevice.objects.create(
+                        user=user,
+                        device_token=device_token,
+                        device_fingerprint=device_fingerprint,
+                        device_name=device_name,
+                        is_active=True,
+                        expires_at=timezone.now() + timedelta(days=30)
+                    )
+                except Exception as e:
+                    # Don't fail the login if device creation fails
+                    print(f"Error creating remembered device: {str(e)}")
+                    pass
+            
+            AuditLog.objects.create(
+                user_index=user,
+                audit_action='Login',
+                audit_desc=f"Device remembered: {device_name}",
+                audit_status='Success'
+            )
         
         AuditLog.objects.create(
             user_index=user,

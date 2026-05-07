@@ -5,6 +5,57 @@ import { setAuthTokens, authAPI } from "./services/api";
 import './LoginForm.css';
 
 const REMEMBER_ME_STORAGE_KEY = 'rkms.rememberedLogin';
+const DEVICE_TOKEN_KEY = 'rkms.deviceToken';
+const DEVICE_FINGERPRINT_KEY = 'rkms.deviceFingerprint';
+const DEVICE_NAME_KEY = 'rkms.deviceName';
+
+// Generate a unique device fingerprint from browser data
+function generateDeviceFingerprint() {
+  const components = [
+    navigator.userAgent,
+    navigator.language,
+    new Date().getTimezoneOffset(),
+    navigator.hardwareConcurrency || 'unknown',
+    navigator.deviceMemory || 'unknown'
+  ];
+  
+  // Simple hash function
+  let hash = 0;
+  const str = components.join('|');
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
+// Generate a simple UUID-like device token
+function generateDeviceToken() {
+  return 'device-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+// Get device name from user agent
+function getDeviceName() {
+  const ua = navigator.userAgent;
+  let browser = 'Unknown Browser';
+  let os = 'Unknown OS';
+  
+  // Detect browser
+  if (ua.indexOf('Firefox') > -1) browser = 'Firefox';
+  else if (ua.indexOf('Chrome') > -1 && ua.indexOf('Chromium') === -1) browser = 'Chrome';
+  else if (ua.indexOf('Safari') > -1 && ua.indexOf('Chrome') === -1) browser = 'Safari';
+  else if (ua.indexOf('Edge') > -1) browser = 'Edge';
+  
+  // Detect OS
+  if (ua.indexOf('Windows') > -1) os = 'Windows';
+  else if (ua.indexOf('Mac') > -1) os = 'macOS';
+  else if (ua.indexOf('Linux') > -1) os = 'Linux';
+  else if (ua.indexOf('Android') > -1) os = 'Android';
+  else if (ua.indexOf('iPhone') > -1 || ua.indexOf('iPad') > -1) os = 'iOS';
+  
+  return `${browser} on ${os}`;
+}
 
 export default function LoginForm({ themeData, onShowRegistration }) {
   const [userId, setUserId] = useState('');
@@ -12,6 +63,7 @@ export default function LoginForm({ themeData, onShowRegistration }) {
   const [otpCode, setOtpCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showError, setShowError] = useState(false);
@@ -23,8 +75,37 @@ export default function LoginForm({ themeData, onShowRegistration }) {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
+  const [deviceToken, setDeviceToken] = useState('');
+  const [deviceFingerprint, setDeviceFingerprint] = useState('');
+  const [deviceName, setDeviceName] = useState('');
 
+  // Initialize device token on component mount
   useEffect(() => {
+    // Check or create device identifiers
+    let storedDeviceToken = localStorage.getItem(DEVICE_TOKEN_KEY);
+    let storedDeviceFingerprint = localStorage.getItem(DEVICE_FINGERPRINT_KEY);
+    let storedDeviceName = localStorage.getItem(DEVICE_NAME_KEY);
+    
+    if (!storedDeviceToken) {
+      storedDeviceToken = generateDeviceToken();
+      localStorage.setItem(DEVICE_TOKEN_KEY, storedDeviceToken);
+    }
+    
+    if (!storedDeviceFingerprint) {
+      storedDeviceFingerprint = generateDeviceFingerprint();
+      localStorage.setItem(DEVICE_FINGERPRINT_KEY, storedDeviceFingerprint);
+    }
+    
+    if (!storedDeviceName) {
+      storedDeviceName = getDeviceName();
+      localStorage.setItem(DEVICE_NAME_KEY, storedDeviceName);
+    }
+    
+    setDeviceToken(storedDeviceToken);
+    setDeviceFingerprint(storedDeviceFingerprint);
+    setDeviceName(storedDeviceName);
+    
+    // Load remembered login if available
     try {
       const raw = localStorage.getItem(REMEMBER_ME_STORAGE_KEY);
       if (!raw) return;
@@ -46,23 +127,70 @@ export default function LoginForm({ themeData, onShowRegistration }) {
     setErrorMessage('');
     
     try {
-      // Step 1: Send credentials to login endpoint
+      // Step 1: Send credentials to login endpoint with device info
       const response = await fetch('http://localhost:8000/auth/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, password }) 
+        body: JSON.stringify({
+          user_id: userId,
+          password,
+          device_token: deviceToken,
+          device_fingerprint: deviceFingerprint,
+          device_name: deviceName
+        }) 
       });
 
       const data = await response.json();
       console.log('Login Response:', { status: response.status, ok: response.ok, data });
 
       if (response.ok) {
-        // Credentials valid, OTP sent - show 2FA screen
-        console.log('Setting requires2FA to true, tempUserId:', data.user_id);
-        setTempUserId(data.user_id);
-        setRequires2FA(true);
-        setErrorMessage('');
-        setShowError(false);
+        // Check if OTP is required or if device is remembered
+        if (data.requires_otp) {
+          // OTP required - show 2FA screen
+          console.log('Setting requires2FA to true, tempUserId:', data.user_id);
+          setTempUserId(data.user_id);
+          setRequires2FA(true);
+          setErrorMessage('');
+          setShowError(false);
+        } else if (data.access && data.refresh) {
+          // Device remembered - no OTP needed, log in directly
+          console.log('Device remembered, logging in without OTP');
+          setAuthTokens(data.access, data.refresh);
+
+          if (rememberMe) {
+            localStorage.setItem(REMEMBER_ME_STORAGE_KEY, JSON.stringify({
+              rememberMe: true,
+              userId,
+              password
+            }));
+          } else {
+            localStorage.removeItem(REMEMBER_ME_STORAGE_KEY);
+          }
+          
+          // Check if password change is required
+          if (data.force_password_change) {
+            setForcePasswordChange(true);
+            setRequires2FA(false);
+            return;
+          }
+          
+          // Fetch user profile and redirect
+          try {
+            const userData = await authAPI.getCurrentProfile();
+            const roleType = userData.role_type;
+            
+            if (roleType === 'admin') {
+              window.location.href = '/admin/dashboard';
+            } else if (roleType === 'system_admin') {
+              window.location.href = '/system-admin/dashboard';
+            } else {
+              window.location.href = '/user/documents';
+            }
+          } catch (error) {
+            console.error('Failed to fetch user profile, redirecting to documents:', error);
+            window.location.href = '/user/documents';
+          }
+        }
       } else {
         // Login failed
         setPassword('');
@@ -93,13 +221,28 @@ export default function LoginForm({ themeData, onShowRegistration }) {
 
     try {
       // Step 2: Verify OTP and get tokens
+      console.log('Verifying OTP with device info:', {
+        remember_me: rememberDevice,
+        device_token: deviceToken,
+        device_fingerprint: deviceFingerprint,
+        device_name: deviceName
+      });
+
       const response = await fetch('http://localhost:8000/auth/verify-otp/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: tempUserId, otp_code: otpCode }) 
+        body: JSON.stringify({
+          user_id: tempUserId,
+          otp_code: otpCode,
+          remember_me: rememberDevice,
+          device_token: deviceToken,
+          device_fingerprint: deviceFingerprint,
+          device_name: deviceName
+        }) 
       });
 
       const data = await response.json();
+      console.log('OTP verification response:', { status: response.status, ok: response.ok, data });
 
       if (response.ok) {
         // OTP verified, tokens received
@@ -367,6 +510,20 @@ export default function LoginForm({ themeData, onShowRegistration }) {
                 autoFocus
               />
               <p className="text-gray-500 text-xs mt-2 text-center">Enter the 6-digit code from your email</p>
+            </div>
+
+            <div className="mb-6 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="rememberDevice"
+                checked={rememberDevice}
+                onChange={(e) => setRememberDevice(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                disabled={isLoading}
+              />
+              <label htmlFor="rememberDevice" className="text-sm text-gray-600">
+                Remember this device for 30 days (skip OTP on next login)
+              </label>
             </div>
 
             <button

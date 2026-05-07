@@ -18,6 +18,7 @@ import DocumentHistoryModal from '../components/modals/DocumentHistoryModal';
 import OCRModal from '../components/modals/OCRModal';
 import CreateFolderModal from '../components/modals/CreateFolderModal';
 import UploadDocumentModal from '../components/modals/UploadDocumentModal';
+import FileConflictModal from '../components/modals/FileConflictModal';
 import RenameDetectedDocumentsModal from '../components/modals/RenameDetectedDocumentsModal';
 import CategoryMatchConfirmationModal from '../components/modals/CategoryMatchConfirmationModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
@@ -147,6 +148,10 @@ const [viewingDocument, setViewingDocument] = useState(null);
   const [adminUploadTagValues, setAdminUploadTagValues] = useState({});
   const [adminUploadFileNames, setAdminUploadFileNames] = useState([]);
   const [adminAutoCategorizeUploads, setAdminAutoCategorizeUploads] = useState(false);
+  const [showAdminFileConflictModal, setShowAdminFileConflictModal] = useState(false);
+  const [adminFileConflict, setAdminFileConflict] = useState(null);
+  const [adminUploadQueue, setAdminUploadQueue] = useState(null);
+  const [isAdminHandlingConflict, setIsAdminHandlingConflict] = useState(false);
   const [showAdminRenameDetectedModal, setShowAdminRenameDetectedModal] = useState(false);
   const [showAdminCategoryMatchConfirmModal, setShowAdminCategoryMatchConfirmModal] = useState(false);
   const [adminDetectedUploadItems, setAdminDetectedUploadItems] = useState([]);
@@ -2109,6 +2114,31 @@ const handleAdminShareFolder = async (shareData) => {
   await refreshAdminWorkspaceAfterShare();
 };
 
+const handleAdminRequestApproval = async (document) => {
+  if (!document) {
+    alert('❌ Error: Document not found');
+    return;
+  }
+
+  try {
+    await documentAPI.createApproval(document.doc_id || document.id, 'Please approve this document for sharing');
+    
+    addAuditLog(
+      'Request Document Approval',
+      `Requested approval for "${document.doc_name || document.name}"`,
+      'Success'
+    );
+
+    alert(`✅ Approval request sent for "${document.doc_name || document.name}" to your higher organization admin!`);
+    setShowAdminShareDocumentModal(false);
+    setAdminDocumentToShare(null);
+  } catch (error) {
+    console.error('❌ Failed to request approval:', error);
+    const errorMsg = error.message || 'Unknown error occurred';
+    alert(`❌ Failed to request approval:\n\n${errorMsg}`);
+  }
+};
+
 const handleAdminCreateFolder = async () => {
   if (!adminNewFolderName.trim()) {
     setErrors({ folderName: 'Folder name is required' });
@@ -2451,16 +2481,44 @@ const runAdminDetectionForUploads = async () => {
   }
 };
 
-const performAdminUploadDocument = async (namesOverride = null, folderTargetsOverride = null) => {
+const performAdminUploadDocument = async (namesOverride = null, folderTargetsOverride = null, startIndex = 0) => {
   if (!adminUploadedDocFiles.length) return;
 
   try {
-    for (let index = 0; index < adminUploadedDocFiles.length; index += 1) {
+    for (let index = startIndex; index < adminUploadedDocFiles.length; index += 1) {
       const file = adminUploadedDocFiles[index];
       const resolvedDocName = ((namesOverride || adminUploadFileNames)[index] || file.name || '').trim() || file.name;
       const resolvedFolderId = Array.isArray(folderTargetsOverride)
         ? (folderTargetsOverride[index] ?? currentAdminFolder ?? null)
         : (currentAdminFolder || null);
+      
+      // Check if file exists before uploading
+      try {
+        const fileExistenceCheck = await documentAPI.checkFileExists(resolvedDocName, resolvedFolderId);
+        
+        if (fileExistenceCheck.exists) {
+          // Set conflict state and pause upload
+          setAdminFileConflict({
+            fileName: resolvedDocName,
+            fileIndex: index,
+            suggestedName: fileExistenceCheck.suggested_name,
+            file: file,
+            action: null
+          });
+          setAdminUploadQueue({
+            files: adminUploadedDocFiles,
+            namesOverride: namesOverride,
+            folderTargets: folderTargetsOverride,
+            currentIndex: index
+          });
+          setShowAdminFileConflictModal(true);
+          return;
+        }
+      } catch (conflictCheckError) {
+        console.error('Error checking file existence:', conflictCheckError);
+        // Continue with upload even if check fails
+      }
+      
       await documentAPI.uploadFiles(
         [file],
         resolvedDocName,
@@ -2493,6 +2551,9 @@ const performAdminUploadDocument = async (namesOverride = null, folderTargetsOve
     setAdminUploadFileNames([]);
     setAdminDetectedUploadItems([]);
     setAdminAutoCategorizeUploads(false);
+    setShowAdminFileConflictModal(false);
+    setAdminFileConflict(null);
+    setAdminUploadQueue(null);
 
     addAuditLog('Upload Document', `Admin uploaded ${adminUploadedDocFiles.length} document(s)`, 'Success');
     alert(`Uploaded ${adminUploadedDocFiles.length} document(s) successfully.`);
@@ -2539,6 +2600,93 @@ const handleAdminConfirmDetectedUpload = async () => {
   } finally {
     setIsAdminSubmittingDetectedUpload(false);
   }
+};
+
+const handleAdminFileConflictOverride = async () => {
+  if (!adminFileConflict || !adminUploadQueue) return;
+  
+  setIsAdminHandlingConflict(true);
+  try {
+    const file = adminUploadQueue.files[adminFileConflict.fileIndex];
+    const resolvedFolderId = Array.isArray(adminUploadQueue.folderTargets)
+      ? (adminUploadQueue.folderTargets[adminFileConflict.fileIndex] ?? currentAdminFolder ?? null)
+      : currentAdminFolder;
+    
+    const uploadOptions = { autoCategorize: adminAutoCategorizeUploads };
+    
+    await documentAPI.uploadFiles(
+      [file],
+      adminFileConflict.fileName,
+      '',
+      resolvedFolderId,
+      undefined,
+      uploadOptions
+    );
+    
+    setShowAdminFileConflictModal(false);
+    setAdminFileConflict(null);
+    
+    // Continue with remaining files
+    await performAdminUploadDocument(
+      adminUploadQueue.namesOverride,
+      adminUploadQueue.folderTargets,
+      adminFileConflict.fileIndex + 1
+    );
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    alert(`Failed to upload file: ${error.message}`);
+  } finally {
+    setIsAdminHandlingConflict(false);
+  }
+};
+
+const handleAdminFileConflictRename = async () => {
+  if (!adminFileConflict || !adminUploadQueue) return;
+  
+  setIsAdminHandlingConflict(true);
+  try {
+    const file = adminUploadQueue.files[adminFileConflict.fileIndex];
+    const resolvedDocName = adminFileConflict.suggestedName;
+    const resolvedFolderId = Array.isArray(adminUploadQueue.folderTargets)
+      ? (adminUploadQueue.folderTargets[adminFileConflict.fileIndex] ?? currentAdminFolder ?? null)
+      : currentAdminFolder;
+    
+    const uploadOptions = { autoCategorize: adminAutoCategorizeUploads };
+    
+    await documentAPI.uploadFiles(
+      [file],
+      resolvedDocName,
+      '',
+      resolvedFolderId,
+      undefined,
+      uploadOptions
+    );
+    
+    setShowAdminFileConflictModal(false);
+    setAdminFileConflict(null);
+    
+    // Continue with remaining files
+    await performAdminUploadDocument(
+      adminUploadQueue.namesOverride,
+      adminUploadQueue.folderTargets,
+      adminFileConflict.fileIndex + 1
+    );
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    alert(`Failed to upload file: ${error.message}`);
+  } finally {
+    setIsAdminHandlingConflict(false);
+  }
+};
+
+const handleAdminFileConflictCancel = () => {
+  setShowAdminFileConflictModal(false);
+  setAdminFileConflict(null);
+  setAdminUploadQueue(null);
+  setShowAdminUploadModal(false);
+  setAdminUploadedDocFiles([]);
+  setAdminUploadPreviews([]);
+  setAdminCurrentPreviewIndex(0);
 };
 
 const handleAdminProceedFromCategoryConfirm = () => {
@@ -2851,6 +2999,16 @@ const closeAdminOCRModal = () => {
       loadingOverlayText="Detection in progress. Please wait until it finishes."
     />
 
+    <FileConflictModal
+      show={showAdminFileConflictModal}
+      fileName={adminFileConflict?.fileName}
+      suggestedName={adminFileConflict?.suggestedName}
+      onOverride={handleAdminFileConflictOverride}
+      onRename={handleAdminFileConflictRename}
+      onCancel={handleAdminFileConflictCancel}
+      isLoading={isAdminHandlingConflict}
+    />
+
     <RenameDetectedDocumentsModal
       show={showAdminRenameDetectedModal}
       onClose={() => {
@@ -2891,6 +3049,7 @@ const closeAdminOCRModal = () => {
       }}
       onShareDocument={handleAdminShareDocument}
       onSharesUpdated={refreshAdminWorkspaceAfterShare}
+      onRequestApproval={handleAdminRequestApproval}
     />
 
     <ShareFolderModal
@@ -3102,8 +3261,14 @@ const closeAdminOCRModal = () => {
           onNotificationNavigate={(notification) => {
             // Check if this is an approval notification (not 'other' which is normal sharing)
             if (notification?.approvalStatus && notification.approvalStatus !== 'other') {
-              setApprovalFilter(notification.approvalStatus);
-              setActiveSection('approvals');
+              // For approved documents, navigate to My Files section to view the document
+              if (notification.approvalStatus === 'approved') {
+                setActiveSection('my-files');
+              } else {
+                // For pending, denied, or passed_to_higher, show in Approvals tab
+                setApprovalFilter(notification.approvalStatus);
+                setActiveSection('approvals');
+              }
             } else {
               // Normal file sharing - route to File Sharing section
               setActiveSection('org-shares');

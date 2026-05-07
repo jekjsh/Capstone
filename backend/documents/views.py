@@ -1805,10 +1805,17 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
+        # Determine the organization to request approval from
+        requesting_org = self.request.user.org
+        
+        # If requesting org has a parent, send approval request to parent org
+        # Otherwise, send to the requesting org itself
+        requested_org = requesting_org.parent_org if requesting_org and requesting_org.parent_org else requesting_org
+        
         serializer.save(
             requested_by_user=self.request.user,
-            requesting_org=self.request.user.org,
-            requested_org=self.request.user.org
+            requesting_org=requesting_org,
+            requested_org=requested_org
         )
 
     def create(self, request, *args, **kwargs):
@@ -1908,7 +1915,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
             recipient_user=approval.requested_by_user,
             actor_user=request.user,
             doc=approval.doc,
-            notif_msg=f"Your document sharing request for '{approval.doc.doc_name}' has been approved",
+            notif_msg=f"Your document request for '{approval.doc.doc_name}' has been approved",
             approval_status='approved',
         )
 
@@ -1952,7 +1959,7 @@ class DocumentApprovalRequestViewSet(viewsets.ModelViewSet):
             recipient_user=approval.requested_by_user,
             actor_user=request.user,
             doc=approval.doc,
-            notif_msg=f"Your document sharing request for '{approval.doc.doc_name}' has been denied",
+            notif_msg=f"Your document request for '{approval.doc.doc_name}' has been denied",
             approval_status='denied',
         )
 

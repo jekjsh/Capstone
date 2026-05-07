@@ -168,3 +168,29 @@ class TwoFactorAuthCode(models.Model):
     def is_valid(self):
         """Check if the OTP is still valid for use"""
         return not self.is_used and not self.is_expired and self.attempts < 3
+
+
+class RememberedDevice(models.Model):
+    """Model to store remembered/trusted devices for users"""
+    device_id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='remembered_devices')
+    device_token = models.CharField(max_length=255)  # Unique per user (see unique_together)
+    device_name = models.CharField(max_length=255, blank=True, null=True)  # e.g., "Chrome on Windows"
+    device_fingerprint = models.CharField(max_length=255)  # Unique per user (see unique_together)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)  # User can disable remembered devices
+    expires_at = models.DateTimeField()  # Device trust expires after 30 days
+    
+    class Meta:
+        db_table = 'remembered_devices'
+        ordering = ['-last_used_at']
+        unique_together = ('user', 'device_token', 'device_fingerprint')
+    
+    def __str__(self):
+        return f"Device {self.device_name} for {self.user.user_id}"
+    
+    @property
+    def is_valid(self):
+        """Check if the device is still valid for trusted login"""
+        return self.is_active and timezone.now() <= self.expires_at
